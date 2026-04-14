@@ -109,3 +109,45 @@ tr:hover td { background: #ffffff0a; }
 .diff-ADV { color: #ffaa33; font-weight: bold; }
 .diff-BAS { color: #66cc66; font-weight: bold; }
 .diff-ULT { color: #ffffff; font-weight: bold; }
+
+.aj-badge {
+  background: linear-gradient(45deg, #ffeb3b, #ff9800);
+  color: #fff;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 2px 5px;
+  border-radius: 4px;
+  margin-left: 8px;
+}
+
+.fc-badge {
+  background: linear-gradient(45deg, #4caf50, #8bc34a); /* 緑系のグラデーション */
+  color: #fff;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 2px 5px;
+  border-radius: 4px;
+  margin-left: 8px;
+}
+
+/* AJC（理論値）用のスタイル：虹色のアニメーション付き */
+.ajc-badge {
+  background: linear-gradient(45deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #8b00ff);
+  background-size: 200% 200%;
+  animation: rainbow-flow 3s ease infinite; /* 虹色が動くアニメーション */
+  color: #fff;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 2px 5px;
+  border-radius: 4px;
+  margin-left: 8px;
+  box-shadow: 0 0 5px rgba(255, 255, 255, 0.8); /* ほのかに光らせる */
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+}
+
+/* 虹色が流れるアニメーションの定義 */
+@keyframes rainbow-flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
