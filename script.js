@@ -29,11 +29,11 @@ function applyFilters() {
   const filtered = allRecords.filter(item => {
     const matchDiff = selectedDiff === "" || item.diff === selectedDiff;
     const matchTitle = item.title.toLowerCase().includes(searchText);
-    const matchconstMin = isNaN(constMin) || item.const >= constMin;
-    const matchconstMax = isNaN(constMax) || item.const <= constMax;
-    const matchscoreMin = isNaN(scoreMin) || item.score >= scoreMin;
-    const matchscoreMax = isNaN(scoreMax) || item.score <= scoreMax;
-    return matchDiff && matchTitle && matchconstMin && matchconstMax && matchscoreMax && matchscoreMin
+    const matchConstMin = isNaN(constMin) || item.const >= constMin;
+    const matchConstMax = isNaN(constMax) || item.const <= constMax;
+    const matchScoreMin = isNaN(scoreMin) || item.score >= scoreMin;
+    const matchScoreMax = isNaN(scoreMax) || item.score <= scoreMax;
+    return matchDiff && matchTitle && matchConstMin && matchConstMax && matchScoreMax && matchScoreMin
   });
 
   renderTable(filtered);
