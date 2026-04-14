@@ -208,3 +208,50 @@ input, select {
 input[type="number"] {
   width: 80px;
 }
+
+/* モバイル向けの調整 */
+@media (max-width: 600px) {
+  .filters {
+    padding: 15px;
+    gap: 10px;
+  }
+
+  .filter-group {
+    /* スマホでは1項目を横幅いっぱい、または2列にする */
+    flex: 1 1 140px; 
+  }
+
+  /* 入力欄とセレクトボックスを大きくする */
+  input, select, button {
+    height: 44px; /* 指で押しやすい高さ */
+    font-size: 16px !important; /* 入力時にズームされるのを防ぐ */
+    width: 100% !important;     /* 横幅いっぱいに広げる */
+    box-sizing: border-box;
+  }
+
+  /* 範囲入力（〜）の横並びを維持する */
+  .filter-group div {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  /* 「表示に戻す」ボタンも押しやすく */
+  #restore-buttons button {
+    padding: 10px 15px;
+    margin-bottom: 8px;
+    background-color: #eee;
+    border: none;
+    border-radius: 20px;
+  }
+}
+
+.table-container {
+  width: 100%;
+  overflow-x: auto; /* 横にはみ出したらスクロールさせる */
+  -webkit-overflow-scrolling: touch; /* 指でのスクロールを滑らかにする */
+}
+
+table {
+  min-width: 500px; /* 表が潰れすぎないように最低幅を確保 */
+}
