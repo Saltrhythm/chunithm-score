@@ -43,6 +43,7 @@ function applyFilters() {
   const ratingMin = parseFloat(document.getElementById("rating-min").value);
   const ratingMax = parseFloat(document.getElementById("rating-max").value);
   const lampFilter = document.getElementById("lamp-filter").value;
+  const sortOrder = document.getElementById("sort-order").value;
 
   const filtered = allRecords.filter(item => {
     const matchDiff = selectedDiff === "" || item.diff === selectedDiff;
@@ -63,24 +64,39 @@ let matchLamp = true;
     matchLamp = !item.is_alljustice;
   }
 
-  return matchDiff && matchTitle && matchConstMin && matchConstMax && 
-         matchScoreMin && matchScoreMax && matchRatingMin && matchRatingMax && 
-         matchLamp;
-});
+    return matchDiff && matchTitle && matchConstMin && matchConstMax && 
+           matchScoreMin && matchScoreMax && matchRatingMin && matchRatingMax && 
+           matchLamp;
+  });
+
+  // --- ソート処理：スコアかRatingの2択 ---
+  filtered.sort((a, b) => {
+    if (sortOrder === "rating-desc") {
+      return b.rating - a.rating;  // Ratingが高い順
+    } else {
+      return b.score - a.score;    // デフォルト：スコアが高い順
+    }
+  });
 
   renderTable(filtered);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("diff-filter").addEventListener("change", applyFilters);
-  document.getElementById("search-input").addEventListener("input", applyFilters);
-  document.getElementById("const-min").addEventListener("input", applyFilters); 
-  document.getElementById("const-max").addEventListener("input", applyFilters); 
-  document.getElementById("score-min").addEventListener("input", applyFilters); 
-  document.getElementById("score-max").addEventListener("input", applyFilters);
-  document.getElementById("rating-min").addEventListener("input", applyFilters); 
-  document.getElementById("rating-max").addEventListener("input", applyFilters);
-  document.getElementById("lamp-filter").addEventListener("change", applyFilters);
+  const filterIds = [
+    "diff-filter", "search-input", 
+    "const-min", "const-max", 
+    "score-min", "score-max",
+    "rating-min", "rating-max",
+    "lamp-filter","sort-order" 
+  ];
+  
+  filterIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      const eventType = el.tagName === "SELECT" ? "change" : "input";
+      el.addEventListener(eventType, applyFilters);
+    }
+  });
 });
 
 function loadScores() {
