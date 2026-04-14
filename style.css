@@ -152,15 +152,21 @@ tr:hover td { background: #ffffff0a; }
   100% { background-position: 0% 50%; }
 }
 
+/* テーブル全体の枠線を完全に消す */
 table {
   width: 100%;
-  border-collapse: collapse; /* 隣り合う線を1本にまとめる（必須） */
-  margin-top: 20px;
+  border-collapse: collapse;
+  border: none;      /* 外枠を消す */
+  outline: none;     /* 念のためアウトラインも消す */
 }
 
-/* ヘッダー（見出し）とデータ行の枠線を消す */
-th, td, tr {
-  border: none;             /* すべての線を消す */
-  padding: 12px 8px;        /* 線を消すと詰まって見えるので、余白を広めに */
-  text-align: left;
+/* 中のセルもすべて線を消す */
+th, td {
+  border: none !important; /* 「!important」をつけると他の設定を強制上書きできます */
+  padding: 12px 10px;
+}
+
+/* もし横線も一切不要なら、trの設定も消します */
+tr {
+  border: none !important;
 }
