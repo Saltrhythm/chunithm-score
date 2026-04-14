@@ -255,3 +255,69 @@ input[type="number"] {
 table {
   min-width: 500px; /* 表が潰れすぎないように最低幅を確保 */
 }
+
+/* モバイル対応の全設定 */
+@media (max-width: 600px) {
+  /* フィルター全体をスッキリさせる */
+  .filters {
+    padding: 12px;
+    gap: 8px;
+    background-color: #fff;
+    border: 1px solid #ddd;
+    position: sticky; /* スクロールしても上に固定（お好みで） */
+    top: 0;
+    z-index: 100;
+  }
+
+  /* ラベルを小さく、見やすく */
+  .filter-group label {
+    font-size: 11px;
+    margin-bottom: 2px;
+    color: #888;
+  }
+
+  /* スマホでは2列ずつ並べる（検索以外） */
+  .filter-group {
+    flex: 1 1 calc(50% - 10px); 
+    min-width: 120px;
+  }
+
+  /* 入力欄を巨大化させてタップしやすく */
+  input, select {
+    height: 48px; /* 現場での押しやすさ最優先 */
+    font-size: 16px !important; /* iPhoneのズーム防止 */
+    border: 2px solid #eee; /* 枠線を少し太くして存在感を出す */
+    border-radius: 8px;
+    background-color: #fcfcfc;
+  }
+
+  /* 範囲入力の「〜」周りを整える */
+  .range-inputs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  
+  .range-inputs input {
+    flex: 1;
+    text-align: center;
+    padding: 0;
+  }
+
+  /* 表のフォントサイズをスマホ用に調整 */
+  td {
+    font-size: 13px;
+    padding: 10px 5px;
+  }
+
+  /* 非表示解除ボタンを「タグ」っぽくして押しやすく */
+  #restore-buttons button {
+    padding: 8px 12px;
+    background: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 50px;
+    font-size: 12px;
+    margin: 4px;
+  }
+}
