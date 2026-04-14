@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CHUNITHMスコア一覧</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -28,18 +29,18 @@
       <div class="filter-group">
         <label>譜面定数：</label>
         <div>
-        <input type="number" id="const-min" step="0.1" placeholder="最小"> 
+        <input type="number" id="const-min" inputmode="decimal" step="0.1" placeholder="最小"> 
         〜 
-        <input type="number" id="const-max" step="0.1" placeholder="最大">
+        <input type="number" id="const-max" inputmode="decimal" step="0.1" placeholder="最大">
         </div>
       </div>
 
       <div class="filter-group">
        <label>スコア：</label>
        <div>
-       <input type="number" id="score-min" placeholder="最小"> 
+       <input type="number" id="score-min" inputmode="decimal" placeholder="最小"> 
        〜 
-       <input type="number" id="score-max" placeholder="最大">
+       <input type="number" id="score-max" inputmode="decimal" placeholder="最大">
        </div>
       </div>
 
@@ -56,9 +57,9 @@
       <div class="filter-group">
        <label>Rating：</label>
        <div>
-       <input type="number" id="rating-min" step="0.01" placeholder="最小"> 
+       <input type="number" id="rating-min" inputmode="decimal" step="0.01" placeholder="最小"> 
        〜 
-       <input type="number" id="rating-max" step="0.01" placeholder="最大">
+       <input type="number" id="rating-max" inputmode="decimal" step="0.01" placeholder="最大">
        </div>
       </div>
 
@@ -92,6 +93,7 @@
   <div id="restore-buttons" style="margin-bottom: 10px; min-height: 30px;">
   </div>
 
+<div class="table-container">
 <table id="main-table">
   <thead>
     <tr>
@@ -105,7 +107,9 @@
   <tbody id="score-table">
     </tbody>
 </table>
-  </div>
+</div>
+
+</div>
 
   <script src="script.js"></script>
 </body>
