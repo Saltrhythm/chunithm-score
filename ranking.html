@@ -3,119 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>CHUNITHMスコア一覧</title>
-  <style>
-    body {
-      font-family: 'Segoe UI', sans-serif;
-      background: #0a0a1a;
-      color: #ffffff;
-      padding: 24px;
-      margin: 0;
-    }
-
-    h1 {
-      text-align: center;
-      font-size: 2rem;
-      letter-spacing: 0.1em;
-      color: #00cfff;
-      text-shadow: 0 0 12px #00cfff88;
-      margin-bottom: 24px;
-    }
-
-    #token-screen {
-      max-width: 480px;
-      margin: 80px auto;
-      text-align: center;
-    }
-
-    #token-screen p {
-      color: #aaa;
-      margin-bottom: 16px;
-      line-height: 1.6;
-    }
-
-    #token-screen a {
-      color: #00cfff;
-    }
-
-    #token-input {
-      width: 100%;
-      background: #1a1a2e;
-      color: #fff;
-      border: 1px solid #00cfff55;
-      border-radius: 6px;
-      padding: 10px 14px;
-      font-size: 1rem;
-      outline: none;
-      box-sizing: border-box;
-      margin-bottom: 12px;
-    }
-
-    #token-input:focus {
-      border-color: #00cfff;
-    }
-
-    button {
-      background: #00cfff;
-      color: #0a0a1a;
-      border: none;
-      border-radius: 6px;
-      padding: 10px 32px;
-      font-size: 1rem;
-      font-weight: bold;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background: #00aadd;
-    }
-
-    #main-screen { display: none; }
-
-    .filters {
-      display: flex;
-      gap: 16px;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
-    }
-
-    .filters label { color: #aaa; margin-right: 6px; }
-
-    .filters select,
-    .filters input {
-      background: #1a1a2e;
-      color: #fff;
-      border: 1px solid #00cfff55;
-      border-radius: 6px;
-      padding: 6px 10px;
-      outline: none;
-    }
-
-    .filters select:focus,
-    .filters input:focus { border-color: #00cfff; }
-
-    table { border-collapse: collapse; width: 100%; }
-
-    th {
-      background: #00cfff22;
-      color: #00cfff;
-      padding: 10px 14px;
-      text-align: left;
-      letter-spacing: 0.05em;
-    }
-
-    td {
-      padding: 8px 14px;
-      border-bottom: 1px solid #ffffff11;
-    }
-
-    tr:hover td { background: #ffffff0a; }
-
-    .diff-MAS { color: #cc66ff; font-weight: bold; }
-    .diff-EXP { color: #ff6666; font-weight: bold; }
-    .diff-ADV { color: #ffaa33; font-weight: bold; }
-    .diff-BAS { color: #66cc66; font-weight: bold; }
-    .diff-ULT { color: #ffffff; font-weight: bold; }
-  </style>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
@@ -138,6 +26,12 @@
     <h1>🎵 CHUNITHM スコア一覧</h1>
     <div class="filters">
       <div>
+        <label>譜面定数：</label>
+        <input type="number" id="const-min" placeholder="最小" step="0.1" min="1" max="15.7" style="width:70px;">
+        〜
+        <input type="number" id="const-max" placeholder="最大" step="0.1" min="1" max="15.7" style="width:70px;">
+      </div>
+      </div>
         <label>難易度：</label>
         <select id="diff-filter">
           <option value="">すべて</option>
@@ -169,66 +63,6 @@
     </table>
   </div>
 
-  <script>
-    let allRecords = [];
-
-    function renderTable(records) {
-      const tbody = document.getElementById("score-table");
-      tbody.innerHTML = "";
-      records.forEach((item, index) => {
-        if (!item || !item.title) return;
-        const diffClass = `diff-${item.diff}`;
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>${index + 1}</td>
-          <td>${item.title}</td>
-          <td class="${diffClass}">${item.diff}</td>
-          <td>${item.score.toLocaleString()}</td>
-          <td>${item.rating}</td>
-        `;
-        tbody.appendChild(tr);
-      });
-    }
-
-    function applyFilters() {
-      const selectedDiff = document.getElementById("diff-filter").value;
-      const searchText = document.getElementById("search-input").value.toLowerCase();
-      const filtered = allRecords.filter(item => {
-        const matchDiff = selectedDiff === "" || item.diff === selectedDiff;
-        const matchTitle = item.title.toLowerCase().includes(searchText);
-        return matchDiff && matchTitle;
-      });
-      renderTable(filtered);
-    }
-
-    document.addEventListener("DOMContentLoaded", () => {
-      document.getElementById("diff-filter").addEventListener("change", applyFilters);
-      document.getElementById("search-input").addEventListener("input", applyFilters);
-    });
-
-    function loadScores() {
-      const token = document.getElementById("token-input").value.trim();
-      if (!token) return;
-
-      const API_URL = `https://api.chunirec.net/2.0/records/showall.json?region=jp2&token=${token}`;
-
-      fetch(API_URL)
-        .then(res => res.json())
-        .then(data => {
-          if (!data.records) throw new Error("invalid token");
-          const records = data.records;
-          records.sort((a, b) => b.score - a.score);
-          allRecords = records;
-
-          document.getElementById("token-screen").style.display = "none";
-          document.getElementById("main-screen").style.display = "block";
-
-          renderTable(allRecords);
-        })
-        .catch(() => {
-          document.getElementById("token-error").style.display = "block";
-        });
-    }
-  </script>
+  <script src="script.js"></script>
 </body>
 </html>
