@@ -9,17 +9,6 @@
 
   <!-- トークン入力画面 -->
   <div id="token-screen">
-    <h1>🎵 CHUNITHM スコア一覧</h1><!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <title>CHUNITHMスコア一覧</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-
-  <!-- トークン入力画面 -->
-  <div id="token-screen">
     <h1>🎵 CHUNITHM スコア一覧</h1>
     <p>
       chunirecのアクセストークンを入力してください。<br>
@@ -49,62 +38,6 @@
        <input type="number" id="score-max" placeholder="1010000" min="0" max="1010000" style="width:100px;">
       </div>
       <div>
-        <label>難易度：</label>
-        <select id="diff-filter">
-          <option value="">すべて</option>
-          <option value="MAS">MASTER</option>
-          <option value="EXP">EXPERT</option>
-          <option value="ADV">ADVANCED</option>
-          <option value="BAS">BASIC</option>
-          <option value="ULT">ULTIMA</option>
-        </select>
-      </div>
-      <div>
-        <label>楽曲名：</label>
-        <input type="text" id="search-input" placeholder="曲名を入力...">
-      </div>
-    </div>
-    <table>
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>楽曲名</th>
-          <th>難易度</th>
-          <th>スコア</th>
-          <th>Rating</th>
-        </tr>
-      </thead>
-      <tbody id="score-table">
-        <tr><td colspan="5" style="color:#aaa;">読み込み中...</td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <script src="script.js"></script>
-</body>
-</html>
-    <p>
-      chunirecのアクセストークンを入力してください。<br>
-      トークンは <a href="https://developer.chunirec.net/" target="_blank">developer.chunirec.net</a> から取得できます。<br>
-      <small style="color:#666;">トークンはこのサイトには保存されません。</small>
-    </p>
-    <input type="text" id="token-input" placeholder="アクセストークンを入力...">
-    <br>
-    <button onclick="loadScores()">スコアを表示</button>
-    <p id="token-error" style="color:#ff6666; display:none;">トークンが正しくありません。もう一度確認してください。</p>
-  </div>
-
-  <!-- スコア表示画面 -->
-  <div id="main-screen">
-    <h1>🎵 CHUNITHM スコア一覧</h1>
-    <div class="filters">
-      <div>
-        <label>譜面定数：</label>
-        <input type="number" id="const-min" placeholder="最小" step="0.1" min="1" max="15.7" style="width:70px;">
-        〜
-        <input type="number" id="const-max" placeholder="最大" step="0.1" min="1" max="15.7" style="width:70px;">
-      </div>
-      </div>
         <label>難易度：</label>
         <select id="diff-filter">
           <option value="">すべて</option>
