@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF=8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>チュウニズムスコア管理ツール</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- トークン入力画面 -->
+    <div id="token-screen">
+        <h1>チュウニズムスコア管理ツール</h1>
+        <p>
+            chunirecのアクセストークンを入力してください。<br>
+            トークンは <a href="https://developer.chunirec.net/" target="_blank">developer.chunirec.net</a> から取得できます。<br>
+            <small style="color:#666;">トークンはこのサイトには保存されません。</small>
+        </p>
+
+        <div class="input-wrapper">
+            <input type="password" id="token-input" placeholder="chunirecトークンを入力">
+            <button id="toggle-token" type="button" onclick="toggleTokenVisibility()">👁️</button>
+        </div>
+
+        <div class="button-area">
+            <button id="load-btn" onclick="loadScores()">スコアを表示</button>
+        </div>
+
+        <div id="loading-msg">データを同期中...（十秒程度かかります）</div>
+        <p id="token-error">トークンが正しくありません。もう一度確認してください。</p>
+    </div>
+
+    <!-- スコア表示画面 -->
+    <div id="main-screen" style="display: none;">
+
+        <h1>ウニスコア管理ツール</h1>
+
+        <div class="button-group">
+            <button onclick="refreshScores()" class="nav-item active refresh-btn">データを再同期</button>
+            <button class="logout-btn" onclick="logout()">ログアウト</button>
+        </div>
+
+        <div class="rating-wrapper">
+            <div id="rating-average" class="rating-display-box">
+            </div>
+        </div>
+
+
+        <div class="search-container">
+            <div class="filter-controls">
+
+                <div class="filter-layout-container"> <button id="clear-filter"
+                        class="btn-reset vertical-reset">リセット</button>
+
+
+                    <div class="filter-rows-group">
+
+                        <div class="filter-row">
+                            <input type="text" id="search-input" placeholder="曲名で検索...">
+
+                            <div class="filter-group">
+                                <label class="filter-label">単レ</label>
+                                <input type="number" id="min-rating" class="filter-select" step="0.01" placeholder="下限"
+                                    style="width: 50px;">
+                                <span class="range-separator">〜</span>
+                                <input type="number" id="max-rating" class="filter-select" step="0.01" placeholder="上限"
+                                    style="width: 50px;">
+                            </div>
+                        </div>
+
+                        <div class="filter-row">
+                            <div class="filter-group">
+
+                                <label for="lamp-filter" class="filter-label">ランプ</label>
+                                <select id="lamp-filter" class="filter-select">
+                                    <option value="all">すべて</option>
+                                    <option value="ajc">AJC</option>
+                                    <option value="aj">AJ</option>
+                                    <option value="None">未AJ</option>
+                                </select>
+
+                                <label for="rank-filter" class="filter-label">Rank</label>
+                                <select id="rank-filter" class="filter-select">
+                                    <option value="all">すべて</option>
+                                    <option value="sssplus">SSS+</option>
+                                    <option value="sss">SSS</option>
+                                    <option value="ssplus">SS+</option>
+                                    <option value="ss">SS</option>
+                                    <option value="splus">S+</option>
+                                    <option value="s">S</option>
+                                </select>
+
+                                <label for="min-constant" class="filter-label">定数</label>
+                                <select id="min-constant" class="filter-select"></select>
+                                <span class="range-separator">〜</span>
+                                <select id="max-constant" class="filter-select"></select>
+                            </div>
+                        </div>
+
+                        <div class="filter-row">
+                            <div class="filter-group">
+                                <span class="filter-label">ソート:</span>
+                                <button id="sort-Rating" class="btn-sort active">Rating順</button>
+                                <button id="sort-score" class="btn-sort">スコア順</button>
+                            </div>
+                            <div class="filter-group" style="margin-left: 5px;">
+                                <span class="filter-label">対象:</span>
+                                <button id="filter-all" class="btn-filter active">全曲</button>
+                                <button id="filter-old" class="btn-filter">旧曲</button>
+                                <button id="filter-new" class="btn-filter">新曲</button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div id="loading">データを取得中...</div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;">#</th>
+                            <th style="width: 55%; text-align: left;">楽曲情報</th>
+                            <th style="width: 12.5%; text-align: center;">ランプ</th>
+                            <th style="width: 22.5%; text-align: center;">スコア</th>
+                            <th style="width: 20%; text-align: center;">単曲レート</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="score-body"></tbody>
+                </table>
+            </div>
+
+
+            <div id="ranking-modal" style="display: none;">
+                <div class="modal-content">
+                    <h3>
+                        <span id="ranking-title"></span>
+                        <small id="ranking-diff" style="color:#666; margin-left:10px;"></small>
+                    </h3>
+
+                    <canvas id="ranking-canvas" width="800" height="180"></canvas>
+
+                    <div style="margin-top: 15px; width: 100%;">
+                        <table style="width:100%">
+                            <thead>
+                                <tr>
+                                    <th>順位</th>
+                                    <th>プレイヤー</th>
+                                    <th>スコア</th>
+                                    <th>ランプ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ranking-body"></tbody>
+                        </table>
+                    </div>
+
+                    <button onclick="document.getElementById('ranking-modal').style.display='none'">閉じる</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

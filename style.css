@@ -1,47 +1,69 @@
+/* 全体の背景と余白 */
 body {
-  font-family: 'Segoe UI', sans-serif;
-  background: #0a0a1a;
-  color: #ffffff;
-  padding: 24px;
-  margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f0f4f8;
+    padding: 20px;
+    margin: 0;
 }
 
 h1 {
-  text-align: center;
-  font-size: 2rem;
-  letter-spacing: 0.1em;
-  color: #00cfff;
-  text-shadow: 0 0 12px #00cfff88;
-  margin-bottom: 24px;
+    text-align: center;
+    margin-top: 20px;
+    margin-bottom: 20px;
+    font-family: "Segoe UI", Roboto, sans-serif;
+    color: #333;
 }
 
+/* 親コンテナの配置 */
 #token-screen {
-  max-width: 480px;
-  margin: 80px auto;
-  text-align: center;
+    max-width: 480px;
+    margin: 80px auto;
+    text-align: center;
 }
 
-#token-screen p {
-  color: #aaa;
-  margin-bottom: 16px;
-  line-height: 1.6;
-}
-
-#token-screen a {
-  color: #00cfff;
+/* 入力欄とアイコンを包む枠（これがアイコンの基準になります） */
+.input-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 400px; /* 必要に応じて調整 */
+    margin: 0 auto 12px; /* 入力欄にあった余白をここへ移動 */
 }
 
 #token-input {
-  width: 100%;
-  background: #1a1a2e;
-  color: #fff;
-  border: 1px solid #00cfff55;
-  border-radius: 6px;
-  padding: 10px 14px;
-  font-size: 1rem;
-  outline: none;
-  box-sizing: border-box;
-  margin-bottom: 12px;
+    width: 100%;
+    background: #1a1a2e;
+    color: #fff;
+    border: 1px solid #00cfff55;
+    border-radius: 6px;
+    padding: 10px 40px 10px 14px; /* 右側に40pxの余白を空けてアイコンと重ならないようにする */
+    font-size: 1rem;
+    outline: none;
+    box-sizing: border-box;
+    margin-bottom: 0 !important; /* HTML側のstyle属性や古いCSSの干渉を防ぐ */
+    display: block;
+}
+
+/* アイコンボタンを完全中央・右端に配置 */
+#toggle-token {
+    position: absolute;
+    right: 10px; /* 右端から10px */
+    top: 50%;    /* 上から50% */
+    transform: translateY(-50%); /* 自分の高さの半分だけ上にずらして完全中央 */
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    color: #00cfff; /* アイコンの色をテーマカラーに合わせる */
+    padding: 0;
+    display: flex;
+    align-items: center;
+}
+
+/* その他の調整 */
+#loading-msg, #token-error {
+    margin-top: 10px;
+    display: none;
 }
 
 #token-input:focus {
@@ -63,261 +85,841 @@ button:hover {
   background: #00aadd;
 }
 
-#main-screen { display: none; }
-
-.filters {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
+/* 画面切り替え用の基本設定 */
+#main-screen {
+    display: none; /* 最初は隠しておく */
 }
 
-.filters label { color: #aaa; margin-right: 6px; }
-
-.filters select,
-.filters input {
-  background: #1a1a2e;
-  color: #fff;
-  border: 1px solid #00cfff55;
-  border-radius: 6px;
-  padding: 6px 10px;
-  outline: none;
+#loading {
+    display: none;
 }
 
-.filters select:focus,
-.filters input:focus { border-color: #00cfff; }
+/* 再同期ボタンとログアウトボタンを横並びにするための親要素調整（もしあれば） */
+.button-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    justify-content: center;
+    width: 100%;
+    margin: 20px auto;
+}
 
-table { border-collapse: collapse; width: 100%; }
+/* ログアウトボタンのデザイン */
+.logout-btn {
+    background-color: #333; /* 黒背景 */
+    color: #fff;            /* 白文字 */
+    border: 1px solid #555;
+    padding: 10px 15px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    transition: background 0.2s;
+}
 
+.logout-btn:hover {
+    background-color: #000; /* ホバーでさらに暗く */
+}
+
+/* 再同期ボタン：太めで存在感のあるカプセルデザイン */
+.refresh-btn.nav-item.active {
+    background: #ee700a;
+    color: #ffffff;
+    border-radius: 999px;
+    
+    /* ボタン自体の太さ（上下 12px, 左右 35px） */
+    padding: 12px 35px;
+    height: auto; /* 高さを固定せずパディングで制御 */
+    
+    /* 文字の太さと装飾 */
+    font-size: 16px;         /* 少し大きく */
+    font-weight: 800;        /* かなり太く */
+    letter-spacing: 1px;     /* 文字の間隔を少し開けて読みやすく */
+    
+    border: none;
+    box-shadow: 0 4px 15px rgba(238, 112, 10, 0.4);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ホバー（マウスを乗せた時） */
+.refresh-btn.nav-item.active:hover {
+    background: #ff851b;
+    transform: translateY(-3px); /* 浮き上がる量を少しアップ */
+    box-shadow: 0 8px 20px rgba(238, 112, 10, 0.5);
+}
+
+/* 同期中（disabled） */
+.refresh-btn:disabled {
+    background: #d0d0d0 !important;
+    color: #ffffff !important;
+    padding: 12px 35px;      /* 無効化時もサイズを維持 */
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+.rating-wrapper {
+    text-align: center;
+    width: 100%;
+}
+
+.rating-display-box {
+    padding: 12px 25px;
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 50px;
+    /* 洗練されたカプセル形状 */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    display: inline-flex;
+    /* 中身の長さに合わせつつ中央寄せ */
+    align-items: center;
+    justify-content: center;
+    border-bottom: 4px solid #ee700a;
+    /* 下部にアクセントカラー */
+}
+
+#rating-value {
+    /* 指定のフォント設定 */
+    font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-variant-numeric: tabular-nums;
+
+    font-size: 16px;
+    color: #333;
+    font-weight: 500;
+    /* 全体は中太 */
+}
+
+/* 数値部分をさらに強調するためのテクニック */
+.highlight-number {
+    font-size: 1.2em;
+    /* 数値だけ一回り大きく */
+    font-weight: 800;
+    /* 数値だけ極太に */
+    color: #ee700a;
+    /* アクセントカラーと同色に */
+    margin-left: 4px;
+}
+
+/* 検索・フィルター固定エリア */
+.search-container {
+    position: sticky;
+    top: 0;
+    background: #f0f4f8;
+    padding: 10px 15px 20px 15px;
+    /* 左右に少し余白を追加 */
+    z-index: 100;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    /* 少し影をつけて浮かせると見やすい */
+}
+
+#search-input {
+    flex: 1;
+    min-width: 180px;
+    max-width: 250px;
+    padding: 0 20px;
+    /* 左右の余白を多めにとるとカプセル感が出ます */
+    height: 42px;
+    /* フィルターグループの 42px と合わせる */
+    border: 1px solid #ddd;
+    border-radius: 30px;
+    box-sizing: border-box;
+    margin-bottom: 0;
+    /* flex-wrapで自然に落ちるので0でOK */
+    font-size: 16px;
+    background: #fff;
+}
+
+/* Rating入力欄の個別スタイル（style.cssに追加） */
+#min-rating, #max-rating {
+    border: none;
+    background: transparent;
+    font-size: 0.9rem;
+    text-align: center;
+    outline: none;
+    padding: 0 5px;
+}
+
+/* 数値入力のスピンボタン（上下矢印）を隠してスッキリさせる */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* 定数選択の 〜 とデザインを統一 */
+.range-separator {
+    color: #999;
+    font-size: 0.8rem;
+    margin: 0 2px;
+}
+
+/* フィルタ全体を包むコンテナ */
+.filter-controls {
+    display: flex;
+    flex-direction: column;
+    /* 段を縦に並べる */
+    gap: 12px;
+    align-items: center;
+    /* 中央寄せ */
+
+    /* --- 全体スクロールの設定 --- */
+    overflow-x: auto;
+    /* 全体で横スクロールを許可 */
+    flex-wrap: nowrap;
+    /* 絶対に折り返さない */
+    width: 100%;
+    -webkit-overflow-scrolling: touch;
+
+    /* スクロールバーを隠す（任意） */
+    scrollbar-width: none;
+
+    margin-bottom: 15px;
+}
+
+/* 各段（行）の設定 */
+.filter-row {
+    display: flex;
+    flex-wrap: nowrap;
+    /* 行の中でも折り返し禁止 */
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+    /* 中央寄せ */
+
+    /* --- スクロール機能を解除 --- */
+    overflow-x: visible;
+    /* 子要素がはみ出ても、自分ではスクロールさせない */
+    min-width: max-content;
+    /* 中身の横幅を確保し、圧縮されないようにする */
+}
+
+/* スマホで左端が切れないようにする対策 */
+@media (max-width: 600px) {
+    .filter-controls {
+        align-items: flex-start;
+        /* スマホでは左端から表示（スクロール開始位置のため） */
+    }
+
+    .filter-row {
+        justify-content: flex-start;
+        /* 行も左寄せに */
+        padding: 0 15px;
+        /* 左右に少し余白 */
+    }
+}
+
+/* 各パーツが潰れないように固定（必須） */
+.filter-group,
+#search-input,
+.btn-reset,
+.btn-sort {
+    flex-shrink: 0;
+}
+
+/* 定数グループ（カプセルデザイン） */
+.filter-group {
+    display: flex;
+    align-items: center;
+    background: #fff;
+    padding: 0 15px;
+    border-radius: 30px;
+    border: 1px solid #ddd;
+    height: 42px;
+    box-sizing: border-box;
+
+    /* スマホで横幅がいっぱいになったら自然に折り返せるようにする */
+    min-width: fit-content;
+}
+
+/* セレクトボックスの見た目（枠を消してグループに馴染ませる） */
+.filter-select {
+    border: none;
+    background: transparent;
+    font-size: 0.95rem;
+    padding: 0 5px;
+    cursor: pointer;
+    outline: none;
+    height: 100%;
+    /* 親の高さに合わせる */
+}
+
+/* ラベルの左側に少し余白を作る（ランクと定数の間を空ける） */
+.filter-group .filter-label {
+    font-weight: bold;
+    font-size: 0.85rem;
+    color: #666;
+    margin-right: 5px;
+}
+
+/* 最初のラベルだけは左余白をなくして左端に揃える */
+.filter-group .filter-label:not(:first-child) {
+    margin-left: 15px;
+    border-left: 1px solid #eee;
+    /* 縦棒を入れると区切りが明確になります */
+    padding-left: 15px;
+}
+
+/* ランクと定数の間の区切り線をスマホでは消す、または調整する */
+@media (max-width: 480px) {
+    .filter-group .filter-label:not(:first-child) {
+        margin-left: 10px;
+        padding-left: 10px;
+        border-left: 1px solid #eee;
+    }
+
+    /* 文字サイズを少し小さくして収まりを良くする */
+    .filter-label,
+    .filter-select {
+        font-size: 0.80rem;
+    }
+}
+
+
+/* 縦棒（区切り）の設定：前の要素がある場合のみ左側に線を引く */
+.filter-group .filter-label:not(:first-child) {
+    border-left: 1px solid #eee;
+    margin-left: 10px;
+    padding-left: 10px;
+}
+
+/* チェックボックスの中身を浮かせる */
+.checkbox-container {
+    position: absolute;
+    top: 100%;
+    /* 親要素(details)のすぐ下に配置 */
+    left: 0;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 12px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    /* これで「ソート」の奥に埋まらない */
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 140px;
+}
+
+
+/* フィルタ全体を横並びにするコンテナ */
+.filter-layout-container {
+    display: flex;
+    gap: 2px; /* ボタンと入力欄の間の隙間 */
+    align-items: stretch; /* 子要素（ボタン）の高さを揃える */
+}
+
+/* フィルタ行を縦に並べるグループ */
+.filter-rows-group {
+    flex: 1; /* 残りの幅をすべて使う */
+    display: flex;
+    flex-direction: column;
+    gap: 8px; /* 行ごとの隙間 */
+    margin-left: 0;
+}
+
+/* 縦長のリセットボタン */
+.btn-reset.vertical-reset {
+    /* デザインの統一 */
+    width: 35px; /* 横幅はスリムに */
+    height: auto; /* stretchによって3行分の高さになる */
+    padding: 10px 0;
+    border-radius: 30px; /* 縦長なので角丸を少し抑えるか、お好みで調整 */
+    
+    /* 縦書き設定 */
+    writing-mode: vertical-rl;
+    text-orientation: upright;
+    letter-spacing: 0.2em;
+    
+    /* 色設定 */
+    background: #ec5656;
+    border: 1px solid #c0392b;
+    color: #fff;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 14px;
+    transition: all 0.2s;
+    
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    margin-right: 0;
+}
+
+.btn-reset.vertical-reset:hover {
+    background: #c0392b;
+}
+
+/* スマホ表示への対応（必要に応じて） */
+@media screen and (max-width: 768px) {
+    .filter-layout-container {
+        flex-direction: row; /* 横並びを維持 */
+    }
+}
+
+/* ソートボタンおよびフィルタボタン共通のデザイン */
+.btn-sort,
+.btn-filter {
+    height: 42px;
+    padding: 0 15px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 30px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #555;
+    font-weight: bold;
+    transition: all 0.2s;
+    white-space: nowrap;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-sort:hover,
+.btn-filter:hover {
+    background: #f0f0f0;
+    border-color: #bbb;
+}
+
+/* 選択されている状態 */
+.btn-sort.active,
+.btn-filter.active {
+    background: #555;
+    color: #fff;
+    border-color: #555;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* --- テーブルの外枠（スマホで横スクロールできるようにする） --- */
+.table-container {
+    overflow-x: auto;
+    background: #f0f4f8;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+
+    /* 慣性スクロール（iOS用） */
+    -webkit-overflow-scrolling: touch;
+    /* スクロールバーを隠す（フィルター側と合わせる場合） */
+    scrollbar-width: none;
+}
+
+.table-container::-webkit-scrollbar {
+    display: none;
+    /* Chrome, Safari用 */
+}
+
+table {
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 1000px;
+    /* PCで見ても広がりすぎないように制限 */
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    /* 列の幅を固定 */
+    min-width: 450px;
+    /* 項目数に合わせて少し広めに設定（550〜600pxがおすすめ） */
+}
+
+/* ヘッダー（見出し）の設定 */
 th {
-  background: #00cfff22;
-  color: #00cfff;
-  padding: 10px 14px;
-  text-align: left;
-  letter-spacing: 0.05em;
+    position: sticky;
+    top: 0;
+    background: #f8f9fa;
+    padding: 12px;
+    font-size: 0.8em;
+    color: #666;
+    border-bottom: 2px solid #eee;
+    text-align: center;
+    z-index: 10;
 }
 
+/* セルの基本設定 */
 td {
-  padding: 8px 14px;
-  border-bottom: 1px solid #ffffff11;
+    padding: 10px 5px;
+    border-bottom: 1px solid #eee;
+    vertical-align: middle;
+    text-align: center;
+    /* 基本は中央、曲名だけ左などの調整がおすすめ */
 }
 
-tr:hover td { background: #ffffff0a; }
+/* 表全体の二重線を防ぐ */
+table {
+    border-collapse: collapse !important;
+}
 
-.diff-MAS { color: #cc66ff; font-weight: bold; }
-.diff-EXP { color: #ff6666; font-weight: bold; }
-.diff-ADV { color: #ffaa33; font-weight: bold; }
-.diff-BAS { color: #66cc66; font-weight: bold; }
-.diff-ULT { color: #ffffff; font-weight: bold; }
+/* 一旦すべてのセルの線を消す */
+#score-body td {
+    border: none !important;
+    padding: 10px 5px; /* 見やすさのための余白 */
+}
+
+/* 行の下側だけに「細くて薄いグレーの線」を入れる（これが一般的です） */
+#score-body tr {
+    border-bottom: 1px solid #eeeeee !important;
+    border-top: none !important;
+    border-left: none !important;
+    border-right: none !important;
+}
+
+/* ナンバリング列のスタイル */
+.num-cell {
+    font-size: 0.95em;
+    color: #888;
+    font-weight: bold;
+    text-align: center;
+    font-family: "Segoe UI", sans-serif;
+    width: 50px;
+}
+
+/* NEWバッジ：新曲であることを示すラベル */
+.new-song-label {
+    background: linear-gradient(135deg, #ff9800, #fcfc07);
+    font-size: 9px;
+    /* 他の文字より一回り小さく */
+    font-weight: 900;
+    /* かなり太くして目立たせる */
+    padding: 1px 5px;
+    /* 上下左右の余白を調整 */
+    border-radius: 3px;
+    /* 少しだけ角を丸く */
+    margin-right: 6px;
+    /* 曲名との間に隙間を作る */
+    display: inline-block;
+    vertical-align: middle;
+    /* 文字の高さ中央に合わせる */
+    letter-spacing: 0.5px;
+    /* 文字の間隔を少し広げて読みやすく */
+    box-shadow: 0 1px 3px rgba(255, 64, 129, 0.3);
+    /* ほんのり影をつけて浮かせる */
+    text-shadow: 1px 1px 0px rgba(0, 0, 0, 0.2);
+    transform: translateY(-1px);
+    /* 微調整：少しだけ上に浮かせてバランスを取る */
+}
+
+
+/* 曲名が入るセル（td）の設定 */
+td:nth-child(2) {
+    text-align: left;
+    overflow: hidden;
+    /* セルからはみ出さないようにガード */
+    white-space: nowrap;
+}
+
+/* 曲名テキスト自体の設定 */
+.title-cell {
+    display: flex;
+    align-items: center;
+    /* NEWバッジとタイトルを縦中央で揃える */
+    flex-wrap: wrap;
+    /* タイトルが長い場合にバッジが潰れないように */
+    gap: 2px;
+    font-weight: bold;
+    font-size: 0.95em;
+    color: #333;
+    width: 100%;
+    /* 親の幅（width: 35%など）に従う */
+    overflow-x: auto;
+    /* 横スクロールを許可 */
+    white-space: nowrap;
+    /* 改行させない */
+
+    /* スクロールバーを隠す設定（iOS/Android両対応） */
+    -webkit-overflow-scrolling: touch;
+    /* iOSでのスクロールを滑らかにする */
+    scrollbar-width: none;
+    /* Firefox用 */
+    -ms-overflow-style: none;
+    /* IE/Edge用 */
+}
+
+/* Chrome, Safari用（スクロールバーを非表示に） */
+.title-cell::-webkit-scrollbar {
+    display: none;
+}
+
+/* --- スマホ専用の調整 (@media) --- */
+@media screen and (max-width: 768px) {
+    table {
+        min-width: 0 !important; /* PC用の設定を強制解除 */
+        width: 100% !important;
+    }
+
+    /* 1番目：#（ナンバリング） */
+    th:nth-child(1), td:nth-child(1) { width: 25px !important; }
+
+    /* 2番目：楽曲情報（以前の1番目） */
+    th:nth-child(2), td:nth-child(2) { width: 32.5% !important; }
+
+    /* 3番目：ランプ（以前の2番目） */
+    th:nth-child(3), td:nth-child(3) { width: 15% !important; }
+
+    /* 4番目：スコア（以前の3番目） */
+    th:nth-child(4), td:nth-child(4) { width: 25% !important; }
+
+    /* 5番目：Rating（以前の4番目） */
+    th:nth-child(5), td:nth-child(5) { width: 22.5% !important; }
+
+    /* 2. 曲名セルのスクロールと最大幅を制限 */
+    .title-cell {
+        max-width: 120px;       /* スマホで表示可能な限界幅 */
+        overflow-x: auto !important;
+        white-space: nowrap !important;
+        display: flex;
+    }
+
+    /* 3. 余白を詰める */
+    th, td {
+        padding: 8px 4px !important;
+        font-size: 0.85em; /* 全体的に少し小さく */
+    }
+} /* ← ここでメディアクエリを確実に閉じる */
+
+
+
+/* 難易度別の左端ライン（trに対して色を塗る） */
+tr.mas td:first-child {
+    border-left: 6px solid #92278f;
+}
+
+tr.exp td:first-child {
+    border-left: 6px solid #f02d7d;
+}
+
+tr.ult td:first-child {
+    border-left: 6px solid #1d0707;
+}
+
+.diff-level-cell {
+    font-size: 0.75em;
+    color: #555;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
 
 .aj-badge {
-  background: linear-gradient(45deg, #ffeb3b, #ff9800);
-  color: #fff;
-  font-size: 10px;
-  font-weight: bold;
-  padding: 2px 5px;
-  border-radius: 4px;
-  margin-left: 8px;
+    background: linear-gradient(45deg, #ffeb3b, #ff9800);
+    color: #fff;
+    font-size: 10px;
+    font-weight: bold;
+    padding: 2px 5px;
+    border-radius: 4px;
+    margin-left: 8px;
 }
 
 .fc-badge {
-  background: linear-gradient(45deg, #4caf50, #8bc34a); /* 緑系のグラデーション */
-  color: #fff;
-  font-size: 10px;
-  font-weight: bold;
-  padding: 2px 5px;
-  border-radius: 4px;
-  margin-left: 8px;
+    background: linear-gradient(45deg, #4caf50, #8bc34a);
+    /* 緑系のグラデーション */
+    color: #fff;
+    font-size: 10px;
+    font-weight: bold;
+    padding: 2px 5px;
+    border-radius: 4px;
+    margin-left: 8px;
 }
 
-/* AJC（理論値）用のスタイル：虹色のアニメーション付き */
 .ajc-badge {
-  background: linear-gradient(45deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #8b00ff);
-  background-size: 200% 200%;
-  animation: rainbow-flow 3s ease infinite; /* 虹色が動くアニメーション */
-  color: #fff;
-  font-size: 10px;
-  font-weight: bold;
-  padding: 2px 5px;
-  border-radius: 4px;
-  margin-left: 8px;
-  box-shadow: 0 0 5px rgba(255, 255, 255, 0.8); /* ほのかに光らせる */
-  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+    background: linear-gradient(45deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #8b00ff);
+    background-size: 200% 200%;
+    animation: rainbow-flow 3s ease infinite;
+    /* 虹色が動くアニメーション */
+    color: #fff;
+    font-size: 10px;
+    font-weight: bold;
+    padding: 2px 5px;
+    border-radius: 4px;
+    margin-left: 8px;
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.8);
+    /* ほのかに光らせる */
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 /* 虹色が流れるアニメーションの定義 */
 @keyframes rainbow-flow {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+    0% {
+        background-position: 0% 50%;
+    }
+
+    50% {
+        background-position: 100% 50%;
+    }
+
+    100% {
+        background-position: 0% 50%;
+    }
 }
 
-/* テーブル全体の枠線を完全に消す */
-table {
-  width: 100%;
-  border-collapse: collapse;
-  border: none;      /* 外枠を消す */
-  outline: none;     /* 念のためアウトラインも消す */
-}
-
-/* 中のセルもすべて線を消す */
-th, td {
-  border: none !important; /* 「!important」をつけると他の設定を強制上書きできます */
-  padding: 12px 10px;
-}
-
-/* もし横線も一切不要なら、trの設定も消します */
-tr {
-  border: none !important;
-}
-
-/* フィルター全体のコンテナ */
-.filters {
-  display: flex;
-  flex-wrap: wrap;       /* 画面幅に合わせて折り返す */
-  gap: 15px;             /* 項目同士の隙間 */
-  background: #f9f9f9;
-  padding: 20px;
-  border-radius: 10px;
-  align-items: center;   /* 上下の中央揃え */
-  margin-bottom: 20px;
-}
-
-/* 各入力グループ（ラベル＋入力欄） */
-.filter-group {
-  display: flex;
-  flex-direction: column; /* ラベルを上に、入力欄を下に配置 */
-  gap: 5px;
-}
-
-.filter-group label {
-  font-size: 12px;
-  font-weight: bold;
-  color: #666;
-}
-
-/* 入力欄の見た目も少しモダンに */
-input, select {
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 5px;
-  font-size: 14px;
-}
-
-/* 数値入力（Ratingやスコア）の幅を調整 */
-input[type="number"] {
-  width: 80px;
-}
-
-/* モバイル向けの調整 */
-@media (max-width: 600px) {
-  .filters {
-    padding: 15px;
-    gap: 10px;
-  }
-
-  .filter-group {
-    /* スマホでは1項目を横幅いっぱい、または2列にする */
-    flex: 1 1 140px; 
-  }
-
-  /* 入力欄とセレクトボックスを大きくする */
-  input, select, button {
-    height: 44px; /* 指で押しやすい高さ */
-    font-size: 16px !important; /* 入力時にズームされるのを防ぐ */
-    width: 100% !important;     /* 横幅いっぱいに広げる */
-    box-sizing: border-box;
-  }
-
-  /* 範囲入力（〜）の横並びを維持する */
-  .filter-group div {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-
-  /* 「表示に戻す」ボタンも押しやすく */
-  #restore-buttons button {
-    padding: 10px 15px;
-    margin-bottom: 8px;
-    background-color: #eee;
-    border: none;
-    border-radius: 20px;
-  }
-}
-
-.table-container {
-  width: 100%;
-  overflow-x: auto; /* 横にはみ出したらスクロールさせる */
-  -webkit-overflow-scrolling: touch; /* 指でのスクロールを滑らかにする */
-}
-
-table {
-  min-width: 500px; /* 表が潰れすぎないように最低幅を確保 */
-}
-
-/* モバイル対応の全設定 */
-@media (max-width: 600px) {
-  /* フィルター全体をスッキリさせる */
-  .filters {
-    padding: 12px;
-    gap: 8px;
-    background-color: #fff;
-    border: 1px solid #ddd;
-    position: sticky; /* スクロールしても上に固定（お好みで） */
-    top: 0;
-    z-index: 100;
-  }
-
-  /* ラベルを小さく、見やすく */
-  .filter-group label {
-    font-size: 11px;
-    margin-bottom: 2px;
-    color: #888;
-  }
-
-  /* スマホでは2列ずつ並べる（検索以外） */
-  .filter-group {
-    flex: 1 1 calc(50% - 10px); 
-    min-width: 120px;
-  }
-
-  /* 入力欄を巨大化させてタップしやすく */
-  input, select {
-    height: 48px; /* 現場での押しやすさ最優先 */
-    font-size: 16px !important; /* iPhoneのズーム防止 */
-    border: 2px solid #eee; /* 枠線を少し太くして存在感を出す */
-    border-radius: 8px;
-    background-color: #fcfcfc;
-  }
-
-  /* 範囲入力の「〜」周りを整える */
-  .range-inputs {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-  
-  .range-inputs input {
-    flex: 1;
-    text-align: center;
-    padding: 0;
-  }
-
-  /* 表のフォントサイズをスマホ用に調整 */
-  td {
-    font-size: 13px;
-    padding: 10px 5px;
-  }
-
-  /* 非表示解除ボタンを「タグ」っぽくして押しやすく */
-  #restore-buttons button {
-    padding: 8px 12px;
-    background: #4a90e2;
-    color: white;
-    border: none;
-    border-radius: 50px;
+.ajc-badge,
+.aj-badge,
+.fc-badge {
     font-size: 12px;
-    margin: 4px;
-  }
+    /* 10pxから12pxへアップ */
+    padding: 3px 8px;
+    /* 余白を広げてボリュームを出す */
+    border-radius: 6px;
+    /* サイズに合わせて角丸も少し大きく */
+    margin-left: 8px;
+    display: inline-block;
+    vertical-align: middle;
+    /* FBバッジと高さを合わせる */
+    letter-spacing: 0.5px;
+    /* 文字の間隔を少し空けて視認性を向上 */
+}
+
+
+/* テクニカルスコアの列 */
+.t-score-cell {
+    text-align: center;
+    font-weight: bold;
+    color: #333;
+    font-size: 1.05em;
+}
+
+/* Rating列のスタイル */
+.t-rating-cell {
+    text-align: center;
+    font-weight: bold;
+    color: #333;
+    font-size: 1.05em;
+}
+
+.t-rating,
+.t-score {
+    font-variant-numeric: tabular-nums;
+    font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* --- ベスト枠上位30曲（旧曲）のハイライト --- */
+.is-best-target {
+    background-color: rgba(255, 230, 235, 0.6);
+    /* 従来のピンク系 */
+    border-left: 4px solid #d63384;
+    /* 左端にアクセントライン */
+}
+
+/* ベスト枠対象のスコアとRating文字強調 */
+.is-best-target .t-rating,
+.is-best-target .t-score {
+    color: #d63384;
+    font-weight: bold;
+}
+
+/* --- 新曲枠上位20曲のハイライト --- */
+.is-new-target {
+    background-color: rgba(255, 248, 225, 0.7);
+    /* 薄い黄色・オレンジ系の背景 */
+    border-left: 4px solid #ff9800;
+    /* 左端にオレンジのアクセントライン */
+}
+
+/* 新曲枠対象のスコアとRating文字強調 */
+.is-new-target .t-rating,
+.is-new-target .t-score {
+    color: #e67e22;
+    /* 濃いめのオレンジ */
+    font-weight: bold;
+}
+
+/* --- 共通：ハイライト時の視認性向上 --- */
+.is-best-target td,
+.is-new-target td {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+/* フィルター周り */
+.filter-container select {
+    padding: 8px;
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background-color: white;
+}
+
+
+/* ランキング周り */
+#ranking-body td {
+    border: none !important;
+}
+
+/* モーダル背景（画面全体） */
+#ranking-modal {
+    display: none; /* JSで flex に切り替える */
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 2000;
+    
+    /* 上下左右中央寄せ */
+    justify-content: center;
+    align-items: center;
+}
+
+/* 白い箱 */
+.modal-content {
+    background: white;
+    padding: 25px;
+    border-radius: 15px;
+    width: 95%;
+    max-width: 850px;
+    max-height: 90vh; /* 画面からはみ出さない */
+    overflow-y: auto; /* 表が長い場合にスクロール可能にする */
+    
+    /* 中身の要素を縦に並べる */
+    display: flex;
+    flex-direction: column;
+    gap: 15px; /* 要素間の隙間 */
+}
+
+/* 数直線キャンバスをレスポンシブにする */
+#ranking-canvas {
+    max-width: 100%;
+    height: auto;
+    background: #fdfdfd;
+    border: 1px solid #eee;
+    border-radius: 8px;
+}
+
+/* テーブルのスタイル */
+#ranking-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.close-ranking {
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.ranking-table-container table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+.ranking-table-container th, td {
+    padding: 10px;
+    text-align: center;
+    border-bottom: 1px solid #333;
+}
+
+/* 数直線で選択されたプレイヤーの行（緑） */
+.selected-rank {
+    background-color: rgba(46, 204, 113, 0.2) !important; /* 薄い緑 */
+    outline: 2px solid #2ecc71; /* 緑の枠線 */
+    transition: background-color 0.2s ease;
+}
+
+/* 自分の行（赤）は既存のままでOKですが、優先度を調整する場合 */
+.my-rank {
+    background-color: rgba(255, 71, 87, 0.1) !important;
 }
