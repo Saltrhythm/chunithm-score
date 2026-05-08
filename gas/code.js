@@ -1,31 +1,36 @@
 function doPost(e) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  // デバッグ用ログシート（確実に取得・作成）
   let logSheet = ss.getSheetByName("DebugLog") || ss.insertSheet("DebugLog");
 
   try {
-    // 1. リクエストデータの存在チェック
     if (!e || !e.postData || !e.postData.contents) {
       throw new Error("リクエストデータが空です");
     }
 
     const params = JSON.parse(e.postData.contents);
-    const mode = params.mode || "checker";
-    const token = params.token || "";
-    let playerName = params.playerName || "";
+    const mode = String(params.mode || "checker");
+    
+    // ログ記録
+    logSheet.appendRow([new Date(), "POST受信", "Mode: " + mode]);
 
-    // ログ記録（null回避のために String 化）
-    logSheet.appendRow([new Date(), "POST受信", "Mode: " + String(mode)]);
+    if (mode === "get_ranking") {
+      // タイトルと難易度が空の場合のガード
+      const t = String(params.title || "");
+      const d = String(params.diff || "");
+      
+      const results = getRankingFromSheets(ss, t, d, logSheet);
+      return createJsonResponse({ status: "success", data: results });
+    }
 
-    // 2. トークンのハッシュ化
+    // --- 同期モード (checker) ---
+    const token = String(params.token || "");
+    let playerName = String(params.playerName || "");
+
     const hashedToken = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, token)
       .map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
 
-    // --- 3. ユーザー情報の管理 ---
     let userMapSheet = ss.getSheetByName("UserMap") || ss.insertSheet("UserMap");
-    if (userMapSheet.getLastRow() === 0) {
-      userMapSheet.appendRow(["token_hash", "name"]);
-    }
+    if (userMapSheet.getLastRow() === 0) userMapSheet.appendRow(["token_hash", "name"]);
 
     const userMapData = userMapSheet.getDataRange().getValues();
     let userRow = userMapData.find(row => row[0] === hashedToken);
@@ -35,46 +40,24 @@ function doPost(e) {
     }
 
     if (!userRow && playerName) {
-      userMapSheet.appendRow([hashedToken, String(playerName)]);
+      userMapSheet.appendRow([hashedToken, playerName]);
     } else if (userRow) {
       playerName = userRow[1];
     }
 
-    // --- モード別の処理 ---
+    const records = fetchAndProcessFromApi(token, ss);
+    updateUserSheet(ss, playerName, records);
 
-    // A. Checker機能 (同期)
-    if (mode === "checker") {
-      const records = fetchAndProcessFromApi(token, ss);
-      updateUserSheet(ss, playerName, records);
-      return createJsonResponse({
-        status: "success",
-        playerName: String(playerName),
-        records: records
-      });
-    }
-
-    // B. Ranking機能
-    if (mode === "get_ranking") {
-      const targetTitle = params.title || "";
-      const targetDiff = params.diff || "";
-
-      // 重要：logSheet を第4引数として渡すように修正
-      const rankingData = getRankingFromSheets(ss, targetTitle, targetDiff, logSheet);
-
-      return createJsonResponse({
-        status: "success",
-        data: rankingData
-      });
-    }
+    return createJsonResponse({ status: "success", playerName: playerName, records: records });
 
   } catch (error) {
-    logSheet.appendRow([new Date(), "エラー発生", String(error.toString())]);
+    logSheet.appendRow([new Date(), "ERROR", String(error.message || error)]);
     return createJsonResponse({ status: "error", message: error.toString() });
   }
 }
 
 /**
- * ランキング取得ロジック
+ * ランキング取得ロジック（徹底したnullガード版）
  */
 function getRankingFromSheets(ss, title, diff, logSheet) {
   const userMapSheet = ss.getSheetByName("UserMap");
@@ -87,18 +70,17 @@ function getRankingFromSheets(ss, title, diff, logSheet) {
   const targetTitle = normalize(title);
   const targetDiff = normalize(diff);
 
-  // logSheetがある場合のみログを出力
   if (logSheet) {
     logSheet.appendRow([new Date(), "ランキング検索詳細", "Target: " + targetTitle + " / " + targetDiff]);
   }
 
   for (let i = 1; i < userMap.length; i++) {
-    const name = userMap[i][1];
+    const name = String(userMap[i][1] || "");
     if (!name) continue;
 
     const sheet = ss.getSheetByName(name);
     if (!sheet) {
-      results.push({ playerName: String(name), score: "-", lamp: "-" });
+      results.push({ playerName: name, score: "-", lamp: "-" });
       continue;
     }
 
@@ -113,14 +95,13 @@ function getRankingFromSheets(ss, title, diff, logSheet) {
     }
     
     if (match) {
-      results.push({ 
-        playerName: String(name), 
-        // インデックス3:score, 5:lamp (updateUserSheetの書き込み順に準拠)
-        score: match[3] !== undefined && match[3] !== null ? match[3] : "-", 
-        lamp: match[5] !== undefined && match[5] !== null ? String(match[5]) : "-"
-      });
+      // インデックス3:score, 5:lamp
+      const scoreVal = (match[3] !== undefined && match[3] !== null) ? match[3] : "-";
+      const lampVal = (match[5] !== undefined && match[5] !== null) ? String(match[5]) : "-";
+      
+      results.push({ playerName: name, score: scoreVal, lamp: lampVal });
     } else {
-      results.push({ playerName: String(name), score: "-", lamp: "-" });
+      results.push({ playerName: name, score: "-", lamp: "-" });
     }
   }
 
