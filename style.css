@@ -526,8 +526,10 @@ input[type="number"]::-webkit-inner-spin-button {
 
 /* 統計ボタン専用のスタイル */
 .btn-stats {
-    background: #4a4ae0;        /* 他の入力欄と同じ深い紺色 */
-    color: #ffffff;             /* チュウニズムらしい明るい青文字 */
+    background: #4a4ae0;
+    /* 他の入力欄と同じ深い紺色 */
+    color: #ffffff;
+    /* チュウニズムらしい明るい青文字 */
     padding: 12px 30px;
     border-radius: 8px;
     font-size: 16px;
@@ -538,19 +540,23 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .btn-stats:hover {
-    background: #ffffff;        /* ホバー時は青色に反転 */
+    background: #ffffff;
+    /* ホバー時は青色に反転 */
     color: #4a4ae0;
     box-shadow: 0 0 15px rgba(0, 207, 255, 0.5);
 }
 
 .btn-stats:active {
-    transform: scale(0.98);     /* クリック時に少しへこむ演出 */
+    transform: scale(0.98);
+    /* クリック時に少しへこむ演出 */
 }
 
 /* 課題曲ボタン専用のスタイル */
 .btn-random {
-    background: #29aa01;        /* 他の入力欄と同じ深い紺色 */
-    color: #ffffff;             /* チュウニズムらしい明るい青文字 */
+    background: #29aa01;
+    /* 他の入力欄と同じ深い紺色 */
+    color: #ffffff;
+    /* チュウニズムらしい明るい青文字 */
     padding: 12px 30px;
     border-radius: 8px;
     font-size: 16px;
@@ -561,13 +567,15 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .btn-random:hover {
-    background: #ffffff;        /* ホバー時は青色に反転 */
+    background: #ffffff;
+    /* ホバー時は青色に反転 */
     color: #29aa01;
     box-shadow: 0 0 15px rgba(7, 201, 49, 0.5);
 }
 
 .btn-random:active {
-    transform: scale(0.98);     /* クリック時に少しへこむ演出 */
+    transform: scale(0.98);
+    /* クリック時に少しへこむ演出 */
 }
 
 /* 統計中であることを示すメッセージ（任意） */
@@ -576,6 +584,25 @@ input[type="number"]::-webkit-inner-spin-button {
     color: #666;
     margin-top: 8px;
 }
+
+/* ボタンエリアのスクロールバーを隠す（ブラウザ標準の動作を維持しつつ見た目をスッキリさせる） */
+.stats-exec-area::-webkit-scrollbar {
+    display: none;
+}
+
+.stats-exec-area {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-start;
+    overflow-x: auto;
+    white-space: nowrap;
+    padding: 10px 5px;
+    -webkit-overflow-scrolling: touch;
+}
+
+
 
 /* --- テーブルの外枠（スマホで横スクロールできるようにする） --- */
 .table-container {
@@ -732,18 +759,49 @@ td:nth-child(2) {
         min-width: 0 !important;
         /* PC用の設定を強制解除 */
         width: 100% !important;
+        table-layout: fixed;
+        /* 列幅の強制固定モード */
+        border-collapse: collapse;
     }
 
     /* 1番目：#（ナンバリング） */
     th:nth-child(1),
     td:nth-child(1) {
-        width: 20px !important;
+        /* ★ 中央揃えを維持（1桁でも3桁でも中心を固定） */
+        text-align: center !important;
+
+        /* ★ 1列目の「箱」のサイズを完全に固定 */
+        width: 30px !important;
+        min-width: 30px !important;
+        max-width: 30px !important;
+
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        box-sizing: border-box;
+        white-space: nowrap;
+
+    }
+
+    /* 2列目（曲名）の開始位置を微調整 */
+    .title-cell {
+        text-align: left !important;
+        padding-left: 0 !important;
+        /* 1列目のpadding-rightで距離を稼ぐので、ここは0でOK */
     }
 
     /* 2番目：楽曲情報（以前の1番目） */
     th:nth-child(2),
     td:nth-child(2) {
-        width: 32.5% !important;
+        width: 30% !important;
+        text-align: left !important;
+
+        /* ★ 1列目との間に「必ず作りたい余白」を設定 */
+        padding-left: 15px !important;
+
+        /* 長い曲名がはみ出さないように */
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     /* 3番目：ランプ（以前の2番目） */
@@ -790,15 +848,24 @@ td:nth-child(2) {
 
 
 /* style.css の難易度帯の部分を書き換え */
-#score-body tr.mas td:first-child { border-left: 6px solid #92278f !important; }
-#score-body tr.exp td:first-child { border-left: 6px solid #f02d7d !important; }
-#score-body tr.ult td:first-child { border-left: 6px solid #1d0707 !important; }
+#score-body tr.mas td:first-child {
+    border-left: 4px solid #92278f !important;
+}
+
+#score-body tr.exp td:first-child {
+    border-left: 4px solid #f02d7d !important;
+}
+
+#score-body tr.ult td:first-child {
+    border-left: 4px solid #1d0707 !important;
+}
 
 /* 隠れないようにパディングを少し調整 */
 #score-body td:first-child {
     padding-left: 12px !important;
 
 }
+
 .diff-level-cell {
     font-size: 0.75em;
     color: #555;
@@ -1038,31 +1105,38 @@ td {
 
 /* 「全員再表示」ボタンのスタイル */
 .reset-btn {
-    background: #e74c3c; /* 赤背景 */
-    color: #ffffff;      /* 白文字 */
+    background: #e74c3c;
+    /* 赤背景 */
+    color: #ffffff;
+    /* 白文字 */
     border: none;
-    padding: 3px 8px;    /* 小さく */
-    font-size: 11px;     /* 小さく */
+    padding: 3px 8px;
+    /* 小さく */
+    font-size: 11px;
+    /* 小さく */
     border-radius: 3px;
     cursor: pointer;
     transition: background 0.2s;
 }
 
 .reset-btn:hover {
-    background: #c0392b; /* ホバーで少し暗い赤 */
+    background: #c0392b;
+    /* ホバーで少し暗い赤 */
 }
 
 
 
 /* Discordに送信ボタンの基本スタイル */
 #discord-share-btn {
-    background-color: #5865F2; /* Discordブルー */
+    background-color: #5865F2;
+    /* Discordブルー */
     color: white;
     border: none;
     padding: 8px 16px;
     border-radius: 4px;
     cursor: pointer;
-    transition: all 0.3s; /* アニメーション用 */
+    transition: all 0.3s;
+    /* アニメーション用 */
 }
 
 /* 送信中の反転スタイル */
@@ -1074,7 +1148,8 @@ td {
 
 /* 閉じるボタンのスタイル（暗めの灰色背景に白字） */
 .modal-close-btn {
-    background-color: #444; /* 暗めの灰色 */
+    background-color: #444;
+    /* 暗めの灰色 */
     color: white;
     border: none;
     padding: 8px 16px;
