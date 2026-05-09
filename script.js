@@ -1,4 +1,4 @@
-const GAS_URL = "https://script.google.com/macros/s/AKfycbyA4b_ZfPpm7lk1hSLpKmsEcSOKJ4_6YCixZWEj652oSI7OGjiqH95Vi5FPtqzew8qc/exec"
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwoY_GDDxWL_QH-9O9a_Oy6z8QK7Cq009a0ORgApc9f9BQGXEauUNcoiXqeQ3WRBvVx/exec"
 
 let myCurrentRecords = [];
 let currentRanking = [];
@@ -468,11 +468,11 @@ function displayScores(data) {
     const fragment = document.createDocumentFragment();
 
     // ★ 表示件数を上位100件に制限
-    const limitedData = data.slice(0, 100);
+    const limitedData = data.slice(0, 200);
 
     limitedData.forEach((item, index) => {
         // GAS側から送られてくる diff (MAS, ULT等) を取得
-        const diff = String(item.diff || "").toUpperCase();
+        const diff = String(item.diff || "").toLowerCase();
 
         // 数値としての定数とスコア、Ratingを取得
         const currentConst = parseFloat(item.const) || 0;
@@ -501,7 +501,7 @@ function displayScores(data) {
 
         // --- 3. テーブル行の作成 ---
         const tr = document.createElement('tr');
-        tr.className = diff.toLowerCase();
+        tr.className = diff
         tr.style.cursor = "pointer"; // クリック可能であることを示す
 
         // クリックイベント：ランキング機能を呼び出す
@@ -540,9 +540,184 @@ function displayScores(data) {
 }
 
 /**
+ * 選曲中の演出付きランダム選出
+ */
+function pickRandomSong() {
+    // 1. 現在適用されているフィルタ条件で候補（candidates）を絞り込む
+    const searchInput = document.getElementById('search-input');
+    const minConstSelect = document.getElementById('min-constant');
+    const maxConstSelect = document.getElementById('max-constant');
+    const minRateInput = document.getElementById('min-rating');
+    const maxRateInput = document.getElementById('max-rating');
+    const rankSelect = document.getElementById('rank-filter');
+    const lampSelect = document.getElementById('lamp-filter');
+
+    const searchText = searchInput ? searchInput.value.toLowerCase().trim() : "";
+    const minConst = minConstSelect ? parseFloat(minConstSelect.value) : 0;
+    const maxConst = maxConstSelect ? parseFloat(maxConstSelect.value) : 20;
+    const minRate = (minRateInput && minRateInput.value !== "") ? parseFloat(minRateInput.value) : 0;
+    const maxRate = (maxRateInput && maxRateInput.value !== "") ? parseFloat(maxRateInput.value) : 99.99;
+    const rankValue = rankSelect ? rankSelect.value : 'all';
+    const lampValue = lampSelect ? lampSelect.value : 'all';
+
+    // ここで candidates を定義します
+    const candidates = myCurrentRecords.filter(item => {
+        const title = String(item.title || "").toLowerCase();
+        if (!title.includes(searchText)) return false;
+
+        const currentRate = parseFloat(item.rating) || 0;
+        if (currentRate < minRate || currentRate > maxRate) return false;
+
+        const constant = parseFloat(item.const) || 0;
+        if (constant < minConst || constant > maxConst) return false;
+
+        if (rankValue !== 'all') {
+            const tScore = parseFloat(item.score) || 0;
+            let currentRank = "";
+            if (tScore >= 1009000) currentRank = "sssplus";
+            else if (tScore >= 1007500) currentRank = "sss";
+            else if (tScore >= 1005000) currentRank = "ssplus";
+            else if (tScore >= 1000000) currentRank = "ss";
+            else if (tScore >= 990000) currentRank = "splus";
+            else if (tScore >= 970000) currentRank = "s";
+            if (currentRank !== rankValue) return false;
+        }
+
+        const itemLamp = item.lamp || "None";
+        if (lampValue !== 'all') {
+            const hasAJ = itemLamp.includes('AJ') || itemLamp.includes('JUSTICE');
+            if (lampValue === 'ajc' && !(itemLamp.includes('AJC') || itemLamp.includes('JUSTICE CRITICAL'))) return false;
+            if (lampValue === 'aj' && !hasAJ) return false;
+            if (lampValue === 'None' && hasAJ) return false;
+        }
+
+        if (currentTypeFilter === 'old' && item.isNew) return false;
+        if (currentTypeFilter === 'new' && !item.isNew) return false;
+
+        return true;
+    });
+
+    if (candidates.length === 0) {
+        alert("条件に合う楽曲がリストにありません。");
+        return;
+    }
+
+    // 2. 演出用のオーバーレイ画面を作成
+    const overlay = document.createElement('div');
+    overlay.style = `
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.85); z-index: 10000;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        color: white; font-family: sans-serif;
+    `;
+    overlay.innerHTML = `
+        <div style="font-size: 1.2rem; color: #27ae60; margin-bottom: 20px; font-weight: bold;">SELECTING...</div>
+        <div id="roulette-title" style="font-size: 1.8rem; font-weight: bold; text-align: center; min-height: 3em; padding: 0 20px;"></div>
+        <div id="roulette-diff" style="margin-top: 10px; padding: 5px 15px; border-radius: 20px; font-weight: bold;"></div>
+    `;
+    document.body.appendChild(overlay);
+
+    const titleEl = document.getElementById('roulette-title');
+    const diffEl = document.getElementById('roulette-diff');
+
+    // 3. ルーレット演出
+    let count = 0;
+    const maxTicks = 20; 
+    const interval = setInterval(() => {
+        const temp = candidates[Math.floor(Math.random() * candidates.length)];
+        titleEl.innerText = temp.title;
+        diffEl.innerText = temp.diff;
+        
+        const diffColors = { 'basic': '#22ac22', 'advanced': '#f39c12', 'expert': '#e74c3c', 'master': '#9b59b6', 'ultima': '#222' };
+        diffEl.style.backgroundColor = diffColors[temp.diff.toLowerCase()] || '#555';
+
+        count++;
+        if (count >= maxTicks) {
+            clearInterval(interval);
+            finishSelection();
+        }
+    }, 150);
+
+// --- script.js の pickRandomSong 関数内、finishSelection 関数を差し替え ---
+
+    // 4. 最終決定時の処理
+    function finishSelection() {
+        // 本当の決定曲を選ぶ
+        const picked = candidates[Math.floor(Math.random() * candidates.length)];
+        
+        // --- ★ ここから追加：ド派手エフェクト ---
+        
+        // ① 画面を一瞬真っ白にフラッシュさせるフラッシュ層を作成
+        const flash = document.createElement('div');
+        flash.style = `
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: white; z-index: 10001; opacity: 1;
+            transition: opacity 0.5s ease-out; /* 0.5秒かけて消えていく */
+        `;
+        document.body.appendChild(flash);
+        
+        // ② 決定した曲名の表示を豪華にする
+        titleEl.style.color = "#f1c40f"; // 金色
+        titleEl.style.textShadow = "0 0 15px #fff, 0 0 30px #f1c40f, 0 0 45px #f1c40f"; // 黄金の輝き（グロー効果）
+        titleEl.style.transform = "scale(1.2)"; // 少し大きく
+        titleEl.style.transition = "all 0.3s ease-out"; // 演出を滑らかに
+        titleEl.innerText = picked.title;
+        
+        diffEl.innerText = picked.diff;
+        // 難易度色はルーレット最後のを引き継ぐか、pickedので再設定（ここではpickedで再設定）
+        const diffColors = { 'basic': '#22ac22', 'advanced': '#f39c12', 'expert': '#e74c3c', 'master': '#9b59b6', 'ultima': '#222' };
+        diffEl.style.backgroundColor = diffColors[picked.diff.toLowerCase()] || '#555';
+        diffEl.style.boxShadow = `0 0 20px ${diffEl.style.backgroundColor}`; // 難易度バッジも光らせる
+
+        // ③ フラッシュ層をアニメーション後に削除
+        requestAnimationFrame(() => {
+            flash.style.opacity = "0"; // フェードアウト開始
+            setTimeout(() => {
+                if (document.body.contains(flash)) document.body.removeChild(flash);
+            }, 500); // transitionの時間と合わせる
+        });
+        
+        // --- ★ ここまで追加 ---
+
+        // 1.5秒待ってから（演出を見せてから）画面を消して、実際の行へ移動
+        setTimeout(() => {
+            if (document.body.contains(overlay)) {
+                document.body.removeChild(overlay);
+            }
+            
+            // --- 以降、スクロールとランキング表示のロジックはそのまま ---
+            const rows = document.querySelectorAll('#score-body tr');
+            let targetRow = null;
+            for (let tr of rows) {
+                const titleCell = tr.querySelector('.title-cell');
+                const rowTitle = titleCell ? titleCell.innerText.replace("NEW", "").trim() : "";
+                if (rowTitle === picked.title && tr.classList.contains(picked.diff.toLowerCase())) {
+                    targetRow = tr;
+                    break;
+                }
+            }
+
+            if (targetRow) {
+                targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                setTimeout(() => {
+                    targetRow.style.transition = "background 0.5s";
+                    const originalBg = targetRow.style.background;
+                    targetRow.style.background = "rgba(241, 196, 15, 0.5)"; // スクロール先も金色に光らせる
+                    loadRanking(picked.title, picked.diff);
+                    setTimeout(() => { targetRow.style.background = originalBg; }, 2000);
+                }, 500);
+            } else {
+                loadRanking(picked.title, picked.diff);
+            }
+        }, 1500); // 演出時間を少し長めに（1s -> 1.5s）
+    }
+}
+
+/**
  * 特定の曲のランキングを取得して表示
  */
 async function loadRanking(title, diff) {
+
     const modal = document.getElementById('ranking-modal');
     const rankingBody = document.getElementById('ranking-body');
     const rTitle = document.getElementById('ranking-title');
@@ -597,6 +772,14 @@ async function loadRanking(title, diff) {
             result.data.forEach((row, index) => {
                 const tr = document.createElement('tr');
                 tr.style.cursor = "pointer"; // クリック可能であることを示す
+                tr.dataset.playerName = row.playerName; // グラフ連動用に名前を保持
+
+                // ★ 行タップ：非表示にしてグラフを再描画
+                tr.onclick = function (e) {
+                    // セル内の他のクリックイベント（もしあれば）と競合しないよう念のため
+                    this.style.display = "none";
+                    drawRankingChart();
+                };
 
                 // 自分の名前を強調
                 const myName = localStorage.getItem('chunirec_player_name');
@@ -613,27 +796,9 @@ async function loadRanking(title, diff) {
                     <td>${row.lamp || "-"}</td>
                 `;
 
-                // --- 追加: 行をクリックした時の連動処理 ---
-                tr.onclick = () => {
-                    // 数値スコアを持つプレイヤーのみ選択可能にする
-                    if (typeof row.score === 'number') {
-                        // すでに選択されている人なら解除、そうでなければ選択
-                        if (selectedPlayer && selectedPlayer.name === row.playerName) {
-                            selectedPlayer = null;
-                        } else {
-                            // drawRankingChartで使う形式に合わせてデータを渡す
-                            selectedPlayer = { name: row.playerName, score: row.score };
-                        }
-
-                        // 表のハイライトを更新
-                        updateTableHighlight();
-                        // 数直線を再描画
-                        drawRankingChart();
-                    }
-                };
-
                 rankingBody.appendChild(tr);
             });
+
             // 初回描画
             drawRankingChart(result.data);
 
@@ -667,9 +832,15 @@ function drawRankingChart(data) {
     const ctx = canvas.getContext('2d');
     const myName = localStorage.getItem('chunirec_player_name');
 
+    // ★ 表で非表示（display: none）になっていないプレイヤーだけを抽出
+    const visibleNames = Array.from(document.querySelectorAll('#ranking-body tr'))
+        .filter(tr => tr.style.display !== 'none')
+        .map(tr => tr.dataset.playerName);
+
     // 有効なスコアを抽出しソート
     const validScores = lastRankingData
         .filter(d => typeof d.score === 'number' && d.score >= 0)
+        .filter(d => visibleNames.includes(d.playerName)) // ★ 表示中の人のみ描画
         .map(d => ({ name: d.playerName, score: d.score }))
         .sort((a, b) => a.score - b.score);
 
@@ -797,6 +968,7 @@ function updateTableHighlight() {
  * 画面上の各フィルタ（定数、レート、ランク、ランプ、種別）の値を取得してGASへ送信します
  */
 async function fetchStats() {
+
     const btn = document.getElementById('stats-btn');
     if (btn) {
         btn.innerText = "集計中...";
@@ -885,7 +1057,7 @@ async function fetchStats() {
 
             // 【修正】result.data.ranking を渡す
             displayStatsRanking(result.data.ranking, theoryCount);
-            
+
             if (modal) modal.style.display = 'flex';
         }
     } catch (err) {
@@ -928,6 +1100,14 @@ function displayStatsRanking(statsData, theoryCount) {
         }
 
         const tr = document.createElement('tr');
+        tr.style.cursor = "pointer"; // 指マークにして「押せる」ことを伝える
+        tr.title = "タップして非表示"; // ホバー時にヒントを出す
+
+        // ★ ここを追加：クリックしたらその行を隠す
+        tr.onclick = function () {
+            this.style.display = "none";
+        };
+
         tr.innerHTML = `
             <td style="text-align:center;">${index + 1}</td>
             <td>${row.playerName}</td>
@@ -937,6 +1117,17 @@ function displayStatsRanking(statsData, theoryCount) {
         tbody.appendChild(tr);
     });
 }
+
+function resetTableVisibility() {
+    const rows = document.querySelectorAll("#ranking-body tr");
+    rows.forEach(row => {
+        row.style.display = "";
+    });
+    // ★ グラフを再描画して点も全員分戻す
+    drawRankingChart();
+}
+
+
 
 /**
  * モーダルの内容を画像化してDiscordへ送信
@@ -957,7 +1148,7 @@ async function shareToDiscord() {
 
     const modalContent = document.querySelector('#ranking-modal .modal-content');
     const sendBtn = document.getElementById('discord-share-btn');
-    
+
     // 送信中スタイル適用
     sendBtn.innerText = "送信中...";
     sendBtn.disabled = true;

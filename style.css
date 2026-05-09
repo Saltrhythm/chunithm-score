@@ -474,7 +474,7 @@ input[type="number"]::-webkit-inner-spin-button {
     align-items: center;
     justify-content: center;
 
-    margin-right: 0;
+    margin-right: 5px;
 }
 
 .btn-reset.vertical-reset:hover {
@@ -544,6 +544,29 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .btn-stats:active {
+    transform: scale(0.98);     /* クリック時に少しへこむ演出 */
+}
+
+/* 課題曲ボタン専用のスタイル */
+.btn-random {
+    background: #29aa01;        /* 他の入力欄と同じ深い紺色 */
+    color: #ffffff;             /* チュウニズムらしい明るい青文字 */
+    padding: 12px 30px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 0 10px rgba(8, 109, 30, 0.39);
+}
+
+.btn-random:hover {
+    background: #ffffff;        /* ホバー時は青色に反転 */
+    color: #29aa01;
+    box-shadow: 0 0 15px rgba(7, 201, 49, 0.5);
+}
+
+.btn-random:active {
     transform: scale(0.98);     /* クリック時に少しへこむ演出 */
 }
 
@@ -714,7 +737,7 @@ td:nth-child(2) {
     /* 1番目：#（ナンバリング） */
     th:nth-child(1),
     td:nth-child(1) {
-        width: 25px !important;
+        width: 20px !important;
     }
 
     /* 2番目：楽曲情報（以前の1番目） */
@@ -759,25 +782,23 @@ td:nth-child(2) {
         padding: 8px 4px !important;
         /* 全体的に少し小さく */
     }
+
 }
 
 /* ← ここでメディアクエリを確実に閉じる */
 
 
 
-/* 難易度別の左端ライン（trに対して色を塗る） */
-tr.mas td:first-child {
-    border-left: 6px solid #92278f;
-}
+/* style.css の難易度帯の部分を書き換え */
+#score-body tr.mas td:first-child { border-left: 6px solid #92278f !important; }
+#score-body tr.exp td:first-child { border-left: 6px solid #f02d7d !important; }
+#score-body tr.ult td:first-child { border-left: 6px solid #1d0707 !important; }
 
-tr.exp td:first-child {
-    border-left: 6px solid #f02d7d;
-}
+/* 隠れないようにパディングを少し調整 */
+#score-body td:first-child {
+    padding-left: 12px !important;
 
-tr.ult td:first-child {
-    border-left: 6px solid #1d0707;
 }
-
 .diff-level-cell {
     font-size: 0.75em;
     color: #555;
@@ -1014,6 +1035,24 @@ td {
 .my-rank {
     background-color: rgba(255, 71, 87, 0.1) !important;
 }
+
+/* 「全員再表示」ボタンのスタイル */
+.reset-btn {
+    background: #e74c3c; /* 赤背景 */
+    color: #ffffff;      /* 白文字 */
+    border: none;
+    padding: 3px 8px;    /* 小さく */
+    font-size: 11px;     /* 小さく */
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.reset-btn:hover {
+    background: #c0392b; /* ホバーで少し暗い赤 */
+}
+
+
 
 /* Discordに送信ボタンの基本スタイル */
 #discord-share-btn {

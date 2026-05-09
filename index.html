@@ -120,6 +120,7 @@
 
             <div class="stats-exec-area" style="text-align: center; margin: 15px 0;">
                 <button id="stats-btn" class="btn-stats" onclick="fetchStats()">この条件で統計を集計</button>
+                <button id="random-btn" class="btn-random" onclick="pickRandomSong()">この条件で課題曲を選出</button>
             </div>
 
             <div id="loading">データを取得中...</div>
@@ -148,7 +149,12 @@
                         <small id="ranking-diff" style="color:#666; margin-left:10px;"></small>
                     </h3>
 
+                    <div style="text-align: left; margin-bottom: 5px;">
+                        <button onclick="resetTableVisibility()" class="reset-btn">全員再表示（表の行をクリックするとそのプレイヤーを非表示にできます）</button>
+                    </div>
+
                     <canvas id="ranking-canvas" width="800" height="180"></canvas>
+
 
                     <div style="margin-top: 15px; width: 100%;">
                         <table style="width:100%">
