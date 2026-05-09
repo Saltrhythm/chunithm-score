@@ -579,29 +579,51 @@ async function loadRanking(title, diff) {
 
         const result = await response.json();
 
-        if (result.status === "success" && result.data) {
+       if (result.status === "success" && result.data) {
             rankingBody.innerHTML = "";
             result.data.forEach((row, index) => {
                 const tr = document.createElement('tr');
+                tr.style.cursor = "pointer"; // クリック可能であることを示す
 
                 // 自分の名前を強調
                 const myName = localStorage.getItem('chunirec_player_name');
                 if (row.playerName === myName) tr.classList.add('my-rank');
 
-                // ★修正ポイント：スコアが数値の時だけカンマ区切りにする
+                // スコアの表示処理
                 let scoreVal = row.score;
                 const displayScore = (typeof scoreVal === 'number') ? scoreVal.toLocaleString() : scoreVal;
 
                 tr.innerHTML = `
-            <td>${index + 1}</td>
-            <td>${row.playerName}</td>
-            <td>${displayScore}</td> 
-            <td>${row.lamp || "-"}</td>
-        `;
-                rankingBody.appendChild(tr);
+                    <td>${index + 1}</td>
+                    <td>${row.playerName}</td>
+                    <td>${displayScore}</td> 
+                    <td>${row.lamp || "-"}</td>
+                `;
 
-                drawRankingChart(result.data);
+                // --- 追加: 行をクリックした時の連動処理 ---
+                tr.onclick = () => {
+                    // 数値スコアを持つプレイヤーのみ選択可能にする
+                    if (typeof row.score === 'number') {
+                        // すでに選択されている人なら解除、そうでなければ選択
+                        if (selectedPlayer && selectedPlayer.name === row.playerName) {
+                            selectedPlayer = null;
+                        } else {
+                            // drawRankingChartで使う形式に合わせてデータを渡す
+                            selectedPlayer = { name: row.playerName, score: row.score };
+                        }
+
+                        // 表のハイライトを更新
+                        updateTableHighlight();
+                        // 数直線を再描画
+                        drawRankingChart();
+                    }
+                };
+
+                rankingBody.appendChild(tr);
             });
+            // 初回描画
+            drawRankingChart(result.data);
+        
         } else {
             rankingBody.innerHTML = "<tr><td colspan='4'>データがありません</td></tr>";
         }
@@ -723,28 +745,39 @@ function drawRankingChart(data) {
                 return Math.sqrt(dx * dx + dy * dy) < area.radius;
             });
 
-            selectedPlayer = target || null;
-
-            // --- 表（テーブル）のハイライト連動を追加 ---
-            const rows = document.querySelectorAll('#ranking-body tr');
-            rows.forEach(row => {
-                row.classList.remove('selected-rank'); // 一旦全解除
-                
-                // 行の2番目のセル（名前）が選択されたプレイヤーと一致するか確認
-                const nameCell = row.cells[1];
-                if (selectedPlayer && nameCell && nameCell.innerText === selectedPlayer.name) {
-                    row.classList.add('selected-rank'); // ハイライト付与
-                    // 選択された行までスクロールさせる（必要であれば）
-                    row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            if (target) {
+                if (selectedPlayer && selectedPlayer.name === target.name) {
+                    selectedPlayer = null;
+                } else {
+                    selectedPlayer = target;
                 }
-            });
+            } else {
+                selectedPlayer = null;
+            }
 
-            drawRankingChart(); // 再描画（キャッシュされたデータを使用）
+            // 表のハイライトを更新
+            updateTableHighlight();
+            
+            drawRankingChart(); // 再描画
         });
         canvas.dataset.hasClickEvent = "true";
     }
 }
 
+/**
+ * selectedPlayer の状態に合わせて表のハイライトを更新する
+ */
+function updateTableHighlight() {
+    const rows = document.querySelectorAll('#ranking-body tr');
+    rows.forEach(row => {
+        row.classList.remove('selected-rank');
+        const nameCell = row.cells[1];
+        if (selectedPlayer && nameCell && nameCell.innerText === selectedPlayer.name) {
+            row.classList.add('selected-rank');
+            row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    });
+}
 
 /**
  * ログアウト処理
