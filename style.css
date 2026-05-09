@@ -524,6 +524,36 @@ input[type="number"]::-webkit-inner-spin-button {
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
+/* 統計ボタン専用のスタイル */
+.btn-stats {
+    background: #4a4ae0;        /* 他の入力欄と同じ深い紺色 */
+    color: #ffffff;             /* チュウニズムらしい明るい青文字 */
+    padding: 12px 30px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 0 10px rgba(0, 207, 255, 0.2);
+}
+
+.btn-stats:hover {
+    background: #ffffff;        /* ホバー時は青色に反転 */
+    color: #4a4ae0;
+    box-shadow: 0 0 15px rgba(0, 207, 255, 0.5);
+}
+
+.btn-stats:active {
+    transform: scale(0.98);     /* クリック時に少しへこむ演出 */
+}
+
+/* 統計中であることを示すメッセージ（任意） */
+#status-message {
+    font-size: 14px;
+    color: #666;
+    margin-top: 8px;
+}
+
 /* --- テーブルの外枠（スマホで横スクロールできるようにする） --- */
 .table-container {
     overflow-x: auto;
@@ -983,4 +1013,36 @@ td {
 /* 自分の行（赤）は既存のままでOKですが、優先度を調整する場合 */
 .my-rank {
     background-color: rgba(255, 71, 87, 0.1) !important;
+}
+
+/* Discordに送信ボタンの基本スタイル */
+#discord-share-btn {
+    background-color: #5865F2; /* Discordブルー */
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s; /* アニメーション用 */
+}
+
+/* 送信中の反転スタイル */
+#discord-share-btn.sending {
+    background-color: white !important;
+    color: #5865F2 !important;
+    border: 1px solid #5865F2;
+}
+
+/* 閉じるボタンのスタイル（暗めの灰色背景に白字） */
+.modal-close-btn {
+    background-color: #444; /* 暗めの灰色 */
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.modal-close-btn:hover {
+    background-color: #555;
 }

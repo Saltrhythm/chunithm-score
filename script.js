@@ -547,12 +547,25 @@ async function loadRanking(title, diff) {
     const rankingBody = document.getElementById('ranking-body');
     const rTitle = document.getElementById('ranking-title');
     const rDiff = document.getElementById('ranking-diff');
+
+    // --- 統計モードからのリセット処理 ---
+    const modalTableHead = document.querySelector('#ranking-modal table thead tr');
+    if (modalTableHead) {
+        modalTableHead.innerHTML = `
+            <th>順位</th>
+            <th>プレイヤー</th>
+            <th>スコア</th>
+            <th>ランプ</th>
+        `;
+    }
+
     const canvas = document.getElementById('ranking-canvas');
+    if (canvas) canvas.style.display = 'block'; // キャンバスを表示に戻す
 
     // --- ここでリセット処理を行う ---
     selectedPlayer = null;    // 選択状態を解除
     lastRankingData = [];     // キャッシュデータを空にする
-    
+
     // キャンバスを一度真っ白にする
     if (canvas) {
         const ctx = canvas.getContext('2d');
@@ -579,7 +592,7 @@ async function loadRanking(title, diff) {
 
         const result = await response.json();
 
-       if (result.status === "success" && result.data) {
+        if (result.status === "success" && result.data) {
             rankingBody.innerHTML = "";
             result.data.forEach((row, index) => {
                 const tr = document.createElement('tr');
@@ -623,7 +636,7 @@ async function loadRanking(title, diff) {
             });
             // 初回描画
             drawRankingChart(result.data);
-        
+
         } else {
             rankingBody.innerHTML = "<tr><td colspan='4'>データがありません</td></tr>";
         }
@@ -704,7 +717,7 @@ function drawRankingChart(data) {
         // ドット
         ctx.fillStyle = isMe ? '#ff4757' : (isSelected ? '#2ed573' : 'rgba(46, 213, 115, 0.5)');
         ctx.beginPath(); ctx.arc(x, centerY, radius, 0, Math.PI * 2); ctx.fill();
-        
+
         if (isMe || isSelected) {
             ctx.strokeStyle = '#fff';
             ctx.lineWidth = 3;
@@ -722,7 +735,7 @@ function drawRankingChart(data) {
             ctx.fillStyle = "#2ecc71";
             ctx.font = "bold 24px sans-serif";
             ctx.fillText(player.name, x, centerY - 65);
-            
+
             // 指標線
             ctx.strokeStyle = "#2ecc71";
             ctx.lineWidth = 1;
@@ -757,7 +770,7 @@ function drawRankingChart(data) {
 
             // 表のハイライトを更新
             updateTableHighlight();
-            
+
             drawRankingChart(); // 再描画
         });
         canvas.dataset.hasClickEvent = "true";
@@ -777,6 +790,218 @@ function updateTableHighlight() {
             row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
     });
+}
+
+/**
+ * 統計情報を取得して表示するメイン関数
+ * 画面上の各フィルタ（定数、レート、ランク、ランプ、種別）の値を取得してGASへ送信します
+ */
+async function fetchStats() {
+    const btn = document.getElementById('stats-btn');
+    if (btn) {
+        btn.innerText = "集計中...";
+        btn.disabled = true;
+    }
+
+    // --- 1. 各種ラベルと値の取得 ---
+    // index.html の構造に合わせた ID 指定
+    const typeFilter = document.querySelector('.btn-filter.active')?.getAttribute('data-value') || 'all';
+    const typeLabel = typeFilter === 'new' ? '新曲' : typeFilter === 'old' ? '旧曲' : '全曲';
+
+    // 定数: id="min-const", id="max-const" (デフォルト 13.5～16.0)
+    const minC = document.getElementById('min-constant')?.value || "13.5";
+    const maxC = document.getElementById('max-constant')?.value || "16.0";
+
+    // 単曲Rating: id="min-rate", id="max-rate"
+    const minRVal = document.getElementById('min-rating')?.value;
+    const maxRVal = document.getElementById('max-rating')?.value;
+    const minR = minRVal || "0";
+    const maxR = maxRVal || "99.99";
+
+    // ランク: id="rank-filter"
+    const rankVal = document.getElementById('rank-filter')?.value || 'all';
+    let rankLabel = "";
+    if (rankVal === 'all') {
+        rankLabel = "ランク: すべて";
+    } else {
+        // sssplus, splus などの内部値を表示用に変換
+        const rankName = rankVal === 'sssplus' ? 'SSS+' : rankVal === 'splus' ? 'S+' : rankVal.toUpperCase();
+        rankLabel = `ランク: ${rankName}以上`;
+    }
+
+    // ランプ: id="lamp-filter"
+    const lampVal = document.getElementById('lamp-filter')?.value || 'all';
+    let lampLabel = "";
+    if (lampVal === 'all') {
+        lampLabel = "ランプ: すべて";
+    } else if (lampVal === 'ajc') {
+        lampLabel = "ランプ: AJC";
+    } else if (lampVal === 'aj') {
+        lampLabel = "ランプ: AJ";
+    }
+
+    const params = {
+        mode: "get_stats",
+        minConst: minC, maxConst: maxC,
+        minRate: minR, maxRate: maxR,
+        rankFilter: rankVal, lampFilter: lampVal, typeFilter: typeFilter
+    };
+
+    try {
+        const response = await fetch(GAS_URL, { method: "POST", body: JSON.stringify(params) });
+        const result = await response.json();
+
+        if (result.status === "success") {
+            const modal = document.getElementById('ranking-modal');
+            const titleEl = document.getElementById('ranking-title');
+            const diffEl = document.getElementById('ranking-diff');
+            const canvas = document.getElementById('ranking-canvas');
+
+            // 【修正】理論値をタイトルに表示
+            const theoryCount = result.data.theoryCount || 0;
+            if (titleEl) {
+                titleEl.innerHTML = `${typeLabel} 統計ランキング <span style="font-size: 0.85em; color: #ff3b3b; margin-left: 10px;">(理論値: ${theoryCount}曲)</span>`;
+            }
+
+            if (diffEl) {
+                let conds = [`定数: ${minC}～${maxC}`];
+                if (minRVal || maxRVal) conds.push(`Rating: ${minR}～${maxR}`);
+                conds.push(rankLabel, lampLabel);
+                diffEl.innerText = conds.map(c => `[${c}]`).join(' ');
+            }
+
+            if (canvas) canvas.style.display = 'none';
+
+            // 【修正】見出しを「楽曲数」に変更
+            const modalTableHead = document.querySelector('#ranking-modal table thead tr');
+            if (modalTableHead) {
+                modalTableHead.innerHTML = `
+                    <th>順位</th>
+                    <th>プレイヤー</th>
+                    <th style="text-align:right;">楽曲数</th>
+                    <th style="text-align:center;">達成率</th>
+                `;
+            }
+
+            // 【修正】result.data.ranking を渡す
+            displayStatsRanking(result.data.ranking, theoryCount);
+            
+            if (modal) modal.style.display = 'flex';
+        }
+    } catch (err) {
+        console.error(err);
+        alert("統計の取得に失敗しました。");
+
+    } finally {
+        if (btn) {
+            btn.innerText = "この条件で統計を集計";
+            btn.disabled = false;
+        }
+    }
+}
+
+/**
+ * 取得した統計ランキングをテーブル（#ranking-body）に描画します
+ * @param {Array} statsData [{playerName: "name", count: 10}, ...]
+ * @param {Number} theoryCount 理論値（最大曲数）
+ */
+function displayStatsRanking(statsData, theoryCount) {
+    const tbody = document.getElementById('ranking-body');
+    if (!tbody) return;
+
+    tbody.innerHTML = "";
+
+    // statsData が undefined や null でないか確認
+    if (!statsData || statsData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">該当データなし</td></tr>';
+        return;
+    }
+
+    statsData.forEach((row, index) => {
+
+        // --- 達成率の計算 ---
+        let rateStr = "-";
+        if (theoryCount > 0) {
+            // 小数点第2位まで表示 (例: 85.50%)
+            const rate = (row.count / theoryCount) * 100;
+            rateStr = rate.toFixed(1) + "%";
+        }
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td style="text-align:center;">${index + 1}</td>
+            <td>${row.playerName}</td>
+            <td style="text-align:right; font-weight:bold;">${row.count} 曲</td>
+            <td style="text-align:center; color: #f02e2e;">${rateStr}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+/**
+ * モーダルの内容を画像化してDiscordへ送信
+ */
+async function shareToDiscord() {
+    // 保存されているURLを取得
+    let webhookUrl = localStorage.getItem('discord_webhook_url');
+
+    // 保存されていない場合は入力を求める
+    if (!webhookUrl) {
+        webhookUrl = prompt("DiscordのWebhook URLを入力してください。\n(このURLはブラウザに保存され、公開されることはありません)");
+        if (webhookUrl) {
+            localStorage.setItem('discord_webhook_url', webhookUrl);
+        } else {
+            return; // キャンセルされた場合
+        }
+    }
+
+    const modalContent = document.querySelector('#ranking-modal .modal-content');
+    const sendBtn = document.getElementById('discord-share-btn');
+    
+    // 送信中スタイル適用
+    sendBtn.innerText = "送信中...";
+    sendBtn.disabled = true;
+    sendBtn.classList.add('sending');
+
+    try {
+        const canvas = await html2canvas(modalContent, {
+            backgroundColor: "#222",
+            scale: 2,
+            ignoreElements: (el) => el.tagName === 'BUTTON'
+        });
+
+        canvas.toBlob(async (blob) => {
+            const formData = new FormData();
+            formData.append("file", blob, `ranking_${Date.now()}.png`);
+            formData.append("payload_json", JSON.stringify({ content: "みろよみろよ" }));
+
+            const response = await fetch(webhookUrl, { // 保存されたURLを使用
+                method: "POST",
+                body: formData
+            });
+
+            if (response.ok) {
+                alert("Discordに送信しました！");
+            } else {
+                // URLが間違っている可能性があるため、一度クリアする
+                if (confirm("送信に失敗しました。URLが間違っている可能性があります。設定をリセットしますか？")) {
+                    localStorage.removeItem('discord_webhook_url');
+                }
+            }
+            finishSending();
+        }, "image/png");
+
+    } catch (err) {
+        console.error(err);
+        alert("失敗しました。");
+        finishSending();
+    }
+
+    function finishSending() {
+        sendBtn.innerText = "Discordに送信";
+        sendBtn.disabled = false;
+        sendBtn.classList.remove('sending');
+    }
 }
 
 /**

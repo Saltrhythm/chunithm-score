@@ -107,14 +107,19 @@
                             </div>
                             <div class="filter-group" style="margin-left: 5px;">
                                 <span class="filter-label">対象:</span>
-                                <button id="filter-all" class="btn-filter active">全曲</button>
-                                <button id="filter-old" class="btn-filter">旧曲</button>
-                                <button id="filter-new" class="btn-filter">新曲</button>
+                                <button id="filter-all" class="btn-filter filter-btn-unit active"
+                                    data-value="all">全曲</button>
+                                <button id="filter-old" class="btn-filter filter-btn-unit" data-value="old">旧曲</button>
+                                <button id="filter-new" class="btn-filter filter-btn-unit" data-value="new">新曲</button>
                             </div>
                         </div>
                     </div>
 
                 </div>
+            </div>
+
+            <div class="stats-exec-area" style="text-align: center; margin: 15px 0;">
+                <button id="stats-btn" class="btn-stats" onclick="fetchStats()">この条件で統計を集計</button>
             </div>
 
             <div id="loading">データを取得中...</div>
@@ -159,12 +164,21 @@
                         </table>
                     </div>
 
-                    <button onclick="document.getElementById('ranking-modal').style.display='none'">閉じる</button>
+
+
+                    <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
+                        <button id="discord-share-btn" onclick="shareToDiscord()">Discordに送信</button>
+
+                        <button class="modal-close-btn"
+                            onclick="document.getElementById('ranking-modal').style.display='none'">閉じる</button>
+                    </div>
+
                 </div>
             </div>
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="script.js"></script>
 </body>
 

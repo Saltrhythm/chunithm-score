@@ -13,18 +13,24 @@ function doPost(e) {
     // ログ記録
     logSheet.appendRow([new Date(), "POST受信", "Mode: " + mode]);
 
+    // 1. ランキング取得モード（特定の曲の順位表）
     if (mode === "get_ranking") {
-      // タイトルと難易度が空の場合のガード
       const t = String(params.title || "");
       const d = String(params.diff || "");
-      
       const results = getRankingFromSheets(ss, t, d, logSheet);
       return createJsonResponse({ status: "success", data: results });
     }
 
-    // --- 同期モード (checker) ---
+    // 2. 統計取得モード（条件に合う曲数のランキング）
+    if (mode === "get_stats") {
+      const results = getStatsFromSheets(ss, params);
+      return createJsonResponse({ status: "success", data: results });
+    }
+
+    // 3. 同期/認証モード (checker)
     const token = String(params.token || "");
     let playerName = String(params.playerName || "");
+
 
     const hashedToken = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, token)
       .map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
@@ -112,6 +118,109 @@ function getRankingFromSheets(ss, title, diff, logSheet) {
   });
 }
 
+/**
+ * 統計情報を取得
+ */
+function getStatsFromSheets(ss, params) {
+  const userMapSheet = ss.getSheetByName("UserMap");
+  if (!userMapSheet) return [];
+  
+  const userMap = userMapSheet.getDataRange().getValues();
+  const results = [];
+
+  const minC = parseFloat(params.minConst || 0);
+  const maxC = parseFloat(params.maxConst || 16.0);
+  const minR = parseFloat(params.minRate || 0);
+  const maxR = parseFloat(params.maxRate || 99.99);
+  const targetRank = params.rankFilter; 
+  const targetLamp = params.lampFilter;
+  const typeFilter = params.typeFilter;
+
+  const masterSheet = ss.getSheetByName("MasterData"); // MasterDataシートから全曲数を計算
+  let totalMatchingSongs = 0;
+
+  if (masterSheet) {
+    const masterData = masterSheet.getDataRange().getValues();
+    const minC = parseFloat(params.minConst);
+    const maxC = parseFloat(params.maxConst);
+    const typeFilter = params.typeFilter;
+
+    for (let i = 1; i < masterData.length; i++) {
+      const cConst = parseFloat(masterData[i][2]); // 定数
+      const isNew = masterData[i][3] === true || masterData[i][3] === "true"; // 新曲フラグ
+
+      if (cConst >= minC && cConst <= maxC) {
+        if (typeFilter === 'all') totalMatchingSongs++;
+        else if (typeFilter === 'new' && isNew) totalMatchingSongs++;
+        else if (typeFilter === 'old' && !isNew) totalMatchingSongs++;
+      }
+    }
+  }
+
+  for (let i = 1; i < userMap.length; i++) {
+    const name = String(userMap[i][1] || "");
+    const sheet = ss.getSheetByName(name);
+    if (!sheet) continue;
+
+    const data = sheet.getDataRange().getValues();
+    let count = 0;
+
+    for (let j = 1; j < data.length; j++) {
+      const row = data[j];
+      const cConst = parseFloat(row[2] || 0); 
+      const cScore = parseFloat(row[3] || 0); 
+      const cRating = parseFloat(row[4] || 0);
+      const cLamp = String(row[5] || "");     
+      const isNewSong = !!row[6];
+
+      if (cConst < minC || cConst > maxC) continue;
+      if (cRating < minR || cRating > maxR) continue;
+      if (typeFilter === 'new' && !isNewSong) continue;
+      if (typeFilter === 'old' && isNewSong) continue;
+
+      // ランクフィルタ (数値化して「以上」を判定)
+      if (targetRank && targetRank !== 'all') {
+        // 現在の行のスコアをランク数値に変換
+        let currentRankValue = 0;
+        if (cScore >= 1009000)      currentRankValue = 6; // sssplus
+        else if (cScore >= 1007500) currentRankValue = 5; // sss
+        else if (cScore >= 1005000) currentRankValue = 4; // ssplus
+        else if (cScore >= 1000000) currentRankValue = 3; // ss
+        else if (cScore >= 990000)  currentRankValue = 2; // splus
+        else if (cScore >= 970000)  currentRankValue = 1; // s
+        
+        // ターゲット（選択されたランク）を数値に変換
+        let targetRankValue = 0;
+        switch(targetRank) {
+          case 'sssplus': targetRankValue = 6; break;
+          case 'sss':     targetRankValue = 5; break;
+          case 'ssplus':  targetRankValue = 4; break;
+          case 'ss':      targetRankValue = 3; break;
+          case 'splus':   targetRankValue = 2; break;
+          case 's':       targetRankValue = 1; break;
+        }
+
+        // 選択したランクの数値より低い場合は除外（「以上」の判定）
+        if (currentRankValue < targetRankValue) continue;
+      }
+
+      // ランプフィルタ
+      if (targetLamp && targetLamp !== 'all') {
+        if (targetLamp === 'ajc' && !cLamp.includes('AJC')) continue;
+        if (targetLamp === 'aj' && !cLamp.includes('AJ')) continue;
+        if (targetLamp === 'None' && cLamp.includes('AJ')) continue;
+      }
+
+      count++;
+    }
+    results.push({ playerName: name, count: count });
+  }
+  return {
+    ranking: results.sort((a, b) => b.count - a.count),
+    theoryCount: totalMatchingSongs
+  };
+}
+
 // --- その他の補助関数 (fetchAndProcessFromApi, calculateChuniRating, updateUserSheet, createJsonResponse) は既存のものを維持 ---
 // ※ updateUserSheet 内の records.map 部分でも String() で保護することをお勧めします。
 
@@ -119,7 +228,7 @@ function updateUserSheet(ss, name, records) {
   let sheet = ss.getSheetByName(name) || ss.insertSheet(name);
   sheet.clear();
 
-  const header = ["title", "diff", "const", "score", "rating", "lamp"];
+  const header = ["title", "diff", "const", "score", "rating", "lamp", "isNew"];
   sheet.appendRow(header);
 
   if (records && records.length > 0) {
@@ -130,7 +239,8 @@ function updateUserSheet(ss, name, records) {
       r.const || 0,
       r.score || 0,
       r.rating || 0,
-      String(r.lamp || "")
+      String(r.lamp || ""),
+      String(r.isNew || "")
     ]);
     sheet.getRange(2, 1, rows.length, header.length).setValues(rows);
   }
