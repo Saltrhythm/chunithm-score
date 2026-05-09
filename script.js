@@ -1,4 +1,4 @@
-const GAS_URL = "https://script.google.com/macros/s/AKfycbwoY_GDDxWL_QH-9O9a_Oy6z8QK7Cq009a0ORgApc9f9BQGXEauUNcoiXqeQ3WRBvVx/exec"
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyA4b_ZfPpm7lk1hSLpKmsEcSOKJ4_6YCixZWEj652oSI7OGjiqH95Vi5FPtqzew8qc/exec"
 
 let myCurrentRecords = [];
 let currentRanking = [];
