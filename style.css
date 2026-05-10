@@ -1353,7 +1353,7 @@ td {
 }
 
 /* 閉じるボタンのスタイル（暗めの灰色背景に白字） */
-.modal-close-btn {
+.modal-close-btn, .sub-modal-close-btn {
     background-color: #444;
     /* 暗めの灰色 */
     color: white;
@@ -1363,6 +1363,38 @@ td {
     cursor: pointer;
 }
 
-.modal-close-btn:hover {
+.modal-close-btn:hover, .sub-modal-close-btn:hover {
     background-color: #555;
+}
+
+/* モーダルの共通設定がある前提 */
+#sub-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6); /* 背景を少し暗く */
+    display: none;      /* 初期は非表示 */
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;     /* ★ここを非常に大きくする */
+}
+
+.sub-modal-content {
+    background-color: white;
+    padding: 20px;
+    border-radius: 10px;
+    width: 85%;        /* スマホで見やすい幅 */
+    max-width: 500px;  /* PCでも広がりすぎない */
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+.sub-modal-body table {
+    width: 85px;
+    border-collapse: collapse;
+}
+.sub-modal-body th, .sub-modal-body td {
+    padding: 8px;
+    border-bottom: 1px solid #ddd;
+    font-size: 14px;
 }

@@ -1,4 +1,4 @@
-const GAS_URL = "https://script.google.com/macros/s/AKfycbw-vVvJmP_89QW0h9vDEyGX6ycLwYr40owcgdEuQXkji59fOJuynhVVKGEsWbyKXC7NpQ/exec"
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwoY_GDDxWL_QH-9O9a_Oy6z8QK7Cq009a0ORgApc9f9BQGXEauUNcoiXqeQ3WRBvVx/exec"
 
 let myCurrentRecords = [];
 let currentRanking = [];
@@ -1133,12 +1133,19 @@ async function fetchStats(mode) {
             const modeName = (mode === 'song') ? "楽曲別 達成人数" : "個人別 達成楽曲数";
             const unit = (mode === 'song') ? "人" : "曲";
 
-            
+            // 絞り込み条件を文字列にまとめる
+            // 定数範囲 + スコア(ランク)範囲を表示
+            const constRange = `${minC}～${maxC}`;
+            const scoreRange = rMin === "0" && rMax === "1010000" ? "全ランク" : `${rMin}～${rMax}`;
+            const lampLabel = lmp === 'all' ? '' : ` [${lmp.toUpperCase()}]`;
+
+
             const limitText = (mode === 'song') ? " (上位100件)" : "";
             if (titleContainer) {
                 titleContainer.innerHTML = `
                     <span class="main-title-text">${typeLabel} ${modeName}${limitText}</span>
                     <span class="theory-info">(対象: ${finalDenom}${unit})</span>
+                    <span class="title-sub-info">定数:${constRange} / スコア:${scoreRange}/ ランプ:${lampLabel}</span>
                 `;
             }
 
@@ -1191,7 +1198,44 @@ function displayStatsRanking(statsData, denominator, mode) {
 
         const tr = document.createElement('tr');
         tr.style.cursor = "pointer";
-        tr.onclick = function () { this.style.display = "none"; };
+
+        // ★クリックイベントの変更
+        if (mode === 'song') {
+            tr.title = "タップして達成者を表示";
+
+            // 楽曲別モード：プレイヤーリストを表示
+            tr.onclick = function () {
+            const subModal = document.getElementById('sub-modal');
+            const subTbody = document.getElementById('sub-modal-tbody');
+            const subTitle = document.getElementById('sub-modal-title');
+
+            subTitle.innerText = row.title; // 曲名を表示
+            subTbody.innerHTML = ""; // リセット
+
+            // ★スコアの高い順（降順）に並び替え
+            const sortedPlayers = row.players.sort((a, b) => b.score - a.score);
+
+            sortedPlayers.forEach(p => {
+                const ptr = document.createElement('tr');
+                ptr.innerHTML = `
+                    <td>${p.name}</td>
+                    <td style="text-align:center; font-weight:bold;">${p.score.toLocaleString()}</td>
+                `;
+                subTbody.appendChild(ptr);
+            });
+
+            subModal.style.display = "flex";
+        };
+            
+
+        } else {
+            tr.title = "タップして非表示";
+            // 個人別モード：今まで通り非表示にする（あるいは何もしない）
+            tr.onclick = function () {
+                this.style.display = "none";
+            };
+            
+        }
 
         tr.innerHTML = `
             <td class="rank-cell" style="text-align:center;">${index + 1}</td>
@@ -1205,6 +1249,12 @@ function displayStatsRanking(statsData, denominator, mode) {
     console.log("Table Drawing Completed");
     // もしここまで来たら、絶対に表は見えているはずです
 }
+
+// 子モーダルを閉じる関数
+function closeSubModal() {
+    document.getElementById('sub-modal').style.display = "none";
+}
+
 
 function resetTableVisibility() {
     const rows = document.querySelectorAll("#ranking-body tr");

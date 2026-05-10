@@ -172,7 +172,7 @@
                     </h3>
 
                     <div style="text-align: left; margin-bottom: 2px;">
-                        <button onclick="resetTableVisibility()" class="reset-btn">全員再表示（表の行をクリックすると非表示）</button>
+                        <button onclick="resetTableVisibility()" class="reset-btn">全て再表示（表の行をクリックすると非表示）</button>
                     </div>
 
 
@@ -213,6 +213,24 @@
 
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div id="sub-modal" class="modal" style="display:none; z-index:2000;">
+        <div class="modal-content sub-modal-content">
+            <h3 id="sub-modal-title">達成者一覧</h3>
+            <div class="sub-modal-body">
+                <table id="sub-modal-table">
+                    <thead>
+                        <tr>
+                            <th>プレイヤー</th>
+                            <th>スコア</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sub-modal-tbody"></tbody>
+                </table>
+            </div>
+            <button onclick="closeSubModal()" class="sub-modal-close-btn">閉じる</button>
         </div>
     </div>
 

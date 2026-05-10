@@ -219,16 +219,20 @@ function getStatsFromSheets(ss, params) {
 
             // ★楽曲別のカウンターを加算
             if (!songAggregation[fullTitle]) {
-                songAggregation[fullTitle] = { count: 0, constant: cConst };
+                songAggregation[fullTitle] = { count: 0, constant: cConst, players: [] };
             }
             songAggregation[fullTitle].count++;
+            songAggregation[fullTitle].players.push({
+                name: name,
+                score: cScore
+            });
         }
         results.push({ playerName: name, count: playerCount });
     }
 
     // 楽曲別ランキングを配列に変換してソート
     const songRanking = Object.keys(songAggregation).map(t => {
-        return { title: t, count: songAggregation[t].count, constant: songAggregation[t].constant };
+        return { title: t, count: songAggregation[t].count, constant: songAggregation[t].constant, players: songAggregation[t].players };
     }).sort((a, b) => b.count - a.count);
 
     return {
