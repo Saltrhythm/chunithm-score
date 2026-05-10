@@ -1,10 +1,25 @@
-const GAS_URL = "https://script.google.com/macros/s/AKfycbyA4b_ZfPpm7lk1hSLpKmsEcSOKJ4_6YCixZWEj652oSI7OGjiqH95Vi5FPtqzew8qc/exec"
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwv130_J7gV564XKMiVI7BzhIX2frH0R9jIgYlSZWXL45QkOIuL6CHPR2Uw93KOmp4fIA/exec"
 
 let myCurrentRecords = [];
 let currentRanking = [];
 let rateThresholds = { best30: 0, new20: 0 };
 let currentTypeFilter = 'all'; // 'all', 'old', 'new' を保持
 let currentSortKey = 'rating'; // デフォルトのソート順をRatingに設定
+
+let currentMinScore = 1000000; // デフォルトはSS
+const MAX_SCORE = 1010000;
+
+const rankThresholds = {
+    '99aj': 1009900,
+    'sssplus': 1009000,
+    'sss': 1007500,
+    'nearsss': 1007000,
+    'ssplus': 1005000,
+    'ss': 1000000,
+    'splus': 990000,
+    's': 970000,
+    'none': 0
+};
 
 /**
  * 起動時に実行
@@ -47,12 +62,18 @@ window.addEventListener('DOMContentLoaded', () => {
 function toggleTokenVisibility() {
     const input = document.getElementById("token-input");
     const btn = document.getElementById("toggle-token");
+
+    if (!input || !btn) {
+        console.error("要素が見つかりません。IDが正しいか確認してください。");
+        return;
+    }
+
     if (input.type === "password") {
         input.type = "text";
-        btn.innerText = "🔒";
+        btn.innerText = "🔒"; // 表示中にする
     } else {
         input.type = "password";
-        btn.innerText = "👁️";
+        btn.innerText = "👁️"; // 非表示（伏せ字）にする
     }
 }
 
@@ -170,14 +191,20 @@ function updateFilters() {
     const maxConstSelect = document.getElementById('max-constant');
     const minRateInput = document.getElementById('min-rating');
     const maxRateInput = document.getElementById('max-rating');
-    const rankSelect = document.getElementById('rank-filter');
     const lampSelect = document.getElementById('lamp-filter');
 
-    if (!searchInput || !minConstSelect || !maxConstSelect || !rankSelect || !lampSelect) return;
+    // ★新しく取得する要素
+    const rankMinSelect = document.getElementById('rank-min');
+    const rankMaxSelect = document.getElementById('rank-max');
+
+    if (!searchInput || !minConstSelect || !maxConstSelect || !rankMinSelect || !rankMaxSelect || !lampSelect) return;
 
     const searchText = searchInput.value.toLowerCase().trim();
     const minConst = parseFloat(minConstSelect.value);
     const maxConst = parseFloat(maxConstSelect.value);
+
+    const rankMin = parseFloat(rankMinSelect.value);
+    const rankMax = parseFloat(rankMaxSelect.value);
 
     // .value を付けて値を取得し、空文字判定を行います
     const minRateVal = minRateInput ? minRateInput.value : "";
@@ -186,7 +213,6 @@ function updateFilters() {
     const minRate = minRateVal !== "" ? parseFloat(minRateVal) : 0;
     const maxRate = maxRateVal !== "" ? parseFloat(maxRateVal) : 99.99;
 
-    const rankValue = rankSelect.value;
     const lampValue = lampSelect.value;
 
     // フィルタリング実行
@@ -203,20 +229,13 @@ function updateFilters() {
         const constant = parseFloat(item.const) || 0;
         const matchesConstant = (constant >= minConst && constant <= maxConst);
 
-        // 4. ランクで絞り込み
-        let matchesRank = true;
-        if (rankValue !== 'all') {
-            const tScore = parseFloat(item.score) || 0;
-            let currentRank = "";
-            if (tScore >= 1009000) currentRank = "sssplus";
-            else if (tScore >= 1007500) currentRank = "sss";
-            else if (tScore >= 1005000) currentRank = "ssplus";
-            else if (tScore >= 1000000) currentRank = "ss";
-            else if (tScore >= 990000) currentRank = "splus";
-            else if (tScore >= 970000) currentRank = "s";
-            else currentRank = "none";
-            matchesRank = (currentRank === rankValue);
-        }
+       // 4. ランク範囲判定
+        const tScore = parseFloat(item.score) || 0;
+        
+        // 選択された下限以上、かつ上限「区分」の境界値未満
+        // 例: SSS(1007500) ～ SSS+(1009000) なら 1007500 <= score < 1009900(99AJの境界)
+        // ここでは単純に選択された数値で比較するのが直感的です
+        const matchesRank = (tScore >= rankMin && tScore <= getUpperLimit(rankMax));
 
         // 5. ランプで絞り込み
         const itemLamp = item.lamp || "None";
@@ -253,6 +272,23 @@ function updateFilters() {
     displayScores(filteredData);
 }
 
+/**
+ * 補助関数：選択されたランク区分の「スコア上限」を返す
+ * 範囲指定（rankMax）の判定に使用します
+ */
+function getUpperLimit(score) {
+    if (score >= 1010000) return 1010000; // 理論値なら1010000まで
+    if (score >= 1009900) return 1009999; // 99AJなら理論値手前まで
+    if (score >= 1009000) return 1009899; // SSS+なら99AJ手前まで
+    if (score >= 1007500) return 1008999; // SSSならSSS+手前まで
+    if (score >= 1007000) return 1007499; // 7000ならSSS手前まで
+    if (score >= 1005000) return 1006999; // SS+なら7000手前まで
+    if (score >= 1000000) return 1004999; // SSならSS+手前まで
+    if (score >= 990000)  return 999999;  // S+ならSS手前まで
+    if (score >= 970000)  return 989999;  // SならS+手前まで
+    return 969999; // それ未満
+}
+
 /** * Ratingかテクニカルスコアでのソート
  */
 function sortData(data) {
@@ -278,8 +314,9 @@ function initFilters() {
     const minRateInput = document.getElementById('min-rating');
     const maxRateInput = document.getElementById('max-rating');
     const searchInput = document.getElementById('search-input');
-    const rankSelect = document.getElementById('rank-filter');
     const lampSelect = document.getElementById('lamp-filter');
+    const rankMinSelect = document.getElementById('rank-min');
+    const rankMaxSelect = document.getElementById('rank-max');
 
     if (!minConstSelect || !maxConstSelect) return;
 
@@ -300,12 +337,13 @@ function initFilters() {
     maxConstSelect.value = "16.0";
 
     // 各入力へのイベントリスナー登録
-    [minConstSelect, maxConstSelect, rankSelect, lampSelect].forEach(el => {
+    [minConstSelect, maxConstSelect, lampSelect, rankMinSelect, rankMaxSelect].forEach(el => {
         if (el) el.addEventListener('change', updateFilters);
     });
     [searchInput, minRateInput, maxRateInput].forEach(el => {
         if (el) el.addEventListener('input', updateFilters);
     });
+
 
     // 7. 表示対象ボタン
     document.querySelectorAll('.btn-filter').forEach(btn => {
@@ -328,8 +366,12 @@ function initFilters() {
             if (maxConstSelect) maxConstSelect.value = "16.0";
             if (minRateInput) minRateInput.value = "";
             if (maxRateInput) maxRateInput.value = "";
-            if (rankSelect) rankSelect.value = "all";
             if (lampSelect) lampSelect.value = "all";
+
+            // ★修正：ランク範囲のリセット
+            // 下限を「0」、上限を「1010000（理論値）」に設定
+            if (rankMinSelect) rankMinSelect.value = "0";
+            if (rankMaxSelect) rankMaxSelect.value = "1010000";
 
             document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
             document.getElementById('filter-all').classList.add('active');
@@ -507,7 +549,7 @@ function displayScores(data) {
         // クリックイベント：ランキング機能を呼び出す
         tr.onclick = () => {
             if (typeof loadRanking === "function") {
-                loadRanking(item.title, item.diff);
+                loadRanking(item.title, item.diff, item.const);
             }
         };
 
@@ -549,18 +591,23 @@ function pickRandomSong() {
     const maxConstSelect = document.getElementById('max-constant');
     const minRateInput = document.getElementById('min-rating');
     const maxRateInput = document.getElementById('max-rating');
-    const rankSelect = document.getElementById('rank-filter');
     const lampSelect = document.getElementById('lamp-filter');
+    // ★修正：下限と上限のセレクトボックスを取得
+    const rankMinSelect = document.getElementById('rank-min');
+    const rankMaxSelect = document.getElementById('rank-max');
 
     const searchText = searchInput ? searchInput.value.toLowerCase().trim() : "";
     const minConst = minConstSelect ? parseFloat(minConstSelect.value) : 0;
     const maxConst = maxConstSelect ? parseFloat(maxConstSelect.value) : 20;
     const minRate = (minRateInput && minRateInput.value !== "") ? parseFloat(minRateInput.value) : 0;
     const maxRate = (maxRateInput && maxRateInput.value !== "") ? parseFloat(maxRateInput.value) : 99.99;
-    const rankValue = rankSelect ? rankSelect.value : 'all';
     const lampValue = lampSelect ? lampSelect.value : 'all';
+    // ★追加：基準スコアと方向の取得
+    const rankMin = rankMinSelect ? parseFloat(rankMinSelect.value) : 0;
+    const rankMax = rankMaxSelect ? parseFloat(rankMaxSelect.value) : 1010000;
 
-    // ここで candidates を定義します
+
+    // ここで candidates を定義
     const candidates = myCurrentRecords.filter(item => {
         const title = String(item.title || "").toLowerCase();
         if (!title.includes(searchText)) return false;
@@ -571,17 +618,10 @@ function pickRandomSong() {
         const constant = parseFloat(item.const) || 0;
         if (constant < minConst || constant > maxConst) return false;
 
-        if (rankValue !== 'all') {
-            const tScore = parseFloat(item.score) || 0;
-            let currentRank = "";
-            if (tScore >= 1009000) currentRank = "sssplus";
-            else if (tScore >= 1007500) currentRank = "sss";
-            else if (tScore >= 1005000) currentRank = "ssplus";
-            else if (tScore >= 1000000) currentRank = "ss";
-            else if (tScore >= 990000) currentRank = "splus";
-            else if (tScore >= 970000) currentRank = "s";
-            if (currentRank !== rankValue) return false;
-        }
+       // ★修正：ランク範囲判定（スコア比較）
+        const tScore = parseFloat(item.score) || 0;
+        // 下限以上 かつ 上限区分の最大値以下（getUpperLimitを使用）
+        if (tScore < rankMin || tScore > getUpperLimit(rankMax)) return false;
 
         const itemLamp = item.lamp || "None";
         if (lampValue !== 'all') {
@@ -622,12 +662,12 @@ function pickRandomSong() {
 
     // 3. ルーレット演出
     let count = 0;
-    const maxTicks = 20; 
+    const maxTicks = 20;
     const interval = setInterval(() => {
         const temp = candidates[Math.floor(Math.random() * candidates.length)];
         titleEl.innerText = temp.title;
         diffEl.innerText = temp.diff;
-        
+
         const diffColors = { 'basic': '#22ac22', 'advanced': '#f39c12', 'expert': '#e74c3c', 'master': '#9b59b6', 'ultima': '#222' };
         diffEl.style.backgroundColor = diffColors[temp.diff.toLowerCase()] || '#555';
 
@@ -638,15 +678,15 @@ function pickRandomSong() {
         }
     }, 150);
 
-// --- script.js の pickRandomSong 関数内、finishSelection 関数を差し替え ---
+    // --- script.js の pickRandomSong 関数内、finishSelection 関数を差し替え ---
 
     // 4. 最終決定時の処理
     function finishSelection() {
         // 本当の決定曲を選ぶ
         const picked = candidates[Math.floor(Math.random() * candidates.length)];
-        
+
         // --- ★ ここから追加：ド派手エフェクト ---
-        
+
         // ① 画面を一瞬真っ白にフラッシュさせるフラッシュ層を作成
         const flash = document.createElement('div');
         flash.style = `
@@ -655,14 +695,14 @@ function pickRandomSong() {
             transition: opacity 0.5s ease-out; /* 0.5秒かけて消えていく */
         `;
         document.body.appendChild(flash);
-        
+
         // ② 決定した曲名の表示を豪華にする
         titleEl.style.color = "#f1c40f"; // 金色
         titleEl.style.textShadow = "0 0 15px #fff, 0 0 30px #f1c40f, 0 0 45px #f1c40f"; // 黄金の輝き（グロー効果）
         titleEl.style.transform = "scale(1.2)"; // 少し大きく
-        titleEl.style.transition = "all 0.3s ease-out"; // 演出を滑らかに
+        titleEl.style.transition = "all 0.5s ease-out"; // 演出を滑らかに
         titleEl.innerText = picked.title;
-        
+
         diffEl.innerText = picked.diff;
         // 難易度色はルーレット最後のを引き継ぐか、pickedので再設定（ここではpickedで再設定）
         const diffColors = { 'basic': '#22ac22', 'advanced': '#f39c12', 'expert': '#e74c3c', 'master': '#9b59b6', 'ultima': '#222' };
@@ -676,7 +716,7 @@ function pickRandomSong() {
                 if (document.body.contains(flash)) document.body.removeChild(flash);
             }, 500); // transitionの時間と合わせる
         });
-        
+
         // --- ★ ここまで追加 ---
 
         // 1.5秒待ってから（演出を見せてから）画面を消して、実際の行へ移動
@@ -684,7 +724,7 @@ function pickRandomSong() {
             if (document.body.contains(overlay)) {
                 document.body.removeChild(overlay);
             }
-            
+
             // --- 以降、スクロールとランキング表示のロジックはそのまま ---
             const rows = document.querySelectorAll('#score-body tr');
             let targetRow = null;
@@ -703,25 +743,24 @@ function pickRandomSong() {
                     targetRow.style.transition = "background 0.5s";
                     const originalBg = targetRow.style.background;
                     targetRow.style.background = "rgba(241, 196, 15, 0.5)"; // スクロール先も金色に光らせる
-                    loadRanking(picked.title, picked.diff);
+                    loadRanking(picked.title, picked.diff, picked.const);
                     setTimeout(() => { targetRow.style.background = originalBg; }, 2000);
-                }, 500);
+                }, 2000);
             } else {
-                loadRanking(picked.title, picked.diff);
+                loadRanking(picked.title, picked.diff, picked.const);
             }
-        }, 1500); // 演出時間を少し長めに（1s -> 1.5s）
+        }, 4500);
     }
 }
 
 /**
  * 特定の曲のランキングを取得して表示
  */
-async function loadRanking(title, diff) {
+async function loadRanking(title, diff, songConst) {
 
     const modal = document.getElementById('ranking-modal');
     const rankingBody = document.getElementById('ranking-body');
-    const rTitle = document.getElementById('ranking-title');
-    const rDiff = document.getElementById('ranking-diff');
+    const titleContainer = document.getElementById('ranking-title-container');
 
     // --- 統計モードからのリセット処理 ---
     const modalTableHead = document.querySelector('#ranking-modal table thead tr');
@@ -732,6 +771,11 @@ async function loadRanking(title, diff) {
             <th>スコア</th>
             <th>ランプ</th>
         `;
+    }
+
+    const rangeSelector = document.querySelector('.range-selector');
+    if (rangeSelector) {
+        rangeSelector.style.display = 'flex'; // または 'block'
     }
 
     const canvas = document.getElementById('ranking-canvas');
@@ -747,21 +791,26 @@ async function loadRanking(title, diff) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
 
-    // モーダルを表示して初期化
-    rTitle.innerText = title;
-    rDiff.innerText = diff;
+    // 難易度と定数を span で囲んで1行に構成
+    const displayDiff = diff ? diff.toUpperCase() : "";
+    titleContainer.innerHTML = `
+        ${title} 
+        <span class="title-sub-info">${displayDiff} ${songConst || ""}</span>
+    `.trim();
+
     rankingBody.innerHTML = "<tr><td colspan='4'>読み込み中...</td></tr>";
     modal.style.display = "flex";
 
     try {
-        console.log("送るデータ:", { title, diff });
+        console.log("送るデータ:", { title, diff, const: songConst });
         const response = await fetch(GAS_URL, {
             method: "POST",
             headers: { 'Content-Type': 'text/plain' },
             body: JSON.stringify({
                 mode: "get_ranking",
                 title: title,
-                diff: diff
+                diff: diff,
+                const: songConst
             })
         });
 
@@ -789,11 +838,22 @@ async function loadRanking(title, diff) {
                 let scoreVal = row.score;
                 const displayScore = (typeof scoreVal === 'number') ? scoreVal.toLocaleString() : scoreVal;
 
+                // loadRanking などのループ処理内
+                const lampText = row.lamp || "";
+                let badgeClass = "";
+
+                if (lampText.includes("AJC")) badgeClass = "ajc-badge";
+                else if (lampText.includes("AJ")) badgeClass = "aj-badge";
+                else if (lampText.includes("FC")) badgeClass = "fc-badge";
+                else badgeClass = "";
+
                 tr.innerHTML = `
-                    <td>${index + 1}</td>
+                    <td class="rank-cell">${index + 1}</td>
                     <td>${row.playerName}</td>
                     <td>${displayScore}</td> 
-                    <td>${row.lamp || "-"}</td>
+                    <td style="text-align: center;">
+                     <span class="${badgeClass}">${lampText}</span>
+                    </td>
                 `;
 
                 rankingBody.appendChild(tr);
@@ -847,8 +907,8 @@ function drawRankingChart(data) {
     if (validScores.length === 0) return;
 
     // 定数
-    const maxScore = 1010000;
-    const minScore = 1000000;
+    const maxScore = MAX_SCORE;
+    const minScore = currentMinScore; // 固定値から変数へ
     const range = maxScore - minScore;
     const padding = 80;
     const chartWidth = canvas.width - (padding * 2);
@@ -857,9 +917,19 @@ function drawRankingChart(data) {
     chartClickAreas = [];
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // 1. 背景の目盛り
-    const ticks = [{ s: 1000000, sub: "SS" }, { s: 1005000, sub: "SS+" }, { s: 1007500, sub: "SSS" }, { s: 1009000, sub: "SSS+" }, { s: 1010000, sub: "AJC" }];
-    ticks.forEach(tick => {
+    // --- ★修正ポイント：目盛りの動的表示 ---
+    const allTicks = [
+        { s: 1000000, sub: "SS" },
+        { s: 1005000, sub: "SS+" },
+        { s: 1007500, sub: "SSS" },
+        { s: 1009000, sub: "SSS+" },
+        { s: 1010000, sub: "AJC" }
+    ];
+
+    // 現在の minScore 以上の目盛りだけを表示する
+    const visibleTicks = allTicks.filter(t => t.s >= minScore);
+
+    visibleTicks.forEach(tick => {
         const x = padding + ((tick.s - minScore) / range) * chartWidth;
         ctx.strokeStyle = '#f5f5f5';
         ctx.beginPath(); ctx.moveTo(x, 20); ctx.lineTo(x, 135); ctx.stroke();
@@ -876,16 +946,16 @@ function drawRankingChart(data) {
 
     // 3. プレイヤー描画
     validScores.forEach((player) => {
-        let plotScore = Math.max(player.score, minScore);
-        const x = padding + ((plotScore - minScore) / range) * chartWidth;
+        // 表示範囲外のプレイヤーは描画しない（または左端に固めるなら Math.max）
+        if (player.score < minScore) return;
+
+        const x = padding + ((player.score - minScore) / range) * chartWidth;
         const isMe = (player.name === myName);
         const isSelected = (selectedPlayer && selectedPlayer.name === player.name);
         const radius = (isMe || isSelected) ? 10 : 7;
 
-        // 当たり判定保存
         chartClickAreas.push({ x, y: centerY, radius: radius + 8, ...player });
 
-        // ドット
         ctx.fillStyle = isMe ? '#ff4757' : (isSelected ? '#2ed573' : 'rgba(46, 213, 115, 0.5)');
         ctx.beginPath(); ctx.arc(x, centerY, radius, 0, Math.PI * 2); ctx.fill();
 
@@ -895,19 +965,15 @@ function drawRankingChart(data) {
             ctx.stroke();
         }
 
-        // --- 名前表示 (スコアなし) ---
         ctx.textAlign = "center";
         if (isMe) {
             ctx.fillStyle = "#ff4757";
             ctx.font = "bold 30px sans-serif";
             ctx.fillText(player.name, x, centerY - 30);
         } else if (isSelected) {
-            // 選択時：名前のみ表示
             ctx.fillStyle = "#2ecc71";
             ctx.font = "bold 24px sans-serif";
             ctx.fillText(player.name, x, centerY - 65);
-
-            // 指標線
             ctx.strokeStyle = "#2ecc71";
             ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(x, centerY - 15); ctx.lineTo(x, centerY - 30); ctx.stroke();
@@ -947,6 +1013,26 @@ function drawRankingChart(data) {
         canvas.dataset.hasClickEvent = "true";
     }
 }
+
+/**
+ * グラフの表示最小スコアを更新して再描画
+ */
+function updateRankingRange(minScore) {
+    currentMinScore = minScore;
+
+    // 全ボタンから active を消し、クリックされたものに付ける
+    document.querySelectorAll('.range-btn').forEach(btn => {
+        // data-min 属性が数値として一致するかで判定
+        if (parseInt(btn.dataset.min) === minScore) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    drawRankingChart(); // グラフを再描画
+}
+
 
 /**
  * selectedPlayer の状態に合わせて表のハイライトを更新する
@@ -990,16 +1076,19 @@ async function fetchStats() {
     const minR = minRVal || "0";
     const maxR = maxRVal || "99.99";
 
-    // ランク: id="rank-filter"
-    const rankVal = document.getElementById('rank-filter')?.value || 'all';
-    let rankLabel = "";
-    if (rankVal === 'all') {
-        rankLabel = "ランク: すべて";
-    } else {
-        // sssplus, splus などの内部値を表示用に変換
-        const rankName = rankVal === 'sssplus' ? 'SSS+' : rankVal === 'splus' ? 'S+' : rankVal.toUpperCase();
-        rankLabel = `ランク: ${rankName}以上`;
-    }
+    // ★修正：下限・上限ランクの取得
+    const rankMinSelect = document.getElementById('rank-min');
+    const rankMaxSelect = document.getElementById('rank-max');
+    const rMin = rankMinSelect ? rankMinSelect.value : "0";
+    const rMax = rankMaxSelect ? rankMaxSelect.value : "1010000";
+
+    // ★追加：統計モード（個人別 or 楽曲別）の取得
+    const statsType = document.getElementById('stats-type')?.value || 'player';
+
+    // 表示用のラベル作成
+    const minRankText = rankMinSelect?.options[rankMinSelect.selectedIndex].text || "0";
+    const maxRankText = rankMaxSelect?.options[rankMaxSelect.selectedIndex].text || "理論値";
+    const rankLabel = `ランク: ${minRankText}～${maxRankText}`;
 
     // ランプ: id="lamp-filter"
     const lampVal = document.getElementById('lamp-filter')?.value || 'all';
@@ -1014,9 +1103,14 @@ async function fetchStats() {
 
     const params = {
         mode: "get_stats",
-        minConst: minC, maxConst: maxC,
-        minRate: minR, maxRate: maxR,
-        rankFilter: rankVal, lampFilter: lampVal, typeFilter: typeFilter
+        minConst: minC,
+        maxConst: maxC,
+        minRate: minR,
+        maxRate: maxR,
+        rankMin: rMin, // 下限スコア
+        rankMax: rMax, // 上限スコア
+        lampFilter: lampVal,
+        typeFilter: typeFilter
     };
 
     try {
@@ -1025,26 +1119,15 @@ async function fetchStats() {
 
         if (result.status === "success") {
             const modal = document.getElementById('ranking-modal');
-            const titleEl = document.getElementById('ranking-title');
-            const diffEl = document.getElementById('ranking-diff');
+            const titleContainer = document.getElementById('ranking-title-container');
+            const rangeSelector = document.querySelector('.range-selector');
             const canvas = document.getElementById('ranking-canvas');
 
-            // 【修正】理論値をタイトルに表示
-            const theoryCount = result.data.theoryCount || 0;
-            if (titleEl) {
-                titleEl.innerHTML = `${typeLabel} 統計ランキング <span style="font-size: 0.85em; color: #ff3b3b; margin-left: 10px;">(理論値: ${theoryCount}曲)</span>`;
-            }
-
-            if (diffEl) {
-                let conds = [`定数: ${minC}～${maxC}`];
-                if (minRVal || maxRVal) conds.push(`Rating: ${minR}～${maxR}`);
-                conds.push(rankLabel, lampLabel);
-                diffEl.innerText = conds.map(c => `[${c}]`).join(' ');
-            }
-
+            // 1. UIのリセット（統計モード用）
+            if (rangeSelector) rangeSelector.style.display = 'none';
             if (canvas) canvas.style.display = 'none';
 
-            // 【修正】見出しを「楽曲数」に変更
+            // 2. ヘッダーの書き換え
             const modalTableHead = document.querySelector('#ranking-modal table thead tr');
             if (modalTableHead) {
                 modalTableHead.innerHTML = `
@@ -1055,15 +1138,25 @@ async function fetchStats() {
                 `;
             }
 
-            // 【修正】result.data.ranking を渡す
-            displayStatsRanking(result.data.ranking, theoryCount);
+            // 3. タイトルの構成
+            const theoryCount = result.data.theoryCount || 0;
+            let conds = [`定数: ${minC}～${maxC}`, rankLabel, `ランプ: ${lampLabel}`];
+            const condText = conds.map(c => `[${c}]`).join(' ');
 
+            titleContainer.innerHTML = `
+                <span class="main-title-text">${typeLabel} 統計ランキング</span>
+                <span class="theory-info">(理論値: ${theoryCount}曲)</span>
+                <span class="title-sub-info" style="display:block; font-size:0.8rem; font-weight:normal; margin-top:5px;">${condText}</span>
+            `;
+
+            // 4. データの表示（既存の関数を利用）
+            displayStatsRanking(result.data.ranking, theoryCount);
+            
             if (modal) modal.style.display = 'flex';
         }
     } catch (err) {
         console.error(err);
         alert("統計の取得に失敗しました。");
-
     } finally {
         if (btn) {
             btn.innerText = "この条件で統計を集計";
@@ -1109,7 +1202,7 @@ function displayStatsRanking(statsData, theoryCount) {
         };
 
         tr.innerHTML = `
-            <td style="text-align:center;">${index + 1}</td>
+            <td class="rank-cell" style="text-align:center;">${index + 1}</td>
             <td>${row.playerName}</td>
             <td style="text-align:right; font-weight:bold;">${row.count} 曲</td>
             <td style="text-align:center; color: #f02e2e;">${rateStr}</td>
@@ -1155,11 +1248,37 @@ async function shareToDiscord() {
     sendBtn.classList.add('sending');
 
     try {
+        sendBtn.innerText = "作成中...";
+        sendBtn.disabled = true;
+
+        // ★ 見切れ防止の修正：画像化するターゲットのスタイルを一時的に調整
+        const originalWidth = modalContent.style.width;
+        const originalMaxHeight = modalContent.style.maxHeight;
+        const originalOverflow = modalContent.style.overflow;
+
+        // 全体が入るように一時的に制限を解除
+        modalContent.style.width = "850px"; // グラフ(800px)が余裕を持って収まる幅
+        modalContent.style.maxHeight = "none";
+        modalContent.style.overflow = "visible";
+
         const canvas = await html2canvas(modalContent, {
-            backgroundColor: "#222",
-            scale: 2,
-            ignoreElements: (el) => el.tagName === 'BUTTON'
+            backgroundColor: "#ffffff",
+            scale: 2, // 高画質化
+            useCORS: true,
+            // 縦に長くなってもすべて収める設定
+            windowWidth: 850,
+            ignoreElements: (el) => el.tagName === 'BUTTON',
+            onclone: (clonedDoc) => {
+                // クローンされた方の要素だけさらに調整可能
+                const clonedContent = clonedDoc.querySelector('.modal-content');
+                clonedContent.style.padding = "20px";
+            }
         });
+
+        // 元に戻す
+        modalContent.style.width = originalWidth;
+        modalContent.style.maxHeight = originalMaxHeight;
+        modalContent.style.overflow = originalOverflow
 
         canvas.toBlob(async (blob) => {
             const formData = new FormData();

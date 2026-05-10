@@ -147,7 +147,11 @@ function getStatsFromSheets(ss, params) {
     const maxC = parseFloat(params.maxConst || 16.0);
     const minR = parseFloat(params.minRate || 0);
     const maxR = parseFloat(params.maxRate || 99.99);
-    const targetRank = params.rankFilter;
+   
+// ★修正：下限スコアと上限スコアを受け取る
+    const rMin = parseFloat(params.rankMin || 0);
+    const rMax = parseFloat(params.rankMax || 1010000);
+
     const targetLamp = params.lampFilter;
     const typeFilter = params.typeFilter;
 
@@ -193,31 +197,9 @@ function getStatsFromSheets(ss, params) {
             if (typeFilter === 'new' && !isNewSong) continue;
             if (typeFilter === 'old' && isNewSong) continue;
 
-            // ランクフィルタ (数値化して「以上」を判定)
-            if (targetRank && targetRank !== 'all') {
-                // 現在の行のスコアをランク数値に変換
-                let currentRankValue = 0;
-                if (cScore >= 1009000) currentRankValue = 6; // sssplus
-                else if (cScore >= 1007500) currentRankValue = 5; // sss
-                else if (cScore >= 1005000) currentRankValue = 4; // ssplus
-                else if (cScore >= 1000000) currentRankValue = 3; // ss
-                else if (cScore >= 990000) currentRankValue = 2; // splus
-                else if (cScore >= 970000) currentRankValue = 1; // s
-
-                // ターゲット（選択されたランク）を数値に変換
-                let targetRankValue = 0;
-                switch (targetRank) {
-                    case 'sssplus': targetRankValue = 6; break;
-                    case 'sss': targetRankValue = 5; break;
-                    case 'ssplus': targetRankValue = 4; break;
-                    case 'ss': targetRankValue = 3; break;
-                    case 'splus': targetRankValue = 2; break;
-                    case 's': targetRankValue = 1; break;
-                }
-
-                // 選択したランクの数値より低い場合は除外（「以上」の判定）
-                if (currentRankValue < targetRankValue) continue;
-            }
+            // ★修正：ランク範囲判定（スコア比較）
+            // 下限以上、かつ上限区分の最大値（getUpperLimitGAS）以下
+            if (cScore < rMin || cScore > getUpperLimitGAS(rMax)) continue;
 
             // ランプフィルタ
             if (targetLamp && targetLamp !== 'all') {
@@ -236,8 +218,22 @@ function getStatsFromSheets(ss, params) {
     };
 }
 
-// --- その他の補助関数 (fetchAndProcessFromApi, calculateChuniRating, updateUserSheet, createJsonResponse) は既存のものを維持 ---
-// ※ updateUserSheet 内の records.map 部分でも String() で保護することをお勧めします。
+/**
+ * 補助関数：基準スコアのランク区分の「上限」を返す（GAS用）
+ */
+function getUpperLimitGAS(score) {
+    if (score >= 1010000) return 1010001; // 理論値
+    if (score >= 1009900) return 1010000; // 99AJ
+    if (score >= 1009000) return 1009899; // SSS+
+    if (score >= 1007500) return 1008999; // SSS
+    if (score >= 1007000) return 1007499; // 7000
+    if (score >= 1005000) return 1006999; // SS+
+    if (score >= 1000000) return 1004999; // SS
+    if (score >= 990000) return 999999;  // S+
+    if (score >= 970000) return 989999;  // S
+    return 969999;
+}
+
 
 function updateUserSheet(ss, name, records) {
     let sheet = ss.getSheetByName(name) || ss.insertSheet(name);

@@ -276,6 +276,7 @@ input[type="number"]::-webkit-inner-spin-button {
     margin: 0 2px;
 }
 
+
 /* フィルタ全体を包むコンテナ */
 .filter-controls {
     display: flex;
@@ -403,25 +404,6 @@ input[type="number"]::-webkit-inner-spin-button {
     border-left: 1px solid #eee;
     margin-left: 10px;
     padding-left: 10px;
-}
-
-/* チェックボックスの中身を浮かせる */
-.checkbox-container {
-    position: absolute;
-    top: 100%;
-    /* 親要素(details)のすぐ下に配置 */
-    left: 0;
-    background: #fff;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 12px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-    z-index: 1000;
-    /* これで「ソート」の奥に埋まらない */
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    min-width: 140px;
 }
 
 
@@ -589,17 +571,18 @@ input[type="number"]::-webkit-inner-spin-button {
 .stats-exec-area::-webkit-scrollbar {
     display: none;
 }
+
 .stats-exec-area {
-        text-align: center;
-        -ms-overflow-style: none;
-        scrollbar-width: none;
-        display: flex;
-        gap: 10px;
-        justify-content: center;
-        overflow-x: auto;
-        white-space: nowrap;
-        padding: 10px 5px;
-        -webkit-overflow-scrolling: touch;
+    text-align: center;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    overflow-x: auto;
+    white-space: nowrap;
+    padding: 10px 5px;
+    -webkit-overflow-scrolling: touch;
 }
 
 
@@ -899,7 +882,7 @@ td:nth-child(2) {
     font-weight: bold;
     padding: 2px 5px;
     border-radius: 4px;
-    margin-left: 8px;
+    margin-left: 4px;
 }
 
 .fc-badge {
@@ -910,7 +893,7 @@ td:nth-child(2) {
     font-weight: bold;
     padding: 2px 5px;
     border-radius: 4px;
-    margin-left: 8px;
+    margin-left: 4px;
 }
 
 .ajc-badge {
@@ -923,11 +906,12 @@ td:nth-child(2) {
     font-weight: bold;
     padding: 2px 5px;
     border-radius: 4px;
-    margin-left: 8px;
+    margin-left: 4px;
     box-shadow: 0 0 5px rgba(255, 255, 255, 0.8);
     /* ほのかに光らせる */
     text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
 }
+
 
 /* 虹色が流れるアニメーションの定義 */
 @keyframes rainbow-flow {
@@ -947,16 +931,13 @@ td:nth-child(2) {
 .ajc-badge,
 .aj-badge,
 .fc-badge {
-    font-size: 12px;
-    /* 10pxから12pxへアップ */
-    padding: 3px 8px;
+    font-size: 11px;
+    padding: 2px 7px;
     /* 余白を広げてボリュームを出す */
     border-radius: 6px;
     /* サイズに合わせて角丸も少し大きく */
-    margin-left: 8px;
+    margin-left: 2px;
     display: inline-block;
-    vertical-align: middle;
-    /* FBバッジと高さを合わせる */
     letter-spacing: 0.5px;
     /* 文字の間隔を少し空けて視認性を向上 */
 }
@@ -1053,13 +1034,87 @@ td:nth-child(2) {
     align-items: center;
 }
 
+
+/* 曲名の横の難易度・定数、または統計条件 */
+.title-sub-info {
+    color: #888888;
+    font-size: 0.95em;
+    font-weight: bold;
+    margin-left: 10px;
+}
+
+#ranking-title-container {
+    display: block;
+    word-break: break-all;
+    /* 長いタイトルでも強制改行 */
+    line-height: 1.4;
+    align-items: baseline;
+    /* 文字の底辺を揃える */
+    flex-wrap: wrap;
+    /* 入り切らない時だけ自然に折り返し */
+    gap: 8px;
+    /* 要素同士のスキマ */
+}
+
+/* メインの文字（ALL統計ランキングなど） */
+.main-title-text {
+    font-weight: bold;
+}
+
+/* 理論値の赤文字 */
+.theory-info {
+    color: #ff3b3b;
+    font-size: 0.9em;
+    font-weight: bold;
+    margin-left: 8px;
+}
+
+/* 灰色で小さい詳細条件 */
+.title-sub-info {
+    color: #888888;
+    font-size: 0.9em;
+    font-weight: bold;
+    white-space: nowrap;
+    /* 条件の途中で変な改行をさせない */
+}
+
+/* --- スマホ専用の調整 (@media) --- */
+@media screen and (max-width: 768px) {
+    .main-title-text {
+        font-weight: bold;
+        font-size: 0.9em;
+    }
+
+    .theory-info {
+        color: #ff3b3b;
+        font-size: 0.8em;
+        font-weight: bold;
+    }
+
+    .title-sub-info {
+        color: #888888;
+        font-size: 0.6em;
+        font-weight: bold;
+        white-space: nowrap;
+        /* 条件の途中で変な改行をさせない */
+    }
+}
+
+/* モーダル見出しの余白調整 */
+#ranking-modal h3 {
+    margin: 0 0 5px 0;
+}
+
 /* 白い箱 */
 .modal-content {
+    min-width: 320px;
+    /* スマホ最小幅 */
+    max-width: 900px;
+    /* PC最大幅 */
     background: white;
     padding: 25px;
     border-radius: 15px;
     width: 95%;
-    max-width: 850px;
     max-height: 90vh;
     /* 画面からはみ出さない */
     overflow-y: auto;
@@ -1068,9 +1123,68 @@ td:nth-child(2) {
     /* 中身の要素を縦に並べる */
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 5px;
     /* 要素間の隙間 */
 }
+
+/* 「全員再表示」ボタンのスタイル */
+.reset-btn {
+    background: #e74c3c;
+    /* 赤背景 */
+    color: #ffffff;
+    /* 白文字 */
+    border: none;
+    padding: 5px 5px;
+    /* 小さく */
+    font-size: 11px;
+    /* 小さく */
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.reset-btn:hover {
+    background: #c0392b;
+    /* ホバーで少し暗い赤 */
+}
+
+/* 範囲選択コンテナ */
+.range-selector {
+    display: flex;
+    justify-content: flex-start; /* 左詰め */
+    gap: 7px;                    /* ボタン同士の隙間 */
+    margin-bottom: 5px;
+    padding-left: 5px;           /* グラフとの端を合わせる微調整 */
+}
+
+/* 表示範囲切り替えボタンの基本スタイル */
+.range-btn {
+    background-color: #f2f2f2;   /* 薄い灰色のボックス */
+    color: #666;                 /* 灰色の文字 */
+    border: 1px solid #ddd;
+    border-radius: 3px;          /* 少し角を丸める */
+    
+    /* サイズを小さく */
+    padding: 2px 8px;
+    font-size: 0.7rem;           /* 小さめの文字 */
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    outline: none;
+}
+
+/* ホバー時 */
+.range-btn:hover {
+    background-color: #e8e8e8;
+}
+
+/* ★ 選択中（アクティブ）の状態：配色を逆転 */
+.range-btn.active {
+    background-color: #666;      /* 灰色の背景 */
+    color: #fff;                 /* 白文字 */
+    border-color: #555;
+}
+
 
 /* 数直線キャンバスをレスポンシブにする */
 #ranking-canvas {
@@ -1097,7 +1211,7 @@ td:nth-child(2) {
 .ranking-table-container table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 15px;
+    margin-top: 8px;
 }
 
 .ranking-table-container th,
@@ -1106,6 +1220,102 @@ td {
     text-align: center;
     border-bottom: 1px solid #333;
 }
+
+/* 1. 順位（#）の装飾 */
+#score-table td:first-child,
+#ranking-body td:first-child {
+    font-weight: bold;
+    font-size: 1.1em;
+    position: relative;
+}
+
+/* 1. 順位セル（rank-cell）全体の配置を強制中央にする */
+#ranking-body td.rank-cell {
+    /* テーブルセルとしてではなく、Flexボックスとして振る舞わせる */
+    display: flex !important;
+    flex-direction: column-reverse; /* 数字が上、王冠が下 */
+    align-items: center;           /* 左右の真ん中 */
+    justify-content: center;        /* 上下の真ん中 */
+    
+    /* セルのサイズを固定して、他の列を圧迫しないようにする */
+    width: 60px;
+    height: 60px;
+    margin: 0 auto;                 /* これでセル自体を中央へ */
+    padding: 0 !important;
+    border: none;                   /* 枠線が干渉する場合は調整 */
+    background: none;
+}
+
+/* 2. 王冠（下側に配置される） */
+#ranking-body tr:nth-child(-n+3) td.rank-cell::before {
+    content: "";
+    display: block;
+    width: 26px;
+    height: 14px;
+    margin-top: 2px; /* 数字との隙間 */
+    background: currentColor;
+    clip-path: polygon(
+        0% 100%, 100% 100%, 100% 30%, 80% 60%, 50% 0%, 20% 60%, 0% 30%
+    );
+}
+
+/* 1位：金 */
+#ranking-body tr:nth-child(1) td.rank-cell {
+    color: #ffd700 !important; /* 王冠と数字の両方に適用される */
+}
+
+/* 2位：銀 */
+#ranking-body tr:nth-child(2) td.rank-cell {
+    color: #c0c0c0 !important;
+}
+
+/* 3位：銅 */
+#ranking-body tr:nth-child(3) td.rank-cell {
+    color: #cd7f32 !important;
+}
+
+/* 4位以下：通常色 */
+#ranking-body tr:nth-child(n+4) td.rank-cell {
+    color: #333;
+    font-weight: bold;
+}
+
+/* 3. 1〜3位の数字（上側に配置される） */
+#ranking-body tr:nth-child(-n+3) td.rank-cell {
+    font-size: 1.1em;
+    font-weight: bold;
+    color: inherit;
+    line-height: 1;
+    /* Flexアイテムとして中央に居続けるように指定 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 4. 4位以降の数字も同じ「中央寄せ」を適用してズレを防ぐ */
+#ranking-body tr:nth-child(n+4) td.rank-cell {
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #333;
+    font-weight: bold;
+}
+
+/* 5. テーブル自体の設定（念のため） */
+#ranking-body td {
+    text-align: center;
+    vertical-align: middle;
+}
+
+/* 2. スコアの文字を太くする */
+#score-table td:nth-child(3),
+#ranking-body td:nth-child(3) {
+    font-weight: bold;
+}
+
+
+
 
 /* 数直線で選択されたプレイヤーの行（緑） */
 .selected-rank {
@@ -1120,28 +1330,6 @@ td {
 .my-rank {
     background-color: rgba(255, 71, 87, 0.1) !important;
 }
-
-/* 「全員再表示」ボタンのスタイル */
-.reset-btn {
-    background: #e74c3c;
-    /* 赤背景 */
-    color: #ffffff;
-    /* 白文字 */
-    border: none;
-    padding: 3px 8px;
-    /* 小さく */
-    font-size: 11px;
-    /* 小さく */
-    border-radius: 3px;
-    cursor: pointer;
-    transition: background 0.2s;
-}
-
-.reset-btn:hover {
-    background: #c0392b;
-    /* ホバーで少し暗い赤 */
-}
-
 
 
 /* Discordに送信ボタンの基本スタイル */

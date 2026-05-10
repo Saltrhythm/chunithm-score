@@ -81,16 +81,35 @@
                                     <option value="None">未AJ</option>
                                 </select>
 
-                                <label for="rank-filter" class="filter-label">Rank</label>
-                                <select id="rank-filter" class="filter-select">
-                                    <option value="all">すべて</option>
-                                    <option value="sssplus">SSS+</option>
-                                    <option value="sss">SSS</option>
-                                    <option value="ssplus">SS+</option>
-                                    <option value="ss">SS</option>
-                                    <option value="splus">S+</option>
-                                    <option value="s">S</option>
-                                </select>
+
+                                <label class="filter-label">Rank</label>
+                                <div class="rank-filter-container"
+                                    style="display: flex; align-items: center;">
+                                    <select id="rank-min" class="filter-select" style="width: 95px;">
+                                        <option value="1009900">99AJ</option>
+                                        <option value="1009000">SSS+</option>
+                                        <option value="1007500">SSS</option>
+                                        <option value="1007000">7000</option>
+                                        <option value="1005000">SS+</option>
+                                        <option value="1000000">SS</option>
+                                        <option value="990000">S+</option>
+                                        <option value="970000">S</option>
+                                        <option value="0" selected>0</option>
+                                    </select>
+                                    <span style="font-size: 12px;">～</span>
+                                    <select id="rank-max" class="filter-select" style="width: 95px;">
+                                        <option value="1010000" selected>理論値</option>
+                                        <option value="1009900">99AJ</option>
+                                        <option value="1009000">SSS+</option>
+                                        <option value="1007500">SSS</option>
+                                        <option value="1007000">7000</option>
+                                        <option value="1005000">SS+</option>
+                                        <option value="1000000">SS</option>
+                                        <option value="990000">S+</option>
+                                        <option value="970000">S</option>
+                                    </select>
+                                </div>
+
 
                                 <label for="min-constant" class="filter-label">定数</label>
                                 <select id="min-constant" class="filter-select"></select>
@@ -144,13 +163,23 @@
 
             <div id="ranking-modal" style="display: none;">
                 <div class="modal-content">
+
                     <h3>
-                        <span id="ranking-title"></span>
-                        <small id="ranking-diff" style="color:#666; margin-left:10px;"></small>
+                        <span id="ranking-title-container"></span>
                     </h3>
 
-                    <div style="text-align: left; margin-bottom: 5px;">
-                        <button onclick="resetTableVisibility()" class="reset-btn">全員再表示（表の行をクリックするとそのプレイヤーを非表示にできます）</button>
+                    <div style="text-align: left; margin-bottom: 2px;">
+                        <button onclick="resetTableVisibility()" class="reset-btn">全員再表示（表の行をクリックすると非表示）</button>
+                    </div>
+
+
+                    <div class="range-selector">
+                        <button class="range-btn active" data-min="1000000"
+                            onclick="updateRankingRange(1000000)">SS～</button>
+                        <button class="range-btn" data-min="1005000" onclick="updateRankingRange(1005000)">SS+～</button>
+                        <button class="range-btn" data-min="1007500" onclick="updateRankingRange(1007500)">SSS～</button>
+                        <button class="range-btn" data-min="1009000"
+                            onclick="updateRankingRange(1009000)">SSS+～</button>
                     </div>
 
                     <canvas id="ranking-canvas" width="800" height="180"></canvas>
