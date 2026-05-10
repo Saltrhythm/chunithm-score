@@ -143,12 +143,13 @@ function getStatsFromSheets(ss, params) {
     const userMap = userMapSheet.getDataRange().getValues();
     const results = [];
 
+    // 楽曲別の集計用オブジェクト (key: 曲名, value: {count: 人数, const: 定数})
+    const songAggregation = {};
+
     const minC = parseFloat(params.minConst || 0);
     const maxC = parseFloat(params.maxConst || 16.0);
     const minR = parseFloat(params.minRate || 0);
     const maxR = parseFloat(params.maxRate || 99.99);
-   
-// ★修正：下限スコアと上限スコアを受け取る
     const rMin = parseFloat(params.rankMin || 0);
     const rMax = parseFloat(params.rankMax || 1010000);
 
@@ -182,10 +183,16 @@ function getStatsFromSheets(ss, params) {
         if (!sheet) continue;
 
         const data = sheet.getDataRange().getValues();
-        let count = 0;
+        let playerCount = 0;
 
         for (let j = 1; j < data.length; j++) {
             const row = data[j];
+            const songName = String(row[0] || "不明な曲"); // A列がタイトル
+            const diff = String(row[1] || "");           // B列が難易度
+
+            // 集計用のキーを作成（例：Garakuta Doll Play [MAS]）
+            const fullTitle = diff ? `${songName} [${diff}]` : songName;
+
             const cConst = parseFloat(row[2] || 0);
             const cScore = parseFloat(row[3] || 0);
             const cRating = parseFloat(row[4] || 0);
@@ -208,13 +215,27 @@ function getStatsFromSheets(ss, params) {
                 if (targetLamp === 'None' && cLamp.includes('AJ')) continue;
             }
 
-            count++;
+            playerCount++;
+
+            // ★楽曲別のカウンターを加算
+            if (!songAggregation[fullTitle]) {
+                songAggregation[fullTitle] = { count: 0, constant: cConst };
+            }
+            songAggregation[fullTitle].count++;
         }
-        results.push({ playerName: name, count: count });
+        results.push({ playerName: name, count: playerCount });
     }
+
+    // 楽曲別ランキングを配列に変換してソート
+    const songRanking = Object.keys(songAggregation).map(t => {
+        return { title: t, count: songAggregation[t].count, constant: songAggregation[t].constant };
+    }).sort((a, b) => b.count - a.count);
+
     return {
-        ranking: results.sort((a, b) => b.count - a.count),
-        theoryCount: totalMatchingSongs
+        playerRanking: results.sort((a, b) => b.count - a.count), // 個人別
+        songRanking: songRanking, // 楽曲別
+        theoryCount: totalMatchingSongs, // 条件に合う全曲数
+        totalUsers: userMap.length - 1   // 全ユーザー数
     };
 }
 

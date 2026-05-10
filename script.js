@@ -1,4 +1,4 @@
-const GAS_URL = "https://script.google.com/macros/s/AKfycbwv130_J7gV564XKMiVI7BzhIX2frH0R9jIgYlSZWXL45QkOIuL6CHPR2Uw93KOmp4fIA/exec"
+const GAS_URL = "https://script.google.com/macros/s/AKfycbw-vVvJmP_89QW0h9vDEyGX6ycLwYr40owcgdEuQXkji59fOJuynhVVKGEsWbyKXC7NpQ/exec"
 
 let myCurrentRecords = [];
 let currentRanking = [];
@@ -229,9 +229,9 @@ function updateFilters() {
         const constant = parseFloat(item.const) || 0;
         const matchesConstant = (constant >= minConst && constant <= maxConst);
 
-       // 4. ランク範囲判定
+        // 4. ランク範囲判定
         const tScore = parseFloat(item.score) || 0;
-        
+
         // 選択された下限以上、かつ上限「区分」の境界値未満
         // 例: SSS(1007500) ～ SSS+(1009000) なら 1007500 <= score < 1009900(99AJの境界)
         // ここでは単純に選択された数値で比較するのが直感的です
@@ -284,8 +284,8 @@ function getUpperLimit(score) {
     if (score >= 1007000) return 1007499; // 7000ならSSS手前まで
     if (score >= 1005000) return 1006999; // SS+なら7000手前まで
     if (score >= 1000000) return 1004999; // SSならSS+手前まで
-    if (score >= 990000)  return 999999;  // S+ならSS手前まで
-    if (score >= 970000)  return 989999;  // SならS+手前まで
+    if (score >= 990000) return 999999;  // S+ならSS手前まで
+    if (score >= 970000) return 989999;  // SならS+手前まで
     return 969999; // それ未満
 }
 
@@ -618,7 +618,7 @@ function pickRandomSong() {
         const constant = parseFloat(item.const) || 0;
         if (constant < minConst || constant > maxConst) return false;
 
-       // ★修正：ランク範囲判定（スコア比較）
+        // ★修正：ランク範囲判定（スコア比較）
         const tScore = parseFloat(item.score) || 0;
         // 下限以上 かつ 上限区分の最大値以下（getUpperLimitを使用）
         if (tScore < rankMin || tScore > getUpperLimit(rankMax)) return false;
@@ -1050,165 +1050,160 @@ function updateTableHighlight() {
 }
 
 /**
- * 統計情報を取得して表示するメイン関数
- * 画面上の各フィルタ（定数、レート、ランク、ランプ、種別）の値を取得してGASへ送信します
+ * 統計情報を取得して表示
+ * @param {String} mode 'player' または 'song'
  */
-async function fetchStats() {
+async function fetchStats(mode) {
+    console.log("--- fetchStats Start --- Mode:", mode);
 
-    const btn = document.getElementById('stats-btn');
-    if (btn) {
-        btn.innerText = "集計中...";
-        btn.disabled = true;
+    // ボタン制御
+    const btnP = document.getElementById('stats-player-btn');
+    const btnS = document.getElementById('stats-song-btn');
+    const currentBtn = (mode === 'player') ? btnP : btnS;
+
+    if (currentBtn) {
+        currentBtn.disabled = true;
+        currentBtn.innerText = "集計中...";
     }
 
-    // --- 1. 各種ラベルと値の取得 ---
-    // index.html の構造に合わせた ID 指定
+    // フィルタ値の取得
     const typeFilter = document.querySelector('.btn-filter.active')?.getAttribute('data-value') || 'all';
-    const typeLabel = typeFilter === 'new' ? '新曲' : typeFilter === 'old' ? '旧曲' : '全曲';
-
-    // 定数: id="min-const", id="max-const" (デフォルト 13.5～16.0)
-    const minC = document.getElementById('min-constant')?.value || "13.5";
+    const minC = document.getElementById('min-constant')?.value || "0";
     const maxC = document.getElementById('max-constant')?.value || "16.0";
+    const rMin = document.getElementById('rank-min')?.value || "0";
+    const rMax = document.getElementById('rank-max')?.value || "1010000";
+    const lmp = document.getElementById('lamp-filter')?.value || 'all';
 
-    // 単曲Rating: id="min-rate", id="max-rate"
-    const minRVal = document.getElementById('min-rating')?.value;
-    const maxRVal = document.getElementById('max-rating')?.value;
-    const minR = minRVal || "0";
-    const maxR = maxRVal || "99.99";
-
-    // ★修正：下限・上限ランクの取得
-    const rankMinSelect = document.getElementById('rank-min');
-    const rankMaxSelect = document.getElementById('rank-max');
-    const rMin = rankMinSelect ? rankMinSelect.value : "0";
-    const rMax = rankMaxSelect ? rankMaxSelect.value : "1010000";
-
-    // ★追加：統計モード（個人別 or 楽曲別）の取得
-    const statsType = document.getElementById('stats-type')?.value || 'player';
-
-    // 表示用のラベル作成
-    const minRankText = rankMinSelect?.options[rankMinSelect.selectedIndex].text || "0";
-    const maxRankText = rankMaxSelect?.options[rankMaxSelect.selectedIndex].text || "理論値";
-    const rankLabel = `ランク: ${minRankText}～${maxRankText}`;
-
-    // ランプ: id="lamp-filter"
-    const lampVal = document.getElementById('lamp-filter')?.value || 'all';
-    let lampLabel = "";
-    if (lampVal === 'all') {
-        lampLabel = "ランプ: すべて";
-    } else if (lampVal === 'ajc') {
-        lampLabel = "ランプ: AJC";
-    } else if (lampVal === 'aj') {
-        lampLabel = "ランプ: AJ";
-    }
-
-    const params = {
+    const requestParams = {
         mode: "get_stats",
         minConst: minC,
         maxConst: maxC,
-        minRate: minR,
-        maxRate: maxR,
-        rankMin: rMin, // 下限スコア
-        rankMax: rMax, // 上限スコア
-        lampFilter: lampVal,
+        rankMin: rMin,
+        rankMax: rMax,
+        lampFilter: lmp,
         typeFilter: typeFilter
     };
 
     try {
-        const response = await fetch(GAS_URL, { method: "POST", body: JSON.stringify(params) });
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify(requestParams)
+        });
         const result = await response.json();
 
         if (result.status === "success") {
+            console.log("GASデータ受信成功", result.data);
+
             const modal = document.getElementById('ranking-modal');
-            const titleContainer = document.getElementById('ranking-title-container');
-            const rangeSelector = document.querySelector('.range-selector');
+
+            // 統計モード用の表示切り替え
             const canvas = document.getElementById('ranking-canvas');
+            const rangeSelector = document.querySelector('.range-selector');
+            const resetBtn = document.querySelector('.reset-btn');
 
-            // 1. UIのリセット（統計モード用）
-            if (rangeSelector) rangeSelector.style.display = 'none';
             if (canvas) canvas.style.display = 'none';
+            if (rangeSelector) rangeSelector.style.display = 'none';
+            if (resetBtn) {
+                // 統計モードでも使いたいなら block、消したいなら none
+                resetBtn.style.display = 'block';
+            }
 
-            // 2. ヘッダーの書き換え
-            const modalTableHead = document.querySelector('#ranking-modal table thead tr');
-            if (modalTableHead) {
-                modalTableHead.innerHTML = `
-                    <th>順位</th>
-                    <th>プレイヤー</th>
-                    <th style="text-align:right;">楽曲数</th>
-                    <th style="text-align:center;">達成率</th>
+            // モードに応じたデータの抽出
+            let finalData = (mode === 'song') ? result.data.songRanking : result.data.playerRanking;
+
+            // ★ 楽曲別の時だけ、上位50件に絞る
+            if (mode === 'song' && finalData.length > 100) {
+                finalData = finalData.slice(0, 100);
+            }
+
+            const finalDenom = (mode === 'song') ? result.data.totalUsers : result.data.theoryCount;
+
+            // 重要：テーブルヘッダーの書き換え
+            const thead = modal.querySelector('table thead tr');
+            if (thead) {
+                thead.innerHTML = (mode === 'song')
+                    ? `<th>順位</th><th>楽曲名</th><th style="text-align:right;">人数</th><th style="text-align:center;">達成率</th>`
+                    : `<th>順位</th><th>プレイヤー</th><th style="text-align:right;">楽曲数</th><th style="text-align:center;">達成率</th>`;
+            }
+
+            // タイトルの設定
+            const titleContainer = document.getElementById('ranking-title-container');
+            const typeLabel = typeFilter === 'new' ? '新曲' : typeFilter === 'old' ? '旧曲' : '全曲';
+            const modeName = (mode === 'song') ? "楽曲別 達成人数" : "個人別 達成楽曲数";
+            const unit = (mode === 'song') ? "人" : "曲";
+
+            
+            const limitText = (mode === 'song') ? " (上位100件)" : "";
+            if (titleContainer) {
+                titleContainer.innerHTML = `
+                    <span class="main-title-text">${typeLabel} ${modeName}${limitText}</span>
+                    <span class="theory-info">(対象: ${finalDenom}${unit})</span>
                 `;
             }
 
-            // 3. タイトルの構成
-            const theoryCount = result.data.theoryCount || 0;
-            let conds = [`定数: ${minC}～${maxC}`, rankLabel, `ランプ: ${lampLabel}`];
-            const condText = conds.map(c => `[${c}]`).join(' ');
+            // ★ここで描画関数を呼ぶ（引数は3つ！）
+            console.log("displayStatsRankingを呼び出します...");
+            displayStatsRanking(finalData, finalDenom, mode);
 
-            titleContainer.innerHTML = `
-                <span class="main-title-text">${typeLabel} 統計ランキング</span>
-                <span class="theory-info">(理論値: ${theoryCount}曲)</span>
-                <span class="title-sub-info" style="display:block; font-size:0.8rem; font-weight:normal; margin-top:5px;">${condText}</span>
-            `;
+            // モーダル表示
+            modal.style.display = "flex";
+            console.log("モーダル表示完了");
 
-            // 4. データの表示（既存の関数を利用）
-            displayStatsRanking(result.data.ranking, theoryCount);
-            
-            if (modal) modal.style.display = 'flex';
+        } else {
+            alert("エラー: " + result.message);
         }
-    } catch (err) {
-        console.error(err);
-        alert("統計の取得に失敗しました。");
+    } catch (e) {
+        console.error("システムエラー:", e);
+        alert("通信に失敗しました。");
     } finally {
-        if (btn) {
-            btn.innerText = "この条件で統計を集計";
-            btn.disabled = false;
+        if (currentBtn) {
+            currentBtn.disabled = false;
+            currentBtn.innerText = (mode === 'player') ? "統計 (個人別)" : "統計 (楽曲別)";
         }
     }
 }
 
 /**
- * 取得した統計ランキングをテーブル（#ranking-body）に描画します
- * @param {Array} statsData [{playerName: "name", count: 10}, ...]
- * @param {Number} theoryCount 理論値（最大曲数）
+ * 統計用：描画関数
  */
-function displayStatsRanking(statsData, theoryCount) {
+function displayStatsRanking(statsData, denominator, mode) {
+    console.log("--- displayStatsRanking Internal Start ---");
     const tbody = document.getElementById('ranking-body');
     if (!tbody) return;
 
     tbody.innerHTML = "";
 
-    // statsData が undefined や null でないか確認
     if (!statsData || statsData.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">該当データなし</td></tr>';
         return;
     }
 
     statsData.forEach((row, index) => {
+        // ここで mode に応じて安全に名前を取得
+        const displayName = (mode === 'song') ? (row.title || "不明") : (row.playerName || "不明");
+        const unit = (mode === 'song') ? "人" : "曲";
 
-        // --- 達成率の計算 ---
         let rateStr = "-";
-        if (theoryCount > 0) {
-            // 小数点第2位まで表示 (例: 85.50%)
-            const rate = (row.count / theoryCount) * 100;
-            rateStr = rate.toFixed(1) + "%";
+        if (denominator > 0) {
+            rateStr = ((row.count / denominator) * 100).toFixed(1) + "%";
         }
 
         const tr = document.createElement('tr');
-        tr.style.cursor = "pointer"; // 指マークにして「押せる」ことを伝える
-        tr.title = "タップして非表示"; // ホバー時にヒントを出す
-
-        // ★ ここを追加：クリックしたらその行を隠す
-        tr.onclick = function () {
-            this.style.display = "none";
-        };
+        tr.style.cursor = "pointer";
+        tr.onclick = function () { this.style.display = "none"; };
 
         tr.innerHTML = `
             <td class="rank-cell" style="text-align:center;">${index + 1}</td>
-            <td>${row.playerName}</td>
-            <td style="text-align:right; font-weight:bold;">${row.count} 曲</td>
+            <td style="text-align:left;">${displayName}</td>
+            <td style="text-align:right; font-weight:bold;">${row.count} ${unit}</td>
             <td style="text-align:center; color: #f02e2e;">${rateStr}</td>
         `;
         tbody.appendChild(tr);
     });
+
+    console.log("Table Drawing Completed");
+    // もしここまで来たら、絶対に表は見えているはずです
 }
 
 function resetTableVisibility() {

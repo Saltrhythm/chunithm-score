@@ -83,8 +83,7 @@
 
 
                                 <label class="filter-label">Rank</label>
-                                <div class="rank-filter-container"
-                                    style="display: flex; align-items: center;">
+                                <div class="rank-filter-container" style="display: flex; align-items: center;">
                                     <select id="rank-min" class="filter-select" style="width: 95px;">
                                         <option value="1009900">99AJ</option>
                                         <option value="1009000">SSS+</option>
@@ -137,9 +136,13 @@
                 </div>
             </div>
 
-            <div class="stats-exec-area" style="text-align: center; margin: 15px 0;">
-                <button id="stats-btn" class="btn-stats" onclick="fetchStats()">この条件で統計を集計</button>
-                <button id="random-btn" class="btn-random" onclick="pickRandomSong()">この条件で課題曲を選出</button>
+            <div class="stats-exec-area"
+                style="display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 15px 0;">
+                <button id="stats-player-btn" class="btn-stats" onclick="fetchStats('player')"
+                    style="background-color: #4a90e2;">統計 (個人別)</button>
+                <button id="stats-song-btn" class="btn-stats" onclick="fetchStats('song')"
+                    style="background-color: #f5a623;">統計 (楽曲別)</button>
+                <button id="random-btn" class="btn-random" onclick="pickRandomSong()">課題曲を選出</button>
             </div>
 
             <div id="loading">データを取得中...</div>
