@@ -1315,8 +1315,6 @@ td {
 }
 
 
-
-
 /* 数直線で選択されたプレイヤーの行（緑） */
 .selected-rank {
     background-color: rgba(46, 204, 113, 0.2) !important;
@@ -1397,4 +1395,88 @@ td {
     padding: 8px;
     border-bottom: 1px solid #ddd;
     font-size: 14px;
+}
+
+/* サブモーダル内のテーブル行 */
+#sub-modal-tbody tr {
+    border-bottom: 1px solid #eee;
+}
+
+/* 達成済みプレイヤーの左端にアクセントカラー */
+.is-achieved-row {
+    border-left: 4px solid #ff4757 !important;
+}
+
+/* --- 統計モード専用：追加パーツ --- */
+
+/* タイトルと表の間のボタン設置エリア */
+#stats-control-area {
+    width: 100%;
+    padding: 10px 0;
+    text-align: center;
+    display: none; /* JSで統計モード時に block にする */
+}
+
+/* 数/平均 切り替えボタンの装飾 */
+.switch-mode-btn {
+    background-color: #4CAF50; /* 緑系 */
+    color: white;
+    border: none;
+    padding: 8px 18px;
+    border-radius: 25px; /* 丸みのあるボタン */
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 13px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+    transition: background 0.2s, transform 0.1s;
+}
+
+.switch-mode-btn:hover {
+    background-color: #45a049;
+}
+
+.switch-mode-btn:active {
+    transform: scale(0.96); /* 押した時に少し凹む演出 */
+}
+
+/* 平均スコア表示時の青文字強調 */
+#ranking-body td .avg-score-val {
+    color: #2e7df0;
+    font-weight: bold;
+}
+
+/* 達成率表示時の赤文字強調 */
+#ranking-body td .rate-val {
+    color: #f02e2e;
+    font-weight: bold;
+}
+
+/* --- 既存スタイルの微調整（競合対策） --- */
+
+/* 統計モードは列が多いため、王冠セルの幅を固定して崩れを防ぐ */
+#ranking-body td.rank-cell {
+    min-width: 50px;
+    width: 50px !important;
+    height: auto !important; /* 固定高を解除してレスポンシブに */
+    padding: 5px 0 !important;
+}
+
+/* 通常ランキング用のコントロールを隠す際の transition（任意） */
+#ranking-controls {
+    transition: opacity 0.2s ease;
+}
+
+/* --- スマホ用の最終調整 --- */
+@media screen and (max-width: 480px) {
+    #ranking-table th, #ranking-table td {
+        font-size: 12px; /* スマホでは表の文字を少し小さく */
+        padding: 8px 4px;
+    }
+    
+    /* 統計モードで曲名が長い場合に折り返しを許可 */
+    #ranking-table td:nth-child(2) {
+        max-width: 120px;
+        word-wrap: break-word;
+        text-align: left;
+    }
 }

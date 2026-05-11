@@ -167,50 +167,49 @@
             <div id="ranking-modal" style="display: none;">
                 <div class="modal-content">
 
-                    <h3>
-                        <span id="ranking-title-container"></span>
-                    </h3>
+                    <h3 id="ranking-title-container"></h3>
 
-                    <div style="text-align: left; margin-bottom: 2px;">
-                        <button onclick="resetTableVisibility()" class="reset-btn">全て再表示（表の行をクリックすると非表示）</button>
+                    <div id="stats-control-area" style="text-align: center; margin-bottom: 5px;"></div>
+
+                    <div id="ranking-controls">
+                        <div style="text-align: left; margin-bottom: 2px;">
+                            <button id="reset-visibility-btn" onclick="resetTableVisibility()"
+                                class="reset-btn">全て再表示（行をクリックすると非表示になります）</button>
+                        </div>
+
+                        <div class="range-selector">
+                            <button class="range-btn active" data-min="1000000"
+                                onclick="updateRankingRange(1000000)">SS～</button>
+                            <button class="range-btn" data-min="1005000"
+                                onclick="updateRankingRange(1005000)">SS+～</button>
+                            <button class="range-btn" data-min="1007500"
+                                onclick="updateRankingRange(1007500)">SSS～</button>
+                            <button class="range-btn" data-min="1009000"
+                                onclick="updateRankingRange(1009000)">SSS+～</button>
+                        </div>
+
+                        <canvas id="ranking-canvas" width="800" height="180"></canvas>
                     </div>
-
-
-                    <div class="range-selector">
-                        <button class="range-btn active" data-min="1000000"
-                            onclick="updateRankingRange(1000000)">SS～</button>
-                        <button class="range-btn" data-min="1005000" onclick="updateRankingRange(1005000)">SS+～</button>
-                        <button class="range-btn" data-min="1007500" onclick="updateRankingRange(1007500)">SSS～</button>
-                        <button class="range-btn" data-min="1009000"
-                            onclick="updateRankingRange(1009000)">SSS+～</button>
-                    </div>
-
-                    <canvas id="ranking-canvas" width="800" height="180"></canvas>
-
 
                     <div style="margin-top: 15px; width: 100%;">
-                        <table style="width:100%">
-                            <thead>
+                        <table id="ranking-table" style="width:100%">
+                            <thead id="ranking-thead">
                                 <tr>
                                     <th>順位</th>
-                                    <th>プレイヤー</th>
+                                    <th>名前</th>
                                     <th>スコア</th>
-                                    <th>ランプ</th>
+                                    <th>詳細</th>
                                 </tr>
                             </thead>
                             <tbody id="ranking-body"></tbody>
                         </table>
                     </div>
 
-
-
                     <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
                         <button id="discord-share-btn" onclick="shareToDiscord()">Discordに送信</button>
-
                         <button class="modal-close-btn"
                             onclick="document.getElementById('ranking-modal').style.display='none'">閉じる</button>
                     </div>
-
                 </div>
             </div>
         </div>

@@ -134,7 +134,7 @@ function getRankingFromSheets(ss, title, diff, logSheet) {
 }
 
 /**
- * 統計情報を取得
+ * 統計情報を取得（全員のプレイデータを達成フラグ付きで保持するよう修正）
  */
 function getStatsFromSheets(ss, params) {
     const userMapSheet = ss.getSheetByName("UserMap");
@@ -142,8 +142,6 @@ function getStatsFromSheets(ss, params) {
 
     const userMap = userMapSheet.getDataRange().getValues();
     const results = [];
-
-    // 楽曲別の集計用オブジェクト (key: 曲名, value: {count: 人数, const: 定数})
     const songAggregation = {};
 
     const minC = parseFloat(params.minConst || 0);
@@ -152,23 +150,17 @@ function getStatsFromSheets(ss, params) {
     const maxR = parseFloat(params.maxRate || 99.99);
     const rMin = parseFloat(params.rankMin || 0);
     const rMax = parseFloat(params.rankMax || 1010000);
-
     const targetLamp = params.lampFilter;
     const typeFilter = params.typeFilter;
 
-    const masterSheet = ss.getSheetByName("MasterData"); // MasterDataシートから全曲数を計算
+    // --- 全曲数の計算 (MasterData) ---
     let totalMatchingSongs = 0;
-
+    const masterSheet = ss.getSheetByName("MasterData");
     if (masterSheet) {
         const masterData = masterSheet.getDataRange().getValues();
-        const minC = parseFloat(params.minConst);
-        const maxC = parseFloat(params.maxConst);
-        const typeFilter = params.typeFilter;
-
         for (let i = 1; i < masterData.length; i++) {
-            const cConst = parseFloat(masterData[i][2]); // 定数
-            const isNew = masterData[i][3] === true || masterData[i][3] === "true"; // 新曲フラグ
-
+            const cConst = parseFloat(masterData[i][2]);
+            const isNew = masterData[i][3] === true || masterData[i][3] === "true";
             if (cConst >= minC && cConst <= maxC) {
                 if (typeFilter === 'all') totalMatchingSongs++;
                 else if (typeFilter === 'new' && isNew) totalMatchingSongs++;
@@ -177,20 +169,21 @@ function getStatsFromSheets(ss, params) {
         }
     }
 
+    // --- 各ユーザーの集計 ---
     for (let i = 1; i < userMap.length; i++) {
         const name = String(userMap[i][1] || "");
         const sheet = ss.getSheetByName(name);
         if (!sheet) continue;
 
         const data = sheet.getDataRange().getValues();
-        let playerCount = 0;
+        let playerCountFiltered = 0;   // 条件達成数
+        let playerTotalScoreAll = 0;   // 定数内合計スコア
+        let playerTotalCountAll = 0;   // 定数内プレイ数
 
         for (let j = 1; j < data.length; j++) {
             const row = data[j];
-            const songName = String(row[0] || "不明な曲"); // A列がタイトル
-            const diff = String(row[1] || "");           // B列が難易度
-
-            // 集計用のキーを作成（例：Garakuta Doll Play [MAS]）
+            const songName = String(row[0] || "不明な曲");
+            const diff = String(row[1] || "");
             const fullTitle = diff ? `${songName} [${diff}]` : songName;
 
             const cConst = parseFloat(row[2] || 0);
@@ -199,47 +192,74 @@ function getStatsFromSheets(ss, params) {
             const cLamp = String(row[5] || "");
             const isNewSong = !!row[6];
 
+            // --- 定数範囲外は完全にスキップ ---
             if (cConst < minC || cConst > maxC) continue;
-            if (cRating < minR || cRating > maxR) continue;
-            if (typeFilter === 'new' && !isNewSong) continue;
-            if (typeFilter === 'old' && isNewSong) continue;
 
-            // ★修正：ランク範囲判定（スコア比較）
-            // 下限以上、かつ上限区分の最大値（getUpperLimitGAS）以下
-            if (cScore < rMin || cScore > getUpperLimitGAS(rMax)) continue;
-
-            // ランプフィルタ
-            if (targetLamp && targetLamp !== 'all') {
-                if (targetLamp === 'ajc' && !cLamp.includes('AJC')) continue;
-                if (targetLamp === 'aj' && !cLamp.includes('AJ')) continue;
-                if (targetLamp === 'None' && cLamp.includes('AJ')) continue;
-            }
-
-            playerCount++;
-
-            // ★楽曲別のカウンターを加算
+            // --- 楽曲別集計の初期化（定数内であれば必ず作成） ---
             if (!songAggregation[fullTitle]) {
-                songAggregation[fullTitle] = { count: 0, constant: cConst, players: [] };
+                songAggregation[fullTitle] = {
+                    count: 0, constant: cConst, players: [],
+                    totalScoreAll: 0, totalCountAll: 0
+                };
             }
-            songAggregation[fullTitle].count++;
-            songAggregation[fullTitle].players.push({
-                name: name,
-                score: cScore
+
+            // 全プレイとしての集計（平均用）
+            songAggregation[fullTitle].totalScoreAll += cScore;
+            songAggregation[fullTitle].totalCountAll++;
+            playerTotalScoreAll += cScore;
+            playerTotalCountAll++;
+
+            // --- フィルタ（達成条件）判定 ---
+            let isAchieved = true;
+            if (cRating < minR || cRating > maxR) isAchieved = false;
+            if (typeFilter === 'new' && !isNewSong) isAchieved = false;
+            if (typeFilter === 'old' && isNewSong) isAchieved = false;
+            if (cScore < rMin || cScore > getUpperLimitGAS(rMax)) isAchieved = false;
+
+            if (targetLamp && targetLamp !== 'all') {
+                if (targetLamp === 'ajc' && !cLamp.includes('AJC')) isAchieved = false;
+                else if (targetLamp === 'aj' && !cLamp.includes('AJ')) isAchieved = false;
+                else if (targetLamp === 'None' && cLamp.includes('AJ')) isAchieved = false;
+            }
+
+            // ★ 修正：達成に関わらずplayersにpushし、フラグを持たせる
+            songAggregation[fullTitle].players.push({ 
+                name: name, 
+                score: cScore, 
+                isAchieved: isAchieved 
             });
+
+            if (isAchieved) {
+                playerCountFiltered++;
+                songAggregation[fullTitle].count++; // 達成人数
+            }
         }
-        results.push({ playerName: name, count: playerCount });
+
+        results.push({
+            playerName: name,
+            count: playerCountFiltered,
+            allPlayCount: playerTotalCountAll,
+            avgScore: playerTotalCountAll > 0 ? Math.round(playerTotalScoreAll / playerTotalCountAll) : 0
+        });
     }
 
-    // 楽曲別ランキングを配列に変換してソート
     const songRanking = Object.keys(songAggregation).map(t => {
-        return { title: t, count: songAggregation[t].count, constant: songAggregation[t].constant, players: songAggregation[t].players };
-    }).sort((a, b) => b.count - a.count);
+        const data = songAggregation[t];
+        return {
+            title: t,
+            count: data.count,
+            constant: data.constant,
+            players: data.players, // ここに全員分のデータ（フラグ付）が入る
+            avgScore: data.totalCountAll > 0 ? Math.round(data.totalScoreAll / data.totalCountAll) : 0,
+            totalCountAll: data.totalCountAll || 0
+        };
+    });
 
     return {
-        playerRanking: results.sort((a, b) => b.count - a.count), // 個人別
-        songRanking: songRanking, // 楽曲別
-        theoryCount: totalMatchingSongs, // 条件に合う全曲数
-        totalUsers: userMap.length - 1   // 全ユーザー数
+        playerRanking: results,
+        songRanking: songRanking,
+        theoryCount: totalMatchingSongs,
+        totalUsers: userMap.length - 1
     };
 }
 

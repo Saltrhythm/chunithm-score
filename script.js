@@ -1,4 +1,4 @@
-const GAS_URL = "https://script.google.com/macros/s/AKfycbw-vVvJmP_89QW0h9vDEyGX6ycLwYr40owcgdEuQXkji59fOJuynhVVKGEsWbyKXC7NpQ/exec"
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwmfWR-hxo5U_xmnCVDQH4WRlxV-rRtzd_ygL-v2csdDPGN_royidW6Or49toubi-xRBg/exec"
 
 let myCurrentRecords = [];
 let currentRanking = [];
@@ -20,6 +20,12 @@ const rankThresholds = {
     's': 970000,
     'none': 0
 };
+
+let currentStatsData = null;      // GASから取得した生のリスト
+let currentStatsMode = 'song';    // 'player' または 'song'
+let currentDisplayType = 'count'; // 'count' (数) または 'avg' (平均)
+let currentDenominator = 0;       // 母数（達成率計算用）
+let lastStatsResponse = null; // GASの結果を保持する
 
 /**
  * 起動時に実行
@@ -762,7 +768,14 @@ async function loadRanking(title, diff, songConst) {
     const rankingBody = document.getElementById('ranking-body');
     const titleContainer = document.getElementById('ranking-title-container');
 
-    // --- 統計モードからのリセット処理 ---
+    // --- 1. 表示エリアの切り替え（統計モードから通常モードへ復帰） ---
+    const controls = document.getElementById('ranking-controls');
+    const statsControlArea = document.getElementById('stats-control-area');
+
+    if (controls) controls.style.display = 'block';           // グラフや範囲ボタンを表示
+    if (statsControlArea) statsControlArea.style.display = 'none'; // 統計用切り替えボタンを隠す
+
+    // --- 2. テーブルヘッダーを通常用にリセット ---
     const modalTableHead = document.querySelector('#ranking-modal table thead tr');
     if (modalTableHead) {
         modalTableHead.innerHTML = `
@@ -773,22 +786,15 @@ async function loadRanking(title, diff, songConst) {
         `;
     }
 
-    const rangeSelector = document.querySelector('.range-selector');
-    if (rangeSelector) {
-        rangeSelector.style.display = 'flex'; // または 'block'
-    }
+    // --- 3. その他のリセット処理 ---
+    selectedPlayer = null;
+    lastRankingData = [];
 
     const canvas = document.getElementById('ranking-canvas');
-    if (canvas) canvas.style.display = 'block'; // キャンバスを表示に戻す
-
-    // --- ここでリセット処理を行う ---
-    selectedPlayer = null;    // 選択状態を解除
-    lastRankingData = [];     // キャッシュデータを空にする
-
-    // キャンバスを一度真っ白にする
     if (canvas) {
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.style.display = 'block'; // キャンバスを表示
     }
 
     // 難易度と定数を span で囲んで1行に構成
@@ -1051,12 +1057,10 @@ function updateTableHighlight() {
 
 /**
  * 統計情報を取得して表示
- * @param {String} mode 'player' または 'song'
  */
 async function fetchStats(mode) {
     console.log("--- fetchStats Start --- Mode:", mode);
 
-    // ボタン制御
     const btnP = document.getElementById('stats-player-btn');
     const btnS = document.getElementById('stats-song-btn');
     const currentBtn = (mode === 'player') ? btnP : btnS;
@@ -1066,7 +1070,6 @@ async function fetchStats(mode) {
         currentBtn.innerText = "集計中...";
     }
 
-    // フィルタ値の取得
     const typeFilter = document.querySelector('.btn-filter.active')?.getAttribute('data-value') || 'all';
     const minC = document.getElementById('min-constant')?.value || "0";
     const maxC = document.getElementById('max-constant')?.value || "16.0";
@@ -1095,65 +1098,31 @@ async function fetchStats(mode) {
         if (result.status === "success") {
             console.log("GASデータ受信成功", result.data);
 
+            // ★ここに追加！ GASから返ってきた全データを保存
+            lastStatsResponse = result.data;
+
+            // --- 1. 不要な通常ランキング用UIを一括非表示 ---
+            const controls = document.getElementById('ranking-controls');
+            if (controls) controls.style.display = 'none';
+
+            // --- 2. 統計モード用エリアを表示 ---
+            const statsControlArea = document.getElementById('stats-control-area');
+            if (statsControlArea) statsControlArea.style.display = 'block';
+
+            // グローバル変数にデータを保存
+            currentStatsData = (mode === 'song') ? result.data.songRanking : result.data.playerRanking;
+            currentStatsMode = mode;
+            currentDisplayType = 'count';
+            currentDenominator = (mode === 'song') ? result.data.totalUsers : result.data.theoryCount;
+
             const modal = document.getElementById('ranking-modal');
 
-            // 統計モード用の表示切り替え
-            const canvas = document.getElementById('ranking-canvas');
-            const rangeSelector = document.querySelector('.range-selector');
-            const resetBtn = document.querySelector('.reset-btn');
+            // タイトルとフィルタ情報の表示
+            updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp);
 
-            if (canvas) canvas.style.display = 'none';
-            if (rangeSelector) rangeSelector.style.display = 'none';
-            if (resetBtn) {
-                // 統計モードでも使いたいなら block、消したいなら none
-                resetBtn.style.display = 'block';
-            }
+            // 描画実行
+            displayStatsRanking();
 
-            // モードに応じたデータの抽出
-            let finalData = (mode === 'song') ? result.data.songRanking : result.data.playerRanking;
-
-            // ★ 楽曲別の時だけ、上位50件に絞る
-            if (mode === 'song' && finalData.length > 100) {
-                finalData = finalData.slice(0, 100);
-            }
-
-            const finalDenom = (mode === 'song') ? result.data.totalUsers : result.data.theoryCount;
-
-            // 重要：テーブルヘッダーの書き換え
-            const thead = modal.querySelector('table thead tr');
-            if (thead) {
-                thead.innerHTML = (mode === 'song')
-                    ? `<th>順位</th><th>楽曲名</th><th style="text-align:right;">人数</th><th style="text-align:center;">達成率</th>`
-                    : `<th>順位</th><th>プレイヤー</th><th style="text-align:right;">楽曲数</th><th style="text-align:center;">達成率</th>`;
-            }
-
-            // タイトルの設定
-            const titleContainer = document.getElementById('ranking-title-container');
-            const typeLabel = typeFilter === 'new' ? '新曲' : typeFilter === 'old' ? '旧曲' : '全曲';
-            const modeName = (mode === 'song') ? "楽曲別 達成人数" : "個人別 達成楽曲数";
-            const unit = (mode === 'song') ? "人" : "曲";
-
-            // 絞り込み条件を文字列にまとめる
-            // 定数範囲 + スコア(ランク)範囲を表示
-            const constRange = `${minC}～${maxC}`;
-            const scoreRange = rMin === "0" && rMax === "1010000" ? "全ランク" : `${rMin}～${rMax}`;
-            const lampLabel = lmp === 'all' ? '' : ` [${lmp.toUpperCase()}]`;
-
-
-            const limitText = (mode === 'song') ? " (上位100件)" : "";
-            if (titleContainer) {
-                titleContainer.innerHTML = `
-                    <span class="main-title-text">${typeLabel} ${modeName}${limitText}</span>
-                    <span class="theory-info">(対象: ${finalDenom}${unit})</span>
-                    <span class="title-sub-info">定数:${constRange} / スコア:${scoreRange}/ ランプ:${lampLabel}</span>
-                `;
-            }
-
-            // ★ここで描画関数を呼ぶ（引数は3つ！）
-            console.log("displayStatsRankingを呼び出します...");
-            displayStatsRanking(finalData, finalDenom, mode);
-
-            // モーダル表示
             modal.style.display = "flex";
             console.log("モーダル表示完了");
 
@@ -1171,84 +1140,224 @@ async function fetchStats(mode) {
     }
 }
 
-/**
- * 統計用：描画関数
- */
-function displayStatsRanking(statsData, denominator, mode) {
-    console.log("--- displayStatsRanking Internal Start ---");
+function displayStatsRanking() {
     const tbody = document.getElementById('ranking-body');
-    if (!tbody) return;
+    const modal = document.getElementById('ranking-modal');
+    if (!tbody || !currentStatsData) return;
 
     tbody.innerHTML = "";
 
-    if (!statsData || statsData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">該当データなし</td></tr>';
-        return;
+    const statsData = [...currentStatsData];
+    if (currentDisplayType === 'avg') {
+        statsData.sort((a, b) => (b.avgScore || 0) - (a.avgScore || 0));
+    } else {
+        statsData.sort((a, b) => b.count - a.count);
     }
 
-    statsData.forEach((row, index) => {
-        // ここで mode に応じて安全に名前を取得
-        const displayName = (mode === 'song') ? (row.title || "不明") : (row.playerName || "不明");
-        const unit = (mode === 'song') ? "人" : "曲";
+    // --- 1. ヘッダー(th)の書き換え ---
+    const thead = modal.querySelector('table thead tr');
+    if (thead) {
+        const nameLabel = currentStatsMode === 'song' ? '楽曲名' : 'プレイヤー';
 
-        let rateStr = "-";
-        if (denominator > 0) {
-            rateStr = ((row.count / denominator) * 100).toFixed(1) + "%";
-        }
-
-        const tr = document.createElement('tr');
-        tr.style.cursor = "pointer";
-
-        // ★クリックイベントの変更
-        if (mode === 'song') {
-            tr.title = "タップして達成者を表示";
-
-            // 楽曲別モード：プレイヤーリストを表示
-            tr.onclick = function () {
-            const subModal = document.getElementById('sub-modal');
-            const subTbody = document.getElementById('sub-modal-tbody');
-            const subTitle = document.getElementById('sub-modal-title');
-
-            subTitle.innerText = row.title; // 曲名を表示
-            subTbody.innerHTML = ""; // リセット
-
-            // ★スコアの高い順（降順）に並び替え
-            const sortedPlayers = row.players.sort((a, b) => b.score - a.score);
-
-            sortedPlayers.forEach(p => {
-                const ptr = document.createElement('tr');
-                ptr.innerHTML = `
-                    <td>${p.name}</td>
-                    <td style="text-align:center; font-weight:bold;">${p.score.toLocaleString()}</td>
-                `;
-                subTbody.appendChild(ptr);
-            });
-
-            subModal.style.display = "flex";
-        };
-            
-
+        if (currentDisplayType === 'avg') {
+            // 【平均スコアモード】
+            const col4Label = currentStatsMode === 'song' ? '全プレイ人数' : '全プレイ曲数';
+            thead.innerHTML = `
+                <th>順位</th>
+                <th>${nameLabel}</th>
+                <th style="text-align:center;">平均スコア</th>
+                <th style="text-align:center;">${col4Label}</th>
+            `;
         } else {
-            tr.title = "タップして非表示";
-            // 個人別モード：今まで通り非表示にする（あるいは何もしない）
-            tr.onclick = function () {
-                this.style.display = "none";
-            };
-            
+            // 【数モード】
+            const col3Label = currentStatsMode === 'song' ? '達成者数' : '達成曲数';
+            thead.innerHTML = `
+                <th>順位</th>
+                <th>${nameLabel}</th>
+                <th style="text-align:right;">${col3Label}</th>
+                <th style="text-align:center;">達成率</th>
+            `;
+        }
+    }
+
+    // --- 2. データ行(td)の生成 ---
+    statsData.forEach((row, index) => {
+        const displayName = (currentStatsMode === 'song') ? (row.title || "不明") : (row.playerName || "不明");
+        const unit = (currentStatsMode === 'song') ? "人" : "曲";
+        const tr = document.createElement('tr');
+
+        let col3, col4;
+        if (currentDisplayType === 'avg') {
+            // --- 平均スコアモードのデータ ---
+            const avgVal = (row.avgScore && row.avgScore > 0) ? row.avgScore.toLocaleString() : "---";
+            // 4列目：楽曲別なら全人数、個人別なら全プレイ数
+            // ★ここを修正：楽曲別なら row.totalCountAll、個人別なら row.allPlayCount を参照
+
+            let totalCount = 0;
+            if (currentStatsMode === 'song') {
+                totalCount = row.totalCountAll || 0; // GAS側で計算した全人数
+            } else {
+                totalCount = row.allPlayCount || 0;  // GAS側で計算した全曲数
+            }
+
+            col3 = `<td style="text-align:center; font-weight:bold; color: #2e7df0;">${avgVal}</td>`;
+            col4 = `<td style="text-align:center;">${totalCount}<span style="font-size:10px;"> ${unit}</span></td>`;
+        } else {
+            // --- 数モードのデータ ---
+            const rateStr = currentDenominator > 0 ? ((row.count / currentDenominator) * 100).toFixed(1) + "%" : "-";
+
+            col3 = `<td style="text-align:right; font-weight:bold;">${row.count} ${unit}</td>`;
+            col4 = `<td style="text-align:center; color: #f02e2e;">${rateStr}</td>`;
         }
 
         tr.innerHTML = `
             <td class="rank-cell" style="text-align:center;">${index + 1}</td>
             <td style="text-align:left;">${displayName}</td>
-            <td style="text-align:right; font-weight:bold;">${row.count} ${unit}</td>
-            <td style="text-align:center; color: #f02e2e;">${rateStr}</td>
+            ${col3}
+            ${col4}
         `;
+
+        if (currentStatsMode === 'song') {
+            tr.style.cursor = "pointer";
+            tr.onclick = () => showSubModal(row);
+        }
         tbody.appendChild(tr);
     });
 
-    console.log("Table Drawing Completed");
-    // もしここまで来たら、絶対に表は見えているはずです
+    renderSwitchButton();
+
+    // タイトルの更新（再描画時にタイトルも最新状態にする）
+    const typeFilter = document.querySelector('.btn-filter.active')?.getAttribute('data-value') || 'all';
+    const minC = document.getElementById('min-constant')?.value;
+    const maxC = document.getElementById('max-constant')?.value;
+    const rMin = document.getElementById('rank-min')?.value;
+    const rMax = document.getElementById('rank-max')?.value;
+    const lmp = document.getElementById('lamp-filter')?.value;
+    updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp);
 }
+
+/**
+ * 切り替えボタンを「タイトルと表の間」に設置
+ */
+function renderSwitchButton() {
+    // 追加先をタイトルの下にある専用エリアに変更
+    const container = document.getElementById('stats-control-area');
+    if (!container) return;
+
+    let btn = document.getElementById('stats-switch-btn');
+
+    if (!btn) {
+        btn = document.createElement('button');
+        btn.id = 'stats-switch-btn';
+        btn.className = 'switch-mode-btn';
+        container.appendChild(btn);
+    }
+
+    btn.innerText = (currentDisplayType === 'count') ? "平均スコア順に切替" : "達成数順に切替";
+    btn.onclick = () => {
+        currentDisplayType = (currentDisplayType === 'count') ? 'avg' : 'count';
+        displayStatsRanking();
+    };
+}
+
+function updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp) {
+    const titleContainer = document.getElementById('ranking-title-container');
+    const typeLabel = typeFilter === 'new' ? '新曲' : typeFilter === 'old' ? '旧曲' : '全曲';
+    const unit = (currentStatsMode === 'song') ? "人" : "曲";
+
+    let mainTitle = "";
+    let subInfo = "";
+
+    if (currentDisplayType === 'avg') {
+        // --- 平均スコアモード ---
+        const modeLabel = (currentStatsMode === 'song') ? "楽曲別 平均スコア" : "個人別 平均スコア";
+        mainTitle = `<span class="main-title-text">${typeLabel} ${modeLabel} (対象: ${currentDenominator}${unit})</span>`;
+        // 平均スコアの時は定数条件のみ
+        subInfo = `定数: ${minC} ～ ${maxC}`;
+    } else {
+        // --- 数モード ---
+        const modeLabel = (currentStatsMode === 'song') ? "楽曲別 達成人数" : "個人別 達成楽曲数";
+        mainTitle = `<span class="main-title-text">${typeLabel} ${modeLabel} (対象: ${currentDenominator}${unit})</span>`;
+        // 数モードの時は全条件を表示
+        const lampLabel = (lmp === 'all') ? 'すべて' : lmp.toUpperCase();
+        subInfo = `定数: ${minC}～${maxC} / スコア: ${rMin}～${rMax} / ランプ: ${lampLabel}`;
+    }
+
+    titleContainer.innerHTML = `
+        ${mainTitle}
+        <div class="title-sub-info">${subInfo}</div>
+    `;
+}
+
+function showSubModal(row) {
+    const subModal = document.getElementById('sub-modal');
+    const subTbody = document.getElementById('sub-modal-tbody');
+    const subTitle = document.getElementById('sub-modal-title');
+
+    if (!subModal || !subTbody || !lastStatsResponse) return;
+
+    subTitle.innerText = row.title || "プレイヤー状況一覧";
+    subTbody.innerHTML = "";
+
+    // 1. GASから届いた「この曲をプレイした人（全員）」をMap化
+    const playDataMap = new Map();
+    if (row.players) {
+        row.players.forEach(p => {
+            playDataMap.set(p.name, {
+                score: p.score,
+                isAchieved: p.isAchieved
+            });
+        });
+    }
+
+    // 2. 全プレイヤーのリスト（GASからの結果から抽出）
+    const allPlayers = lastStatsResponse.playerRanking.map(p => p.playerName);
+
+    // 3. 表示用のデータ配列を作成
+    const displayList = allPlayers.map(name => {
+        const data = playDataMap.get(name);
+        return {
+            name: name,
+            score: data ? data.score : -1, // 未プレイは-1
+            isAchieved: data ? data.isAchieved : false
+        };
+    });
+
+    // 4. スコア順にソート（未プレイは最下部へ）
+    displayList.sort((a, b) => b.score - a.score);
+
+    // 5. 行の生成
+    displayList.forEach(p => {
+        const tr = document.createElement('tr');
+        
+        // 条件達成者の行を赤くハイライト
+        if (p.isAchieved) {
+            tr.style.backgroundColor = "rgba(255, 71, 87, 0.15)";
+            tr.style.fontWeight = "bold";
+        }
+
+        const scoreDisplay = (p.score === -1) 
+            ? `<span style="color:#ccc;">-</span>` 
+            : p.score.toLocaleString();
+
+        tr.innerHTML = `
+            <td style="text-align:left; padding-left: 15px;">${p.name}</td>
+            <td style="text-align:center;">${scoreDisplay}</td>
+        `;
+        subTbody.appendChild(tr);
+    });
+
+    subModal.style.display = "flex";
+}
+
+/**
+ * サブモーダルを閉じる
+ */
+function closeSubModal() {
+    const subModal = document.getElementById('sub-modal');
+    if (subModal) subModal.style.display = "none";
+}
+
 
 // 子モーダルを閉じる関数
 function closeSubModal() {
