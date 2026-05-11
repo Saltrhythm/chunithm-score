@@ -567,43 +567,47 @@ input[type="number"]::-webkit-inner-spin-button {
     margin-top: 8px;
 }
 
-/* ボタンエリアのスクロールバーを隠す（ブラウザ標準の動作を維持しつつ見た目をスッキリさせる） */
+/* PC・スマホ共通のベース設定 */
+.stats-exec-area {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    /* 横スクロールを許可 */
+    white-space: nowrap;
+    /* 改行を禁止 */
+    padding: 10px 5px;
+    -webkit-overflow-scrolling: touch;
+    /* iOSの慣性スクロール */
+
+    /* 中央寄せの設定（中身が画面幅より狭い時） */
+    justify-content: center;
+
+    /* スクロールバーを隠す設定 */
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
 .stats-exec-area::-webkit-scrollbar {
     display: none;
 }
 
-.stats-exec-area {
-    text-align: center;
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-    display: flex;
-    gap: 10px;
-    justify-content: center;
-    overflow-x: auto;
-    white-space: nowrap;
-    padding: 10px 5px;
-    -webkit-overflow-scrolling: touch;
-}
-
-
-/* スマホ表示への対応（必要に応じて） */
+/* スマホ表示（画面幅が狭い時）の微調整 */
 @media screen and (max-width: 768px) {
     .stats-exec-area {
-        text-align: center;
-        -ms-overflow-style: none;
-        scrollbar-width: none;
-        display: flex;
-        gap: 10px;
+        /* 重要：スクロールさせるために justify-content を上書き */
         justify-content: flex-start;
-        overflow-x: auto;
-        white-space: nowrap;
-        padding: 10px 5px;
-        -webkit-overflow-scrolling: touch;
-        flex-wrap: nowrap;
+        flex-wrap: nowrap !important;
         /* 絶対に折り返さない */
-        width: 100%;
-        
 
+        /* 左右に少し余白を作るとスクロール可能なことが伝わりやすい */
+        padding-left: 15px;
+        padding-right: 15px;
+    }
+
+    /* ボタンが小さくなりすぎないように最小幅を固定しても良い */
+    .btn-stats,
+    .btn-random {
+        flex-shrink: 0;
     }
 }
 
