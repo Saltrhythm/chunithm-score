@@ -27,6 +27,13 @@ function doPost(e) {
             return createJsonResponse({ status: "success", data: results });
         }
 
+        // --- 追加：特定のプレイヤーの全プレイデータを取得するモード ---
+        if (mode === "get_player_detail") {
+            const playerName = String(params.playerName || "");
+            const results = getPlayerDetailFromSheet(ss, playerName, params);
+            return createJsonResponse({ status: "success", data: results });
+        }
+
         // 3. 同期/認証モード (checker)
         const token = String(params.token || "");
         let playerName = String(params.playerName || "");
@@ -162,9 +169,9 @@ function getStatsFromSheets(ss, params) {
         if (!sheet) continue;
 
         const data = sheet.getDataRange().getValues();
-        let playerCountFiltered = 0;      
-        let playerTotalScoreFiltered = 0; 
-        let playerTotalCountFiltered = 0; 
+        let playerCountFiltered = 0;
+        let playerTotalScoreFiltered = 0;
+        let playerTotalCountFiltered = 0;
 
         for (let j = 1; j < data.length; j++) {
             const row = data[j];
@@ -207,8 +214,8 @@ function getStatsFromSheets(ss, params) {
             if (isAchieved) {
                 songAggregation[fullTitle].count++;
             }
-            songAggregation[fullTitle].players.push({ 
-                name: name, score: cScore, isAchieved: isAchieved 
+            songAggregation[fullTitle].players.push({
+                name: name, score: cScore, isAchieved: isAchieved
             });
 
             // --- 個人別集計（ここで新旧フィルタを適用） ---
@@ -282,6 +289,68 @@ function getUpperLimitGAS(score) {
     if (score >= 970000) return 989999;  // S
     return 969999;
 }
+
+/**
+ * 特定のプレイヤーの詳細データを取得する
+ */
+function getPlayerDetailFromSheet(ss, playerName, params) {
+    const sheet = ss.getSheetByName(playerName);
+    if (!sheet) return [];
+
+    const data = sheet.getDataRange().getValues();
+    const details = [];
+
+    const minC = parseFloat(params.minConst || 0);
+    const maxC = parseFloat(params.maxConst || 16.0);
+    const minRating = parseFloat(params.minRate || 0);
+    const maxRating = parseFloat(params.maxRate || 21.0);
+    const rMin = parseFloat(params.rankMin || 0);
+    const rMax = parseFloat(params.rankMax || 1010000);
+    const targetLamp = String(params.lampFilter || 'all');
+    const typeFilter = String(params.typeFilter || 'all');
+
+    for (let j = 1; j < data.length; j++) {
+        const row = data[j];
+        if (!row || row.length < 7) continue;
+
+        const cConst = parseFloat(row[2] || 0);
+        const cScore = parseFloat(row[3] || 0);
+        const cRating = parseFloat(row[4] || 0);
+        const cLamp = String(row[5] || "");
+        const isNewSongStr = String(row[6] || "").toLowerCase().trim();
+
+        // 統計モードと同じフィルタ条件を適用
+        if (cConst < minC || cConst > maxC) continue;
+
+        let passType = (typeFilter === 'all') || 
+                       (typeFilter === 'new' && isNewSongStr === 'true') || 
+                       (typeFilter === 'old' && isNewSongStr !== 'true');
+        if (!passType) continue;
+
+        // 達成判定
+        let isAchieved = true;
+        if (cRating < minRating || cRating > maxRating) isAchieved = false;
+        if (cScore < rMin || cScore > getUpperLimitGAS(rMax)) isAchieved = false;
+        if (targetLamp !== 'all') {
+            if (targetLamp === 'ajc' && !cLamp.includes('AJC')) isAchieved = false;
+            else if (targetLamp === 'aj' && !cLamp.includes('AJ')) isAchieved = false;
+            else if (targetLamp === 'None' && (cLamp.includes('AJ') || cLamp.includes('AJC'))) isAchieved = false;
+        }
+
+        const songName = String(row[0] || "");
+        const diff = String(row[1] || "");
+
+        details.push({
+            title: diff ? `${songName} [${diff}]` : songName,
+            score: cScore,
+            isAchieved: isAchieved
+        });
+    }
+    // スコア降順で返す
+    return details.sort((a, b) => b.score - a.score);
+}
+
+
 
 
 function updateUserSheet(ss, name, records) {

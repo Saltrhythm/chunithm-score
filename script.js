@@ -1073,7 +1073,7 @@ async function fetchStats(mode) {
     const typeFilter = document.querySelector('.btn-filter.active')?.getAttribute('data-value') || 'all';
     const minC = document.getElementById('min-constant')?.value || "0";
     const maxC = document.getElementById('max-constant')?.value || "16.0";
-    
+
     // ★追加：レートの入力値を取得（IDはHTML側に合わせる。例: min-rating）
     const minRate = document.getElementById('min-rating')?.value || "0";
     const maxRate = document.getElementById('max-rating')?.value || "21.0";
@@ -1224,10 +1224,18 @@ function displayStatsRanking() {
             ${col4}
         `;
 
+        // --- tr.onclick の設定部分 ---
+        tr.style.cursor = "pointer"; // どちらのモードでも指マークにする
+
         if (currentStatsMode === 'song') {
-            tr.style.cursor = "pointer";
+            // 楽曲別ランキングの場合：既存の楽曲詳細を表示
             tr.onclick = () => showSubModal(row);
+        } else {
+            // 個人別ランキングの場合：新しく作成した詳細取得関数を呼び出す
+            // row.playerName は GAS から返ってきた playerRanking 内のプロパティ名です
+            tr.onclick = () => fetchAndShowPlayerDetail(row.playerName);
         }
+
         tbody.appendChild(tr);
     });
 
@@ -1248,27 +1256,50 @@ function displayStatsRanking() {
 }
 
 /**
- * 切り替えボタンを「タイトルと表の間」に設置
+ * 切り替えボタンと閉じるボタンを操作エリアに設置
  */
 function renderSwitchButton() {
-    // 追加先をタイトルの下にある専用エリアに変更
     const container = document.getElementById('stats-control-area');
     if (!container) return;
 
-    let btn = document.getElementById('stats-switch-btn');
-
-    if (!btn) {
-        btn = document.createElement('button');
-        btn.id = 'stats-switch-btn';
-        btn.className = 'switch-mode-btn';
-        container.appendChild(btn);
+    // --- 1. ボタンを配置するためのラッパー（並びを整える列）を作る ---
+    let btnGroup = document.getElementById('stats-btn-group');
+    if (!btnGroup) {
+        btnGroup = document.createElement('div');
+        btnGroup.id = 'stats-btn-group';
+        btnGroup.style.display = 'flex';
+        btnGroup.style.justifyContent = 'center';
+        btnGroup.style.gap = '10px';
+        btnGroup.style.marginTop = '10px';
+        container.appendChild(btnGroup);
     }
 
-    btn.innerText = (currentDisplayType === 'count') ? "平均スコア順に切替" : "達成数順に切替";
-    btn.onclick = () => {
+    // --- 2. 切替ボタンの作成/更新 ---
+    let switchBtn = document.getElementById('stats-switch-btn');
+    if (!switchBtn) {
+        switchBtn = document.createElement('button');
+        switchBtn.id = 'stats-switch-btn';
+        switchBtn.className = 'switch-mode-btn'; // CSSの既存スタイルを使用
+        btnGroup.appendChild(switchBtn);
+    }
+    switchBtn.innerText = (currentDisplayType === 'count') ? "平均スコア順に切替" : "達成数順に切替";
+    switchBtn.onclick = () => {
         currentDisplayType = (currentDisplayType === 'count') ? 'avg' : 'count';
         displayStatsRanking();
     };
+
+    // --- 3. 閉じるボタンの作成/追加 (未作成の場合のみ) ---
+    let closeBtn = document.getElementById('stats-top-close-btn');
+    if (!closeBtn) {
+        closeBtn = document.createElement('button');
+        closeBtn.id = 'stats-top-close-btn';
+        closeBtn.className = 'modal-close-btn'; // 既存の赤やグレーのスタイルを適用
+        closeBtn.innerText = "閉じる";
+        closeBtn.onclick = () => {
+            document.getElementById('ranking-modal').style.display = 'none';
+        };
+        btnGroup.appendChild(closeBtn);
+    }
 }
 
 function updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp, minRate, maxRate) {
@@ -1277,7 +1308,7 @@ function updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp, minRate, maxR
 
     const typeLabel = typeFilter === 'new' ? '新曲' : typeFilter === 'old' ? '旧曲' : '全曲';
     const unit = (currentStatsMode === 'song') ? "人" : "曲";
-    
+
     let mainTitle = "";
 
     // 1. メインタイトルの構築
@@ -1294,7 +1325,7 @@ function updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp, minRate, maxR
     // 2. サブ情報（フィルタ条件）のテキストを構築 ★ここで定義
     const lampLabel = (lmp === 'all') ? 'すべて' : lmp.toUpperCase();
     let subInfo = "";
-    
+
     if (currentDisplayType === 'avg') {
         // 平均スコアモード時
         subInfo = `定数: ${minC} ～ ${maxC}`;
@@ -1316,11 +1347,20 @@ function showSubModal(row) {
     const subModal = document.getElementById('sub-modal');
     const subTbody = document.getElementById('sub-modal-tbody');
     const subTitle = document.getElementById('sub-modal-title');
+    const thead = document.querySelector('#sub-modal-table thead tr');
 
     if (!subModal || !subTbody || !lastStatsResponse) return;
 
     subTitle.innerText = row.title || "プレイヤー状況一覧";
     subTbody.innerHTML = "";
+
+    // ヘッダーを「プレイヤー詳細用」にリセット（配置を整える）
+    if (thead) {
+        thead.innerHTML = `
+            <th style="text-align:center; padding-left: 15px;">プレイヤー</th>
+            <th style="text-align:center;">スコア</th>
+        `;
+    }
 
     // 1. GASから届いた「この曲をプレイした人（全員）」をMap化
     const playDataMap = new Map();
@@ -1364,7 +1404,7 @@ function showSubModal(row) {
             : p.score.toLocaleString();
 
         tr.innerHTML = `
-            <td style="text-align:left; padding-left: 15px;">${p.name}</td>
+            <td style="text-align:center; padding-left: 15px;">${p.name}</td>
             <td style="text-align:center;">${scoreDisplay}</td>
         `;
         subTbody.appendChild(tr);
@@ -1372,6 +1412,93 @@ function showSubModal(row) {
 
     subModal.style.display = "flex";
 }
+
+/**
+ * 個人別詳細を取得して表示
+ */
+async function fetchAndShowPlayerDetail(playerName) {
+    // 取得中の表示（任意）
+    console.log(playerName + "の詳細を取得中...");
+
+    // 現在のフィルター条件を全て取得
+    const params = {
+        mode: "get_player_detail",
+        playerName: playerName,
+        minConst: document.getElementById('min-constant')?.value,
+        maxConst: document.getElementById('max-constant')?.value,
+        minRate: document.getElementById('min-rating')?.value,
+        maxRate: document.getElementById('max-rating')?.value,
+        rankMin: document.getElementById('rank-min')?.value,
+        rankMax: document.getElementById('rank-max')?.value,
+        lampFilter: document.getElementById('lamp-filter')?.value,
+        typeFilter: document.querySelector('.btn-filter.active')?.getAttribute('data-value') || 'all'
+    };
+
+    try {
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify(params)
+        });
+        const result = await response.json();
+
+        if (result.status === "success") {
+            // 既存の showPlayerDetailModal を呼び出して描画
+            showPlayerDetailModal({
+                playerName: playerName,
+                details: result.data
+            });
+        }
+    } catch (e) {
+        console.error("詳細取得エラー:", e);
+        alert("詳細データの取得に失敗しました。");
+    }
+}
+
+/**
+ * 取得した個人詳細データをモーダルに表示する
+ */
+function showPlayerDetailModal(playerData) {
+    const subModal = document.getElementById('sub-modal'); // sub-modal を使用
+    const tbody = document.getElementById('sub-modal-tbody');
+    const title = document.getElementById('sub-modal-title');
+    const thead = document.querySelector('#sub-modal-table thead tr');
+    
+    if (!title || !tbody || !thead) return;
+
+    title.innerText = `${playerData.playerName} の詳細`;
+    tbody.innerHTML = "";
+
+    // ヘッダーを「楽曲詳細用」に書き換え
+    thead.innerHTML = `
+        <th style="text-align:left; padding-left: 15px;">楽曲名</th>
+        <th style="text-align:center;">スコア</th>
+    `;
+
+    // データの描画
+    playerData.details.forEach(item => {
+        const tr = document.createElement('tr');
+
+        // ★達成している行をハイライト（背景を薄い赤、文字を赤太字に）
+        if (item.isAchieved) {
+            tr.style.backgroundColor = "rgba(240, 46, 46, 0.1)";
+            tr.style.color = "#d63031";
+            tr.style.fontWeight = "bold";
+        }
+
+        tr.innerHTML = `
+            <td style="text-align:left; font-size: 0.85em;">${item.title}</td>
+            <td style="text-align:center;">${item.score.toLocaleString()}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    // モーダルを表示
+    document.getElementById('sub-modal').style.display = 'flex';
+}
+
+
+
 
 /**
  * サブモーダルを閉じる
@@ -1382,10 +1509,7 @@ function closeSubModal() {
 }
 
 
-// 子モーダルを閉じる関数
-function closeSubModal() {
-    document.getElementById('sub-modal').style.display = "none";
-}
+
 
 
 function resetTableVisibility() {
