@@ -1073,6 +1073,11 @@ async function fetchStats(mode) {
     const typeFilter = document.querySelector('.btn-filter.active')?.getAttribute('data-value') || 'all';
     const minC = document.getElementById('min-constant')?.value || "0";
     const maxC = document.getElementById('max-constant')?.value || "16.0";
+    
+    // ★追加：レートの入力値を取得（IDはHTML側に合わせる。例: min-rating）
+    const minRate = document.getElementById('min-rating')?.value || "0";
+    const maxRate = document.getElementById('max-rating')?.value || "21.0";
+
     const rMin = document.getElementById('rank-min')?.value || "0";
     const rMax = document.getElementById('rank-max')?.value || "1010000";
     const lmp = document.getElementById('lamp-filter')?.value || 'all';
@@ -1081,6 +1086,8 @@ async function fetchStats(mode) {
         mode: "get_stats",
         minConst: minC,
         maxConst: maxC,
+        minRate: minRate,
+        maxRate: maxRate,
         rankMin: rMin,
         rankMax: rMax,
         lampFilter: lmp,
@@ -1118,7 +1125,7 @@ async function fetchStats(mode) {
             const modal = document.getElementById('ranking-modal');
 
             // タイトルとフィルタ情報の表示
-            updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp);
+            updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp, minRate, maxRate);
 
             // 描画実行
             displayStatsRanking();
@@ -1230,10 +1237,14 @@ function displayStatsRanking() {
     const typeFilter = document.querySelector('.btn-filter.active')?.getAttribute('data-value') || 'all';
     const minC = document.getElementById('min-constant')?.value;
     const maxC = document.getElementById('max-constant')?.value;
+    // ★追加
+    const minRate = document.getElementById('min-rating')?.value;
+    const maxRate = document.getElementById('max-rating')?.value;
+
     const rMin = document.getElementById('rank-min')?.value;
     const rMax = document.getElementById('rank-max')?.value;
     const lmp = document.getElementById('lamp-filter')?.value;
-    updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp);
+    updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp, minRate, maxRate);
 }
 
 /**
@@ -1260,34 +1271,46 @@ function renderSwitchButton() {
     };
 }
 
-function updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp) {
+function updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp, minRate, maxRate) {
     const titleContainer = document.getElementById('ranking-title-container');
+    if (!titleContainer) return;
+
     const typeLabel = typeFilter === 'new' ? '新曲' : typeFilter === 'old' ? '旧曲' : '全曲';
     const unit = (currentStatsMode === 'song') ? "人" : "曲";
-
+    
     let mainTitle = "";
-    let subInfo = "";
 
-    if (currentDisplayType === 'avg') {
-        // --- 平均スコアモード ---
-        const modeLabel = (currentStatsMode === 'song') ? "楽曲別 平均スコア" : "個人別 平均スコア";
-        mainTitle = `<span class="main-title-text">${typeLabel} ${modeLabel} (対象: ${currentDenominator}${unit})</span>`;
-        // 平均スコアの時は定数条件のみ
-        subInfo = `定数: ${minC} ～ ${maxC}`;
+    // 1. メインタイトルの構築
+    if (currentStatsMode === 'song') {
+        // 楽曲別モード：新旧フィルタは無視されるので常に「全曲」
+        const modeLabel = (currentDisplayType === 'avg') ? "楽曲別 平均スコア" : "楽曲別 達成人数";
+        mainTitle = `<span class="main-title-text">全曲 ${modeLabel} (対象: ${currentDenominator}${unit})</span>`;
     } else {
-        // --- 数モード ---
-        const modeLabel = (currentStatsMode === 'song') ? "楽曲別 達成人数" : "個人別 達成楽曲数";
+        // 個人別モード：新旧フィルタが反映される
+        const modeLabel = (currentDisplayType === 'avg') ? "個人別 平均スコア" : "個人別 達成楽曲数";
         mainTitle = `<span class="main-title-text">${typeLabel} ${modeLabel} (対象: ${currentDenominator}${unit})</span>`;
-        // 数モードの時は全条件を表示
-        const lampLabel = (lmp === 'all') ? 'すべて' : lmp.toUpperCase();
-        subInfo = `定数: ${minC}～${maxC} / スコア: ${rMin}～${rMax} / ランプ: ${lampLabel}`;
     }
 
+    // 2. サブ情報（フィルタ条件）のテキストを構築 ★ここで定義
+    const lampLabel = (lmp === 'all') ? 'すべて' : lmp.toUpperCase();
+    let subInfo = "";
+    
+    if (currentDisplayType === 'avg') {
+        // 平均スコアモード時
+        subInfo = `定数: ${minC} ～ ${maxC}`;
+    } else {
+        // 達成数モード時
+        // 単曲レートの情報（minRate ～ maxRate）を追加
+        subInfo = `定数: ${minC}～${maxC} / レート: ${minRate}～${maxRate} / スコア: ${rMin}～${rMax} / ランプ: ${lampLabel}`;
+    }
+
+    // 3. HTMLへの反映
     titleContainer.innerHTML = `
         ${mainTitle}
         <div class="title-sub-info">${subInfo}</div>
     `;
 }
+
 
 function showSubModal(row) {
     const subModal = document.getElementById('sub-modal');
@@ -1329,15 +1352,15 @@ function showSubModal(row) {
     // 5. 行の生成
     displayList.forEach(p => {
         const tr = document.createElement('tr');
-        
+
         // 条件達成者の行を赤くハイライト
         if (p.isAchieved) {
             tr.style.backgroundColor = "rgba(255, 71, 87, 0.15)";
             tr.style.fontWeight = "bold";
         }
 
-        const scoreDisplay = (p.score === -1) 
-            ? `<span style="color:#ccc;">-</span>` 
+        const scoreDisplay = (p.score === -1)
+            ? `<span style="color:#ccc;">-</span>`
             : p.score.toLocaleString();
 
         tr.innerHTML = `

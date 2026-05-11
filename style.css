@@ -599,6 +599,11 @@ input[type="number"]::-webkit-inner-spin-button {
         white-space: nowrap;
         padding: 10px 5px;
         -webkit-overflow-scrolling: touch;
+        flex-wrap: nowrap;
+        /* 絶対に折り返さない */
+        width: 100%;
+        
+
     }
 }
 
@@ -1151,22 +1156,29 @@ td:nth-child(2) {
 /* 範囲選択コンテナ */
 .range-selector {
     display: flex;
-    justify-content: flex-start; /* 左詰め */
-    gap: 7px;                    /* ボタン同士の隙間 */
+    justify-content: flex-start;
+    /* 左詰め */
+    gap: 7px;
+    /* ボタン同士の隙間 */
     margin-bottom: 5px;
-    padding-left: 5px;           /* グラフとの端を合わせる微調整 */
+    padding-left: 5px;
+    /* グラフとの端を合わせる微調整 */
 }
 
 /* 表示範囲切り替えボタンの基本スタイル */
 .range-btn {
-    background-color: #f2f2f2;   /* 薄い灰色のボックス */
-    color: #666;                 /* 灰色の文字 */
+    background-color: #f2f2f2;
+    /* 薄い灰色のボックス */
+    color: #666;
+    /* 灰色の文字 */
     border: 1px solid #ddd;
-    border-radius: 3px;          /* 少し角を丸める */
-    
+    border-radius: 3px;
+    /* 少し角を丸める */
+
     /* サイズを小さく */
     padding: 2px 8px;
-    font-size: 0.7rem;           /* 小さめの文字 */
+    font-size: 0.7rem;
+    /* 小さめの文字 */
     font-weight: bold;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -1180,8 +1192,10 @@ td:nth-child(2) {
 
 /* ★ 選択中（アクティブ）の状態：配色を逆転 */
 .range-btn.active {
-    background-color: #666;      /* 灰色の背景 */
-    color: #fff;                 /* 白文字 */
+    background-color: #666;
+    /* 灰色の背景 */
+    color: #fff;
+    /* 白文字 */
     border-color: #555;
 }
 
@@ -1233,16 +1247,21 @@ td {
 #ranking-body td.rank-cell {
     /* テーブルセルとしてではなく、Flexボックスとして振る舞わせる */
     display: flex !important;
-    flex-direction: column-reverse; /* 数字が上、王冠が下 */
-    align-items: center;           /* 左右の真ん中 */
-    justify-content: center;        /* 上下の真ん中 */
-    
+    flex-direction: column-reverse;
+    /* 数字が上、王冠が下 */
+    align-items: center;
+    /* 左右の真ん中 */
+    justify-content: center;
+    /* 上下の真ん中 */
+
     /* セルのサイズを固定して、他の列を圧迫しないようにする */
     width: 60px;
     height: 60px;
-    margin: 0 auto;                 /* これでセル自体を中央へ */
+    margin: 0 auto;
+    /* これでセル自体を中央へ */
     padding: 0 !important;
-    border: none;                   /* 枠線が干渉する場合は調整 */
+    border: none;
+    /* 枠線が干渉する場合は調整 */
     background: none;
 }
 
@@ -1252,16 +1271,16 @@ td {
     display: block;
     width: 26px;
     height: 14px;
-    margin-top: 2px; /* 数字との隙間 */
+    margin-top: 2px;
+    /* 数字との隙間 */
     background: currentColor;
-    clip-path: polygon(
-        0% 100%, 100% 100%, 100% 30%, 80% 60%, 50% 0%, 20% 60%, 0% 30%
-    );
+    clip-path: polygon(0% 100%, 100% 100%, 100% 30%, 80% 60%, 50% 0%, 20% 60%, 0% 30%);
 }
 
 /* 1位：金 */
 #ranking-body tr:nth-child(1) td.rank-cell {
-    color: #ffd700 !important; /* 王冠と数字の両方に適用される */
+    color: #ffd700 !important;
+    /* 王冠と数字の両方に適用される */
 }
 
 /* 2位：銀 */
@@ -1351,7 +1370,8 @@ td {
 }
 
 /* 閉じるボタンのスタイル（暗めの灰色背景に白字） */
-.modal-close-btn, .sub-modal-close-btn {
+.modal-close-btn,
+.sub-modal-close-btn {
     background-color: #444;
     /* 暗めの灰色 */
     color: white;
@@ -1361,7 +1381,8 @@ td {
     cursor: pointer;
 }
 
-.modal-close-btn:hover, .sub-modal-close-btn:hover {
+.modal-close-btn:hover,
+.sub-modal-close-btn:hover {
     background-color: #555;
 }
 
@@ -1372,26 +1393,34 @@ td {
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.6); /* 背景を少し暗く */
-    display: none;      /* 初期は非表示 */
+    background-color: rgba(0, 0, 0, 0.6);
+    /* 背景を少し暗く */
+    display: none;
+    /* 初期は非表示 */
     justify-content: center;
     align-items: center;
-    z-index: 9999;     /* ★ここを非常に大きくする */
+    z-index: 9999;
+    /* ★ここを非常に大きくする */
 }
 
 .sub-modal-content {
     background-color: white;
     padding: 20px;
     border-radius: 10px;
-    width: 85%;        /* スマホで見やすい幅 */
-    max-width: 500px;  /* PCでも広がりすぎない */
-    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    width: 85%;
+    /* スマホで見やすい幅 */
+    max-width: 500px;
+    /* PCでも広がりすぎない */
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
 }
+
 .sub-modal-body table {
     width: 85px;
     border-collapse: collapse;
 }
-.sub-modal-body th, .sub-modal-body td {
+
+.sub-modal-body th,
+.sub-modal-body td {
     padding: 8px;
     border-bottom: 1px solid #ddd;
     font-size: 14px;
@@ -1414,20 +1443,23 @@ td {
     width: 100%;
     padding: 10px 0;
     text-align: center;
-    display: none; /* JSで統計モード時に block にする */
+    display: none;
+    /* JSで統計モード時に block にする */
 }
 
 /* 数/平均 切り替えボタンの装飾 */
 .switch-mode-btn {
-    background-color: #4CAF50; /* 緑系 */
+    background-color: #4CAF50;
+    /* 緑系 */
     color: white;
     border: none;
     padding: 8px 18px;
-    border-radius: 25px; /* 丸みのあるボタン */
+    border-radius: 25px;
+    /* 丸みのあるボタン */
     font-weight: bold;
     cursor: pointer;
     font-size: 13px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
     transition: background 0.2s, transform 0.1s;
 }
 
@@ -1436,7 +1468,8 @@ td {
 }
 
 .switch-mode-btn:active {
-    transform: scale(0.96); /* 押した時に少し凹む演出 */
+    transform: scale(0.96);
+    /* 押した時に少し凹む演出 */
 }
 
 /* 平均スコア表示時の青文字強調 */
@@ -1457,7 +1490,8 @@ td {
 #ranking-body td.rank-cell {
     min-width: 50px;
     width: 50px !important;
-    height: auto !important; /* 固定高を解除してレスポンシブに */
+    height: auto !important;
+    /* 固定高を解除してレスポンシブに */
     padding: 5px 0 !important;
 }
 
@@ -1468,11 +1502,14 @@ td {
 
 /* --- スマホ用の最終調整 --- */
 @media screen and (max-width: 480px) {
-    #ranking-table th, #ranking-table td {
-        font-size: 12px; /* スマホでは表の文字を少し小さく */
+
+    #ranking-table th,
+    #ranking-table td {
+        font-size: 12px;
+        /* スマホでは表の文字を少し小さく */
         padding: 8px 4px;
     }
-    
+
     /* 統計モードで曲名が長い場合に折り返しを許可 */
     #ranking-table td:nth-child(2) {
         max-width: 120px;

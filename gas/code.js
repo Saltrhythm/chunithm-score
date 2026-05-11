@@ -134,7 +134,8 @@ function getRankingFromSheets(ss, title, diff, logSheet) {
 }
 
 /**
- * 統計情報を取得（全員のプレイデータを達成フラグ付きで保持するよう修正）
+ * 統計情報を取得（判定ロジック最終防衛ライン）
+ * 文字列の "true"/"false" を厳密に判定します
  */
 function getStatsFromSheets(ss, params) {
     const userMapSheet = ss.getSheetByName("UserMap");
@@ -144,102 +145,122 @@ function getStatsFromSheets(ss, params) {
     const results = [];
     const songAggregation = {};
 
+    // パラメータを数値・文字列として確実に取得
     const minC = parseFloat(params.minConst || 0);
     const maxC = parseFloat(params.maxConst || 16.0);
-    const minR = parseFloat(params.minRate || 0);
-    const maxR = parseFloat(params.maxRate || 99.99);
     const rMin = parseFloat(params.rankMin || 0);
     const rMax = parseFloat(params.rankMax || 1010000);
-    const targetLamp = params.lampFilter;
-    const typeFilter = params.typeFilter;
+    const targetLamp = String(params.lampFilter || 'all');
+    const typeFilter = String(params.typeFilter || 'all');
 
-    // --- 全曲数の計算 (MasterData) ---
+    // 単曲レートフィルタ（追加）
+    const minRating = Number(params.minRate || 0);
+    const maxRating = Number(params.maxRate || 21.0);
+
+    // --- 1. 母数（理論値）の計算 ---
     let totalMatchingSongs = 0;
     const masterSheet = ss.getSheetByName("MasterData");
     if (masterSheet) {
         const masterData = masterSheet.getDataRange().getValues();
         for (let i = 1; i < masterData.length; i++) {
             const cConst = parseFloat(masterData[i][2]);
-            const isNew = masterData[i][3] === true || masterData[i][3] === "true";
+            // 文字列として取得し、小文字にして比較
+            const isNewStr = String(masterData[i][3] || "").toLowerCase().trim();
+
             if (cConst >= minC && cConst <= maxC) {
                 if (typeFilter === 'all') totalMatchingSongs++;
-                else if (typeFilter === 'new' && isNew) totalMatchingSongs++;
-                else if (typeFilter === 'old' && !isNew) totalMatchingSongs++;
+                else if (typeFilter === 'new' && isNewStr === 'true') totalMatchingSongs++;
+                else if (typeFilter === 'old' && isNewStr !== 'true') totalMatchingSongs++;
             }
         }
     }
 
-    // --- 各ユーザーの集計 ---
+    // --- 2. 各ユーザーの集計 ---
     for (let i = 1; i < userMap.length; i++) {
         const name = String(userMap[i][1] || "");
         const sheet = ss.getSheetByName(name);
         if (!sheet) continue;
 
         const data = sheet.getDataRange().getValues();
-        let playerCountFiltered = 0;   // 条件達成数
-        let playerTotalScoreAll = 0;   // 定数内合計スコア
-        let playerTotalCountAll = 0;   // 定数内プレイ数
+        let playerCountFiltered = 0;
+        let playerTotalScoreFiltered = 0;
+        let playerTotalCountFiltered = 0;
 
         for (let j = 1; j < data.length; j++) {
             const row = data[j];
+            if (!row || row.length < 7) continue;
+
+            const cConst = parseFloat(row[2] || 0);
+            const cScore = parseFloat(row[3] || 0);
+            const cRating = Number(row[4] || 0); // 単曲レート
+            const cLamp = String(row[5] || "");
+
+            // ★ここが最重要：シート上の値を文字列 "true" として判定
+            const isNewSongStr = String(row[6] || "").toLowerCase().trim();
+
+            // A. 定数範囲外は即スキップ
+            if (cConst < minC || cConst > maxC) continue;
+
+            // B. 楽曲別集計（定数内なら常に集計）
             const songName = String(row[0] || "不明な曲");
             const diff = String(row[1] || "");
             const fullTitle = diff ? `${songName} [${diff}]` : songName;
 
-            const cConst = parseFloat(row[2] || 0);
-            const cScore = parseFloat(row[3] || 0);
-            const cRating = parseFloat(row[4] || 0);
-            const cLamp = String(row[5] || "");
-            const isNewSong = !!row[6];
-
-            // --- 定数範囲外は完全にスキップ ---
-            if (cConst < minC || cConst > maxC) continue;
-
-            // --- 楽曲別集計の初期化（定数内であれば必ず作成） ---
             if (!songAggregation[fullTitle]) {
                 songAggregation[fullTitle] = {
                     count: 0, constant: cConst, players: [],
                     totalScoreAll: 0, totalCountAll: 0
                 };
             }
-
-            // 全プレイとしての集計（平均用）
             songAggregation[fullTitle].totalScoreAll += cScore;
             songAggregation[fullTitle].totalCountAll++;
-            playerTotalScoreAll += cScore;
-            playerTotalCountAll++;
 
-            // --- フィルタ（達成条件）判定 ---
-            let isAchieved = true;
-            if (cRating < minR || cRating > maxR) isAchieved = false;
-            if (typeFilter === 'new' && !isNewSong) isAchieved = false;
-            if (typeFilter === 'old' && isNewSong) isAchieved = false;
-            if (cScore < rMin || cScore > getUpperLimitGAS(rMax)) isAchieved = false;
-
-            if (targetLamp && targetLamp !== 'all') {
-                if (targetLamp === 'ajc' && !cLamp.includes('AJC')) isAchieved = false;
-                else if (targetLamp === 'aj' && !cLamp.includes('AJ')) isAchieved = false;
-                else if (targetLamp === 'None' && cLamp.includes('AJ')) isAchieved = false;
+            // C. 個人別用の新旧フィルタ判定（文字列で比較）
+            let passTypeFilter = false;
+            if (typeFilter === 'all') {
+                passTypeFilter = true;
+            } else if (typeFilter === 'new' && isNewSongStr === 'true') {
+                passTypeFilter = true;
+            } else if (typeFilter === 'old' && isNewSongStr !== 'true') {
+                passTypeFilter = true;
             }
 
-            // ★ 修正：達成に関わらずplayersにpushし、フラグを持たせる
-            songAggregation[fullTitle].players.push({ 
-                name: name, 
-                score: cScore, 
-                isAchieved: isAchieved 
+            // D. 個人別：新旧フィルタ一致時のみ処理
+            let isAchieved = false;
+            if (passTypeFilter) {
+                playerTotalCountFiltered++;
+                playerTotalScoreFiltered += cScore;
+
+                // E. 達成条件判定
+                isAchieved = true;
+
+                // 1. 単曲レート判定 ★追加
+                if (cRating < minRating || cRating > maxRating) isAchieved = false;
+
+                if (cScore < rMin || cScore > getUpperLimitGAS(rMax)) isAchieved = false;
+
+                if (targetLamp !== 'all') {
+                    if (targetLamp === 'ajc' && !cLamp.includes('AJC')) isAchieved = false;
+                    else if (targetLamp === 'aj' && !cLamp.includes('AJ')) isAchieved = false;
+                    else if (targetLamp === 'None' && (cLamp.includes('AJ') || cLamp.includes('AJC'))) isAchieved = false;
+                }
+
+                if (isAchieved) {
+                    playerCountFiltered++;
+                    songAggregation[fullTitle].count++;
+                }
+            }
+
+            songAggregation[fullTitle].players.push({
+                name: name, score: cScore, isAchieved: isAchieved
             });
-
-            if (isAchieved) {
-                playerCountFiltered++;
-                songAggregation[fullTitle].count++; // 達成人数
-            }
         }
 
         results.push({
             playerName: name,
             count: playerCountFiltered,
-            allPlayCount: playerTotalCountAll,
-            avgScore: playerTotalCountAll > 0 ? Math.round(playerTotalScoreAll / playerTotalCountAll) : 0
+            allPlayCount: playerTotalCountFiltered,
+            avgScore: playerTotalCountFiltered > 0 ? Math.round(playerTotalScoreFiltered / playerTotalCountFiltered) : 0
         });
     }
 
@@ -249,7 +270,7 @@ function getStatsFromSheets(ss, params) {
             title: t,
             count: data.count,
             constant: data.constant,
-            players: data.players, // ここに全員分のデータ（フラグ付）が入る
+            players: data.players,
             avgScore: data.totalCountAll > 0 ? Math.round(data.totalScoreAll / data.totalCountAll) : 0,
             totalCountAll: data.totalCountAll || 0
         };
