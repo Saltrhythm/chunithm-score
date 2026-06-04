@@ -162,12 +162,13 @@ button:hover {
     justify-content: center;
 }
 
-/* ホバー（マウスを乗せた時） */
-.refresh-btn.nav-item.active:hover {
-    background: #ff851b;
-    transform: translateY(-3px);
-    /* 浮き上がる量を少しアップ */
-    box-shadow: 0 8px 20px rgba(238, 112, 10, 0.5);
+/* ★ 変更ポイント：PC（マウスが使える環境）のみhoverアニメーションを有効にする */
+@media (hover: hover) {
+    .refresh-btn.nav-item.active:hover {
+        background: #ff851b;
+        transform: translateY(-3px); /* 浮き上がる量を少しアップ */
+        box-shadow: 0 8px 20px rgba(238, 112, 10, 0.5);
+    }
 }
 
 /* 同期中（disabled） */
@@ -506,39 +507,51 @@ input[type="number"]::-webkit-inner-spin-button {
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
-/* 統計ボタン専用のスタイル */
+/* =================================================================
+   ボタン共通・個別のスタイル設定
+   ================================================================= */
+
+/* 統計ボタン共通スタイル */
 .btn-stats {
-    background: #4a4ae0;
-    /* 他の入力欄と同じ深い紺色 */
     color: #ffffff;
-    /* チュウニズムらしい明るい青文字 */
     padding: 12px 30px;
     border-radius: 8px;
     font-size: 16px;
     font-weight: bold;
     cursor: pointer;
     transition: all 0.3s ease;
-    box-shadow: 0 0 10px rgba(0, 207, 255, 0.2);
 }
 
-.btn-stats:hover {
+/* 統計（個人別）のカラー */
+#stats-player-btn {
+    background: #4a90e2;
+    box-shadow: 0 0 10px rgba(74, 144, 226, 0.3);
+}
+#stats-player-btn:hover {
     background: #ffffff;
-    /* ホバー時は青色に反転 */
-    color: #4a4ae0;
-    box-shadow: 0 0 15px rgba(0, 207, 255, 0.5);
+    color: #4a90e2;
+    box-shadow: 0 0 15px rgba(74, 144, 226, 0.6);
+}
+
+/* 統計（楽曲別）のカラー */
+#stats-song-btn {
+    background: #f5a623;
+    box-shadow: 0 0 10px rgba(245, 166, 35, 0.3);
+}
+#stats-song-btn:hover {
+    background: #ffffff;
+    color: #f5a623;
+    box-shadow: 0 0 15px rgba(245, 166, 35, 0.6);
 }
 
 .btn-stats:active {
     transform: scale(0.98);
-    /* クリック時に少しへこむ演出 */
 }
 
 /* 課題曲ボタン専用のスタイル */
 .btn-random {
     background: #29aa01;
-    /* 他の入力欄と同じ深い紺色 */
     color: #ffffff;
-    /* チュウニズムらしい明るい青文字 */
     padding: 12px 30px;
     border-radius: 8px;
     font-size: 16px;
@@ -550,68 +563,77 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .btn-random:hover {
     background: #ffffff;
-    /* ホバー時は青色に反転 */
     color: #29aa01;
     box-shadow: 0 0 15px rgba(7, 201, 49, 0.5);
 }
 
 .btn-random:active {
     transform: scale(0.98);
-    /* クリック時に少しへこむ演出 */
 }
 
-/* 統計中であることを示すメッセージ（任意） */
+/* VSボタン専用のスタイル（追加：紫色） */
+.btn-vs {
+    background: #9b5de5; /* チュウニズムのキャラクターや紫レートをイメージした鮮やかな紫 */
+    color: #ffffff;
+    padding: 12px 30px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 0 10px rgba(155, 93, 229, 0.4);
+}
+
+.btn-vs:hover {
+    background: #ffffff;
+    color: #9b5de5;
+    box-shadow: 0 0 15px rgba(155, 93, 229, 0.6);
+}
+
+.btn-vs:active {
+    transform: scale(0.98);
+}
+
+/* 統計中であることを示すメッセージ */
 #status-message {
     font-size: 14px;
     color: #666;
     margin-top: 8px;
 }
 
-/* PC・スマホ共通のベース設定 */
+/* =================================================================
+   レイアウト設定（PC・共通ベース）
+   ================================================================= */
 .stats-exec-area {
     display: flex;
     gap: 10px;
-    overflow-x: auto;
-    /* 横スクロールを許可 */
-    white-space: nowrap;
-    /* 改行を禁止 */
     padding: 10px 5px;
-    -webkit-overflow-scrolling: touch;
-    /* iOSの慣性スクロール */
-
-    /* 中央寄せの設定（中身が画面幅より狭い時） */
-    justify-content: center;
-
-    /* スクロールバーを隠す設定 */
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+    justify-content: center; /* PCでは一列で中央寄せ */
 }
 
-.stats-exec-area::-webkit-scrollbar {
-    display: none;
-}
-
-/* スマホ表示（画面幅が狭い時）の微調整 */
+/* =================================================================
+   スマホ表示（画面幅が768px以下の時）の2列×2段レイアウト
+   ================================================================= */
 @media screen and (max-width: 768px) {
     .stats-exec-area {
-        /* 重要：スクロールさせるために justify-content を上書き */
-        justify-content: flex-start;
-        flex-wrap: nowrap !important;
-        /* 絶対に折り返さない */
-
-        /* 左右に少し余白を作るとスクロール可能なことが伝わりやすい */
+        flex-wrap: wrap !important; /* 横スクロールさせず、折り返しを許可 */
+        justify-content: center;
         padding-left: 15px;
         padding-right: 15px;
+        gap: 10px; /* ボタン同士の間隔 */
     }
 
-    /* ボタンが小さくなりすぎないように最小幅を固定しても良い */
+    /* 4つのボタンすべてに適用し、画面幅にきれいに収める */
     .btn-stats,
-    .btn-random {
-        flex-shrink: 0;
+    .btn-random,
+    .btn-vs {
+        flex: 0 0 calc(50% - 5px); /* 横幅をぴったり半分のサイズに指定（隙間分を引く） */
+        box-sizing: border-box;
+        padding: 12px 5px; /* スマホ画面で文字が溢れて改行されないよう左右の余白を調整 */
+        font-size: 13px;   /* 画面の小さいスマホでも1行でスッキリ収まるフォントサイズ */
+        text-align: center;
     }
 }
-
-
 
 
 /* --- テーブルの外枠（スマホで横スクロールできるようにする） --- */

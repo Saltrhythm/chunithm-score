@@ -34,27 +34,22 @@ window.onload = function () {
     initFilters();
 };
 
-/** 
- * キャッシュ
+/** * キャッシュ（DOM読み込み完了時に実行）
  */
 window.addEventListener('DOMContentLoaded', () => {
     const savedToken = localStorage.getItem('chunirec_token');
     const cachedData = localStorage.getItem('chunirec_scores');
-    const cacheTime = localStorage.getItem('chunirec_cache_time');
     const savedName = localStorage.getItem('chunirec_player_name');
 
+    // 正しいIDである token-input に統一してトークンを復元
     if (savedToken) {
-        // IDが api-token ではなく token-input のはずなので修正
         const tokenInput = document.getElementById('token-input');
         if (tokenInput) tokenInput.value = savedToken;
     }
 
-    // キャッシュがあり、かつ前回から24時間以内なら自動表示
-    // (1000ms * 60s * 60m * 24h = 86,400,000ms)
-    const isFresh = cacheTime && (Date.now() - parseInt(cacheTime) < 86400000);
-
-    // データ・名前・時間のすべてが揃っている場合のみ自動ログイン
-    if (cachedData && savedName && isFresh) {
+    // ★24時間制限（isFresh）を完全に撤廃し、キャッシュがあれば無期限に自動表示
+    // ※ 過去の"undefined"という壊れたキャッシュによるエラーを防ぐ安全弁も追加
+    if (cachedData && cachedData !== "undefined" && savedName) {
         myCurrentRecords = JSON.parse(cachedData);
 
         document.getElementById("token-screen").style.display = "none";
@@ -76,13 +71,16 @@ function toggleTokenVisibility() {
 
     if (input.type === "password") {
         input.type = "text";
-        btn.innerText = "🔒"; // 表示中にする
+        btn.innerText = "🔒"; 
     } else {
         input.type = "password";
-        btn.innerText = "👁️"; // 非表示（伏せ字）にする
+        btn.innerText = "👁️"; 
     }
 }
 
+/**
+ * スコア読み込みコア関数
+ */
 async function loadScores() {
     const tokenInput = document.getElementById("token-input");
     const loadBtn = document.getElementById("load-btn");
@@ -90,7 +88,7 @@ async function loadScores() {
     const errorMsg = document.getElementById("token-error");
     const token = tokenInput.value.trim();
 
-    if (!token) return;
+    if (!token) return false;
 
     // 開始
     loadBtn.disabled = true;
@@ -105,7 +103,7 @@ async function loadScores() {
             body: JSON.stringify({ mode: "checker", token: token })
         });
 
-        const result = await response.json();
+        let result = await response.json();
 
         if (result.status === "need_name") {
             const name = prompt("新規ユーザーです。ユーザー名を入力してください（以後自分では変更不可）");
@@ -116,10 +114,12 @@ async function loadScores() {
                 headers: { 'Content-Type': 'text/plain' },
                 body: JSON.stringify({ mode: "checker", token: token, playerName: name })
             });
-            const result2 = await res2.json();
-            handleSuccess(result2);
-        } else if (result.status === "success") {
+            result = await res2.json();
+        }
+
+        if (result.status === "success") {
             handleSuccess(result);
+            return true; // 成功
         } else {
             throw new Error(result.message);
         }
@@ -127,6 +127,7 @@ async function loadScores() {
         console.error(e);
         errorMsg.innerText = "エラー: " + e.message;
         errorMsg.style.display = "block";
+        return false; // 失敗
     } finally {
         loadBtn.disabled = false;
         loadBtn.innerText = "スコアを表示";
@@ -136,9 +137,9 @@ async function loadScores() {
 
 /**
  * データを再同期する（ボタン用）
+ * スマホでの「同期中...」描画対策、完了/エラーメッセージのポップアップを追加
  */
-function refreshScores() {
-    // ボタンを無効化して連打防止
+async function refreshScores() {
     const btn = document.querySelector('.refresh-btn');
     if (!btn || btn.disabled) return;
 
@@ -146,29 +147,43 @@ function refreshScores() {
     btn.disabled = true;
     btn.innerText = "同期中...";
 
-    // 既存の loadScores を実行（通信が始まる）
-    loadScores().finally(() => {
-        // 終わったらボタンを戻す（loadScoresにPromiseを返させる場合）
-        btn.disabled = false;
-        btn.innerText = originalText;
-    });
+    // スマホの画面更新時間を確保するため50ミリ秒だけわざと待つ
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // 同期処理を実行
+    const isSuccess = await loadScores();
+
+    btn.disabled = false;
+    btn.innerText = originalText;
+
+    btn.blur();
+
+    if (isSuccess) {
+        alert("データの再同期が正常に完了しました！");
+    } else {
+        const errorMsgEl = document.getElementById("token-error");
+        const errMsg = errorMsgEl ? errorMsgEl.innerText : "原因不明のエラー";
+        alert("同期に失敗しました。\n" + errMsg);
+    }
 }
 
+/**
+ * 同期成功時の処理
+ */
 function handleSuccess(result) {
     console.log("成功ルート突入", result);
 
-    // 1. データの保存
-    myCurrentRecords = result.records;
+    // 1. データの保存（GASの仕様に合わせて result.records を確実に代入）
+    myCurrentRecords = result.records || [];
 
-    // 2. トークンの安全な取得と保存
-    const tokenInput = document.getElementById('api-token');
+    // 2. トークンの安全な取得と保存（IDを token-input に統一）
+    const tokenInput = document.getElementById('token-input');
     if (tokenInput) {
-        // 入力欄が存在する場合のみ、その値を保存する
-        localStorage.setItem('chunirec_token', tokenInput.value);
+        localStorage.setItem('chunirec_token', tokenInput.value.trim());
     }
 
-    // スコアと名前をキャッシュに保存
-    localStorage.setItem('chunirec_scores', JSON.stringify(result.records));
+    // スコアと名前をキャッシュに保存（無期限ロード用）
+    localStorage.setItem('chunirec_scores', JSON.stringify(myCurrentRecords));
     localStorage.setItem('chunirec_player_name', result.playerName);
     localStorage.setItem('chunirec_cache_time', Date.now().toString());
 
@@ -178,9 +193,11 @@ function handleSuccess(result) {
 
     // 4. レート計算と表示
     calculatechuniRate(result.playerName);
+    
+    // 確実にデータを引き渡す
     displayScores(myCurrentRecords);
 
-    // 再同期ボタンを元に戻す（もしあれば）
+    // 再同期ボタンを元に戻す
     const refreshBtn = document.querySelector('.refresh-btn');
     if (refreshBtn) {
         refreshBtn.disabled = false;
@@ -473,8 +490,8 @@ function calculatechuniRate(playerName) {
     rateThresholds.new20 = newData.threshold;
     rateThresholds.best30 = bestData.threshold;
 
-    // トータルレート算出：切り捨て済みの枠平均から算出し、最後に第3位切り捨て
-    const totalRate = floorTo2nd((newData.avg * 20 + bestData.avg * 30) / 50);
+    // トータルレート算出：切り捨て済みの枠平均から算出し、最後に第5位切り捨て
+    const totalRate = floorTo4th((newData.avg * 20 + bestData.avg * 30) / 50);
 
     // --- HTML出力 ---
     const displayName = playerName || "Player";
@@ -483,7 +500,7 @@ function calculatechuniRate(playerName) {
         <div class="rating-container">
             <span class="user-name"><strong>${displayName}</strong></span>
             <span class="divider">|</span>
-            <span class="rate-total">Rating: <span class="highlight-number main-rate">${totalRate.toFixed(2)}</span></span>
+            <span class="rate-total">Rating: <span class="highlight-number main-rate">${totalRate.toFixed(4)}</span></span>
             <span class="divider">|</span>
             <span>BEST: <span class="highlight-number">${bestData.avg.toFixed(4)}</span></span>
             <span class="divider">|</span>
@@ -1469,10 +1486,10 @@ function showPlayerDetailModal(playerData) {
     title.innerText = `${playerData.playerName} の詳細`;
     tbody.innerHTML = "";
 
-    // ヘッダーを「楽曲詳細用」に書き換え
+    // 横幅の比率を「70% : 30%」に完全固定
     thead.innerHTML = `
-        <th style="text-align:left; padding-left: 15px;">楽曲名</th>
-        <th style="text-align:center;">スコア</th>
+        <th style="text-align: center; padding-left: 0px; width: 70%;">楽曲名</th>
+        <th style="text-align: center; width: 30%;">スコア</th>
     `;
 
     // データの描画
@@ -1486,9 +1503,16 @@ function showPlayerDetailModal(playerData) {
             tr.style.fontWeight = "bold";
         }
 
+        // ★ 変更ポイント: スクロール用divの内側に「text-align: left;」を明示して、確実に左寄せにします
         tr.innerHTML = `
-            <td style="text-align:left; font-size: 0.85em;">${item.title}</td>
-            <td style="text-align:center;">${item.score.toLocaleString()}</td>
+            <td style="text-align: left; padding-left: 10px; font-size: 0.85em; width: 70%; max-width: 0;">
+                <div style="display: block; width: 100%; text-align: left; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; padding-right: 5px;">
+                    ${item.title}
+                </div>
+            </td>
+            <td style="text-align: center; width: 30%; font-size: 0.80em;">
+                ${item.score.toLocaleString()}
+            </td>
         `;
         tbody.appendChild(tr);
     });
@@ -1496,7 +1520,6 @@ function showPlayerDetailModal(playerData) {
     // モーダルを表示
     document.getElementById('sub-modal').style.display = 'flex';
 }
-
 
 
 

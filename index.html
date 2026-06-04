@@ -137,11 +137,10 @@
             </div>
 
             <div class="stats-exec-area" style="margin: 15px 0;">
-                <button id="stats-player-btn" class="btn-stats" onclick="fetchStats('player')"
-                    style="background-color: #4a90e2;">統計 (個人別)</button>
-                <button id="stats-song-btn" class="btn-stats" onclick="fetchStats('song')"
-                    style="background-color: #f5a623;">統計 (楽曲別)</button>
-                <button id="random-btn" class="btn-random" onclick="pickRandomSong()">課題曲を選出</button>
+                <button id="stats-player-btn" class="btn-stats" onclick="fetchStats('player')">統計 (個人別)</button>
+                <button id="stats-song-btn" class="btn-stats" onclick="fetchStats('song')">統計 (楽曲別)</button>
+                <button id="random-btn" class="btn-random" onclick="pickRandomSong()">課題曲選出</button>
+                <button id="vs-btn" class="btn-vs">VS(実装予定)</button>
             </div>
 
             <div id="loading">データを取得中...</div>
@@ -216,7 +215,8 @@
 
     <div id="sub-modal" class="modal" style="display:none; z-index:2000;">
         <div class="modal-content sub-modal-content">
-            <h3 id="sub-modal-title">達成者一覧</h3><button onclick="closeSubModal()" class="sub-modal-close-btn">閉じる</button>
+            <h3 id="sub-modal-title">達成者一覧</h3><button onclick="closeSubModal()"
+                class="sub-modal-close-btn">閉じる</button>
             <div class="sub-modal-body">
                 <table id="sub-modal-table">
                     <thead>

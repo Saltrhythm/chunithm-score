@@ -10,10 +10,7 @@ function doPost(e) {
         const params = JSON.parse(e.postData.contents);
         const mode = String(params.mode || "checker");
 
-        // ログ記録
-        logSheet.appendRow([new Date(), "POST受信", "Mode: " + mode]);
-
-        // 1. ランキング取得モード（特定の曲の順位表）
+        // 1. ランキング取得モード（読み取り専用：ロックなしで並列実行OK）
         if (mode === "get_ranking") {
             const t = String(params.title || "");
             const d = String(params.diff || "");
@@ -21,62 +18,74 @@ function doPost(e) {
             return createJsonResponse({ status: "success", data: results });
         }
 
-        // 2. 統計取得モード（条件に合う曲数のランキング）
+        // 2. 統計取得モード（読み取り専用：ロックなしで並列実行OK）
         if (mode === "get_stats") {
             const results = getStatsFromSheets(ss, params);
             return createJsonResponse({ status: "success", data: results });
         }
 
-        // --- 追加：特定のプレイヤーの全プレイデータを取得するモード ---
+        // 3. 特定のプレイヤーの全プレイデータ取得（読み取り専用：ロックなしで並列実行OK）
         if (mode === "get_player_detail") {
             const playerName = String(params.playerName || "");
             const results = getPlayerDetailFromSheet(ss, playerName, params);
             return createJsonResponse({ status: "success", data: results });
         }
 
-        // 3. 同期/認証モード (checker)
-        const token = String(params.token || "");
-        let playerName = String(params.playerName || "");
-
-        // 先にAPIからデータを取得（失敗すればここで中断）
-        const records = fetchAndProcessFromApi(token, ss);
-
-        // API取得に成功した場合のみ、以下の登録/更新処理に進む
-        const hashedToken = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, token)
-            .map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
-
-        let userMapSheet = ss.getSheetByName("UserMap") || ss.insertSheet("UserMap");
-        if (userMapSheet.getLastRow() === 0) userMapSheet.appendRow(["token_hash", "name"]);
-
-        const userMapData = userMapSheet.getDataRange().getValues();
-
-        // トークンハッシュで既存ユーザーを検索
-        let userRowIndex = userMapData.findIndex(row => row[0] === hashedToken);
-
-        if (userRowIndex === -1) {
-            // トークンが見つからない場合、次に「同じプレイヤー名」が既に登録されていないか確認
-            const sameNameIndex = userMapData.findIndex(row => row[1] === playerName);
-
-            if (sameNameIndex !== -1) {
-                // 【上書き処理】同じ名前が見つかった場合、その行のトークンハッシュを更新する
-                userMapSheet.getRange(sameNameIndex + 1, 1).setValue(hashedToken);
-                userRowIndex = sameNameIndex; // 既存ユーザーとして扱う
-            } else if (!playerName) {
-                // 名前も未入力なら入力を促す
-                return createJsonResponse({ status: "need_name" });
-            } else {
-                // 名前もトークンも新しい場合、新規登録
-                userMapSheet.appendRow([hashedToken, playerName]);
-            }
-        } else {
-            // 既存のトークンが見つかった場合
-            playerName = userMapData[userRowIndex][1];
+        // =================================================================
+        // 4. 同期/認証モード (checker) 
+        // =================================================================
+        const lock = LockService.getScriptLock();
+        // 他の人が同期中の場合、最大15秒間順番待ちをする
+        if (!lock.tryLock(15000)) {
+            return createJsonResponse({ status: "error", message: "サーバーが混雑しています。少し時間を置いて再度お試しください。" });
         }
 
-        // シートの作成・更新
-        updateUserSheet(ss, playerName, records);
+        try {
+            const token = String(params.token || "");
+            let playerName = String(params.playerName || "");
+            
+            // ★修正ポイント4：プレイヤー名からシート名の禁止文字（/, \, ?, *, [, ], :, ：）を自動除去
+            playerName = playerName.replace(/[\*＼\/\\\[\]\?：:]/g, "").trim();
 
-        return createJsonResponse({ status: "success", playerName: playerName, records: records });
+            // 先にAPIからデータを取得
+            const records = fetchAndProcessFromApi(token, ss);
+
+            // API取得に成功した場合のみ、以下の登録/更新処理に進む
+            const hashedToken = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, token)
+                .map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
+
+            let userMapSheet = ss.getSheetByName("UserMap") || ss.insertSheet("UserMap");
+            if (userMapSheet.getLastRow() === 0) userMapSheet.appendRow(["token_hash", "name"]);
+
+            const userMapData = userMapSheet.getDataRange().getValues();
+
+            // トークンハッシュで既存ユーザーを検索
+            let userRowIndex = userMapData.findIndex(row => row[0] === hashedToken);
+
+            if (userRowIndex === -1) {
+                const sameNameIndex = userMapData.findIndex(row => row[1] === playerName);
+
+                if (sameNameIndex !== -1) {
+                    userMapSheet.getRange(sameNameIndex + 1, 1).setValue(hashedToken);
+                    userRowIndex = sameNameIndex; 
+                } else if (!playerName) {
+                    return createJsonResponse({ status: "need_name" });
+                } else {
+                    userMapSheet.appendRow([hashedToken, playerName]);
+                }
+            } else {
+                // 仕様通り：名前変更は反映せず既存の名前を維持
+                playerName = userMapData[userRowIndex][1];
+            }
+
+            // シートの作成・更新（ここが最重要の書き込み部分）
+            updateUserSheet(ss, playerName, records);
+
+            return createJsonResponse({ status: "success", playerName: playerName, records: records });
+
+        } finally {
+            lock.releaseLock();
+        }
 
     } catch (error) {
         logSheet.appendRow([new Date(), "ERROR", String(error.message || error)]);
@@ -85,7 +94,7 @@ function doPost(e) {
 }
 
 /**
- * ランキング取得ロジック（徹底したnullガード版）
+ * ランキング取得ロジック（高速化版）
  */
 function getRankingFromSheets(ss, title, diff, logSheet) {
     const userMapSheet = ss.getSheetByName("UserMap");
@@ -98,23 +107,29 @@ function getRankingFromSheets(ss, title, diff, logSheet) {
     const targetTitle = normalize(title);
     const targetDiff = normalize(diff);
 
-    if (logSheet) {
-        logSheet.appendRow([new Date(), "ランキング検索詳細", "Target: " + targetTitle + " / " + targetDiff]);
-    }
+    // 全シートのデータを最初に1回だけで一括取得し、メモリにマップ化する
+    const allSheets = ss.getSheets();
+    const sheetDataMap = {};
+    allSheets.forEach(sheet => {
+        const sName = sheet.getName();
+        // ★修正ポイント1：除外リストに "NewSongs" を追加してメモリ負荷を軽減
+        if (sName !== "UserMap" && sName !== "MasterData" && sName !== "DebugLog" && sName !== "NewSongs") {
+            sheetDataMap[sName] = sheet.getDataRange().getValues();
+        }
+    });
 
     for (let i = 1; i < userMap.length; i++) {
         const name = String(userMap[i][1] || "");
         if (!name) continue;
 
-        const sheet = ss.getSheetByName(name);
-        if (!sheet) {
+        // スプレッドシートではなく、メモリ（オブジェクト）からデータを取得
+        const data = sheetDataMap[name];
+        if (!data) {
             results.push({ playerName: name, score: "-", lamp: "-" });
             continue;
         }
 
-        const data = sheet.getDataRange().getValues();
         let match = null;
-
         for (let j = 1; j < data.length; j++) {
             if (normalize(data[j][0]) === targetTitle && normalize(data[j][1]) === targetDiff) {
                 match = data[j];
@@ -123,10 +138,8 @@ function getRankingFromSheets(ss, title, diff, logSheet) {
         }
 
         if (match) {
-            // インデックス3:score, 5:lamp
             const scoreVal = (match[3] !== undefined && match[3] !== null) ? match[3] : "-";
             const lampVal = (match[5] !== undefined && match[5] !== null) ? String(match[5]) : "-";
-
             results.push({ playerName: name, score: scoreVal, lamp: lampVal });
         } else {
             results.push({ playerName: name, score: "-", lamp: "-" });
@@ -141,9 +154,7 @@ function getRankingFromSheets(ss, title, diff, logSheet) {
 }
 
 /**
- * 統計情報を取得
- * 楽曲別集計：常に全曲（新旧フィルタ無視）
- * 個人別集計：新旧フィルタを反映
+ * 統計情報を取得（高速化版）
  */
 function getStatsFromSheets(ss, params) {
     const userMapSheet = ss.getSheetByName("UserMap");
@@ -162,13 +173,25 @@ function getStatsFromSheets(ss, params) {
     const targetLamp = String(params.lampFilter || 'all');
     const typeFilter = String(params.typeFilter || 'all');
 
+    // 最初に全プレイヤーのシートデータを一括ロードしてメモリに載せる
+    const allSheets = ss.getSheets();
+    const sheetDataMap = {};
+    allSheets.forEach(sheet => {
+        const sName = sheet.getName();
+        // ★修正ポイント1：除外リストに "NewSongs" を追加してメモリ負荷を軽減
+        if (sName !== "UserMap" && sName !== "MasterData" && sName !== "DebugLog" && sName !== "NewSongs") {
+            sheetDataMap[sName] = sheet.getDataRange().getValues();
+        }
+    });
+
     // --- 各ユーザーの集計 ---
     for (let i = 1; i < userMap.length; i++) {
         const name = String(userMap[i][1] || "");
-        const sheet = ss.getSheetByName(name);
-        if (!sheet) continue;
+        
+        // メモリからデータを引き出す
+        const data = sheetDataMap[name];
+        if (!data) continue;
 
-        const data = sheet.getDataRange().getValues();
         let playerCountFiltered = 0;
         let playerTotalScoreFiltered = 0;
         let playerTotalCountFiltered = 0;
@@ -183,10 +206,8 @@ function getStatsFromSheets(ss, params) {
             const cLamp = String(row[5] || "");
             const isNewSongStr = String(row[6] || "").toLowerCase().trim();
 
-            // A. 定数範囲外は即除外（これは楽曲別も個人別も共通）
             if (cConst < minC || cConst > maxC) continue;
 
-            // --- 楽曲別集計（新旧フィルタ無視：常に計算） ---
             const songName = String(row[0] || "不明な曲");
             const diff = String(row[1] || "");
             const fullTitle = diff ? `${songName} [${diff}]` : songName;
@@ -200,7 +221,6 @@ function getStatsFromSheets(ss, params) {
             songAggregation[fullTitle].totalScoreAll += cScore;
             songAggregation[fullTitle].totalCountAll++;
 
-            // 達成条件の判定（共通：スコア、ランプ、単レ）
             let isAchieved = true;
             if (cRating < minRating || cRating > maxRating) isAchieved = false;
             if (cScore < rMin || cScore > getUpperLimitGAS(rMax)) isAchieved = false;
@@ -210,7 +230,6 @@ function getStatsFromSheets(ss, params) {
                 else if (targetLamp === 'None' && (cLamp.includes('AJ') || cLamp.includes('AJC'))) isAchieved = false;
             }
 
-            // 楽曲別ランキングの達成者数は「新旧フィルタを無視して」カウント
             if (isAchieved) {
                 songAggregation[fullTitle].count++;
             }
@@ -218,7 +237,6 @@ function getStatsFromSheets(ss, params) {
                 name: name, score: cScore, isAchieved: isAchieved
             });
 
-            // --- 個人別集計（ここで新旧フィルタを適用） ---
             let passTypeFilter = false;
             if (typeFilter === 'all') passTypeFilter = true;
             else if (typeFilter === 'new' && isNewSongStr === 'true') passTypeFilter = true;
@@ -241,7 +259,7 @@ function getStatsFromSheets(ss, params) {
         });
     }
 
-    // 理論値（theoryCount）計算用のMasterDataループ（新旧フィルタあり）
+    // 理論値（theoryCount）計算用のMasterDataループ
     let totalMatchingSongs = 0;
     const masterSheet = ss.getSheetByName("MasterData");
     if (masterSheet) {
@@ -278,15 +296,15 @@ function getStatsFromSheets(ss, params) {
  * 補助関数：基準スコアのランク区分の「上限」を返す（GAS用）
  */
 function getUpperLimitGAS(score) {
-    if (score >= 1010000) return 1010001; // 理論値
-    if (score >= 1009900) return 1010000; // 99AJ
-    if (score >= 1009000) return 1009899; // SSS+
-    if (score >= 1007500) return 1008999; // SSS
-    if (score >= 1007000) return 1007499; // 7000
-    if (score >= 1005000) return 1006999; // SS+
-    if (score >= 1000000) return 1004999; // SS
-    if (score >= 990000) return 999999;  // S+
-    if (score >= 970000) return 989999;  // S
+    if (score >= 1010000) return 1010001; 
+    if (score >= 1009900) return 1010000; 
+    if (score >= 1009000) return 1009899; 
+    if (score >= 1007500) return 1008999; 
+    if (score >= 1007000) return 1007499; 
+    if (score >= 1005000) return 1006999; 
+    if (score >= 1000000) return 1004999; 
+    if (score >= 990000) return 999999;  
+    if (score >= 970000) return 989999;  
     return 969999;
 }
 
@@ -294,6 +312,8 @@ function getUpperLimitGAS(score) {
  * 特定のプレイヤーの詳細データを取得する
  */
 function getPlayerDetailFromSheet(ss, playerName, params) {
+    // ★修正ポイント4：詳細取得の際も名前の禁止文字を除去して検索できるように統一
+    playerName = playerName.replace(/[\*＼\/\\\[\]\?：:]/g, "").trim();
     const sheet = ss.getSheetByName(playerName);
     if (!sheet) return [];
 
@@ -319,7 +339,6 @@ function getPlayerDetailFromSheet(ss, playerName, params) {
         const cLamp = String(row[5] || "");
         const isNewSongStr = String(row[6] || "").toLowerCase().trim();
 
-        // 統計モードと同じフィルタ条件を適用
         if (cConst < minC || cConst > maxC) continue;
 
         let passType = (typeFilter === 'all') || 
@@ -327,7 +346,6 @@ function getPlayerDetailFromSheet(ss, playerName, params) {
                        (typeFilter === 'old' && isNewSongStr !== 'true');
         if (!passType) continue;
 
-        // 達成判定
         let isAchieved = true;
         if (cRating < minRating || cRating > maxRating) isAchieved = false;
         if (cScore < rMin || cScore > getUpperLimitGAS(rMax)) isAchieved = false;
@@ -346,12 +364,8 @@ function getPlayerDetailFromSheet(ss, playerName, params) {
             isAchieved: isAchieved
         });
     }
-    // スコア降順で返す
     return details.sort((a, b) => b.score - a.score);
 }
-
-
-
 
 function updateUserSheet(ss, name, records) {
     let sheet = ss.getSheetByName(name) || ss.insertSheet(name);
@@ -389,12 +403,10 @@ function fetchAndProcessFromApi(token, ss) {
 
     const apiUrl = `https://api.chunirec.net/2.0/records/showall.json?token=${token}&region=jp2`;
 
-    // --- 修正箇所：エラーハンドリングの強化 ---
     const res = UrlFetchApp.fetch(apiUrl, { "muteHttpExceptions": true });
     const responseCode = res.getResponseCode();
 
     if (responseCode !== 200) {
-        // 403や401などのエラーコードが返ってきた場合、具体的なメッセージを投げる
         throw new Error("chunirec API接続失敗 (Status: " + responseCode + ")。トークンが正しいか確認してください。");
     }
 
@@ -402,7 +414,6 @@ function fetchAndProcessFromApi(token, ss) {
     if (!json.records) {
         throw new Error("API取得失敗: レコードが見つかりません。トークンを確認してください。");
     }
-    // ---------------------------------------
 
     return json.records.map(r => {
         const key = r.title + "_" + r.diff;
@@ -432,7 +443,7 @@ function calculateChuniRating(score, constant) {
     if (score >= 950000) return constant - 1.67 + (score - 950000) * 0.01 / 150;
     if (score >= 925000) return constant - 3.34 + (score - 925000) * 1.67 / 25000;
     if (score >= 900000) return constant - 5.0 + (score - 900000) * 1.66 / 25000;
-    return 0; // 簡易化
+    return 0; 
 }
 
 function createJsonResponse(obj) {
