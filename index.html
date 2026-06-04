@@ -51,15 +51,25 @@
         <div class="search-container">
             <div class="filter-controls">
 
-                <div class="filter-layout-container"> <button id="clear-filter"
-                        class="btn-reset vertical-reset">リセット</button>
+                <div class="main-filter-row">
+                    <input type="text" id="search-input" placeholder="曲名で検索...">
 
+                    <div class="filter-group-sort">
+                        <span class="filter-label-inline">ソート:</span>
+                        <button id="sort-Rating" class="btn-sort active">Rating順</button>
+                        <button id="sort-score" class="btn-sort">スコア順</button>
+                    </div>
+                </div>
 
-                    <div class="filter-rows-group">
+                <details class="filter-drawer">
+                    <summary class="drawer-toggle-btn">フィルター条件を表示 / 非表示</summary>
+
+                    <div class="drawer-content">
+                        <div class="filter-row">
+                            <button id="clear-filter" class="btn-reset-horizontal">フィルターリセット</button>
+                        </div>
 
                         <div class="filter-row">
-                            <input type="text" id="search-input" placeholder="曲名で検索...">
-
                             <div class="filter-group">
                                 <label class="filter-label">単レ</label>
                                 <input type="number" id="min-rating" class="filter-select" step="0.01" placeholder="下限"
@@ -68,11 +78,8 @@
                                 <input type="number" id="max-rating" class="filter-select" step="0.01" placeholder="上限"
                                     style="width: 50px;">
                             </div>
-                        </div>
 
-                        <div class="filter-row">
                             <div class="filter-group">
-
                                 <label for="lamp-filter" class="filter-label">ランプ</label>
                                 <select id="lamp-filter" class="filter-select">
                                     <option value="all">すべて</option>
@@ -80,11 +87,14 @@
                                     <option value="aj">AJ</option>
                                     <option value="None">未AJ</option>
                                 </select>
+                            </div>
+                        </div>
 
-
+                        <div class="filter-row">
+                            <div class="filter-group">
                                 <label class="filter-label">Rank</label>
                                 <div class="rank-filter-container" style="display: flex; align-items: center;">
-                                    <select id="rank-min" class="filter-select" style="width: 95px;">
+                                    <select id="rank-min" class="filter-select" style="width: 75px;">
                                         <option value="1009900">99AJ</option>
                                         <option value="1009000">SSS+</option>
                                         <option value="1007500">SSS</option>
@@ -95,8 +105,8 @@
                                         <option value="970000">S</option>
                                         <option value="0" selected>0</option>
                                     </select>
-                                    <span style="font-size: 12px;">～</span>
-                                    <select id="rank-max" class="filter-select" style="width: 95px;">
+                                    <span>～</span>
+                                    <select id="rank-max" class="filter-select" style="width: 75px;">
                                         <option value="1010000" selected>理論値</option>
                                         <option value="1009900">99AJ</option>
                                         <option value="1009000">SSS+</option>
@@ -108,8 +118,9 @@
                                         <option value="970000">S</option>
                                     </select>
                                 </div>
+                            </div>
 
-
+                            <div class="filter-group">
                                 <label for="min-constant" class="filter-label">定数</label>
                                 <select id="min-constant" class="filter-select"></select>
                                 <span class="range-separator">〜</span>
@@ -118,13 +129,8 @@
                         </div>
 
                         <div class="filter-row">
-                            <div class="filter-group">
-                                <span class="filter-label">ソート:</span>
-                                <button id="sort-Rating" class="btn-sort active">Rating順</button>
-                                <button id="sort-score" class="btn-sort">スコア順</button>
-                            </div>
-                            <div class="filter-group" style="margin-left: 5px;">
-                                <span class="filter-label">対象:</span>
+                            <div class="filter-group-target">
+                                <span class="filter-label-inline">対象:</span>
                                 <button id="filter-all" class="btn-filter filter-btn-unit active"
                                     data-value="all">全曲</button>
                                 <button id="filter-old" class="btn-filter filter-btn-unit" data-value="old">旧曲</button>
@@ -132,85 +138,84 @@
                             </div>
                         </div>
                     </div>
+                </details>
 
+            </div>
+        </div>
+
+        <div class="stats-exec-area" style="margin: 15px 0;">
+            <button id="stats-player-btn" class="btn-stats" onclick="fetchStats('player')">統計 (個人別)</button>
+            <button id="stats-song-btn" class="btn-stats" onclick="fetchStats('song')">統計 (楽曲別)</button>
+            <button id="random-btn" class="btn-random" onclick="pickRandomSong()">課題曲選出</button>
+            <button id="vs-btn" class="btn-vs">VS(実装予定)</button>
+        </div>
+
+        <div id="loading">データを取得中...</div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 40px;">#</th>
+                        <th style="width: 55%; text-align: left;">楽曲情報</th>
+                        <th style="width: 12.5%; text-align: center;">ランプ</th>
+                        <th style="width: 22.5%; text-align: center;">スコア</th>
+                        <th style="width: 20%; text-align: center;">単曲レート</th>
+                    </tr>
+                </thead>
+
+                <tbody id="score-body"></tbody>
+            </table>
+        </div>
+
+
+        <div id="ranking-modal" style="display: none;">
+            <div class="modal-content">
+
+                <h3 id="ranking-title-container"></h3>
+
+                <div id="stats-control-area" style="text-align: center; margin-bottom: 5px;"></div>
+
+                <div id="ranking-controls">
+                    <div style="text-align: left; margin-bottom: 2px;">
+                        <button id="reset-visibility-btn" onclick="resetTableVisibility()"
+                            class="reset-btn">全て再表示（行をクリックすると非表示になります）</button>
+                    </div>
+
+                    <div class="range-selector">
+                        <button class="range-btn active" data-min="1000000"
+                            onclick="updateRankingRange(1000000)">SS～</button>
+                        <button class="range-btn" data-min="1005000" onclick="updateRankingRange(1005000)">SS+～</button>
+                        <button class="range-btn" data-min="1007500" onclick="updateRankingRange(1007500)">SSS～</button>
+                        <button class="range-btn" data-min="1009000"
+                            onclick="updateRankingRange(1009000)">SSS+～</button>
+                    </div>
+
+                    <canvas id="ranking-canvas" width="800" height="180"></canvas>
                 </div>
-            </div>
 
-            <div class="stats-exec-area" style="margin: 15px 0;">
-                <button id="stats-player-btn" class="btn-stats" onclick="fetchStats('player')">統計 (個人別)</button>
-                <button id="stats-song-btn" class="btn-stats" onclick="fetchStats('song')">統計 (楽曲別)</button>
-                <button id="random-btn" class="btn-random" onclick="pickRandomSong()">課題曲選出</button>
-                <button id="vs-btn" class="btn-vs">VS(実装予定)</button>
-            </div>
+                <div style="margin-top: 15px; width: 100%;">
+                    <table id="ranking-table" style="width:100%">
+                        <thead id="ranking-thead">
+                            <tr>
+                                <th>順位</th>
+                                <th>名前</th>
+                                <th>スコア</th>
+                                <th>詳細</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ranking-body"></tbody>
+                    </table>
+                </div>
 
-            <div id="loading">データを取得中...</div>
-
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="width: 40px;">#</th>
-                            <th style="width: 55%; text-align: left;">楽曲情報</th>
-                            <th style="width: 12.5%; text-align: center;">ランプ</th>
-                            <th style="width: 22.5%; text-align: center;">スコア</th>
-                            <th style="width: 20%; text-align: center;">単曲レート</th>
-                        </tr>
-                    </thead>
-
-                    <tbody id="score-body"></tbody>
-                </table>
-            </div>
-
-
-            <div id="ranking-modal" style="display: none;">
-                <div class="modal-content">
-
-                    <h3 id="ranking-title-container"></h3>
-
-                    <div id="stats-control-area" style="text-align: center; margin-bottom: 5px;"></div>
-
-                    <div id="ranking-controls">
-                        <div style="text-align: left; margin-bottom: 2px;">
-                            <button id="reset-visibility-btn" onclick="resetTableVisibility()"
-                                class="reset-btn">全て再表示（行をクリックすると非表示になります）</button>
-                        </div>
-
-                        <div class="range-selector">
-                            <button class="range-btn active" data-min="1000000"
-                                onclick="updateRankingRange(1000000)">SS～</button>
-                            <button class="range-btn" data-min="1005000"
-                                onclick="updateRankingRange(1005000)">SS+～</button>
-                            <button class="range-btn" data-min="1007500"
-                                onclick="updateRankingRange(1007500)">SSS～</button>
-                            <button class="range-btn" data-min="1009000"
-                                onclick="updateRankingRange(1009000)">SSS+～</button>
-                        </div>
-
-                        <canvas id="ranking-canvas" width="800" height="180"></canvas>
-                    </div>
-
-                    <div style="margin-top: 15px; width: 100%;">
-                        <table id="ranking-table" style="width:100%">
-                            <thead id="ranking-thead">
-                                <tr>
-                                    <th>順位</th>
-                                    <th>名前</th>
-                                    <th>スコア</th>
-                                    <th>詳細</th>
-                                </tr>
-                            </thead>
-                            <tbody id="ranking-body"></tbody>
-                        </table>
-                    </div>
-
-                    <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
-                        <button id="discord-share-btn" onclick="shareToDiscord()">Discordに送信</button>
-                        <button class="modal-close-btn"
-                            onclick="document.getElementById('ranking-modal').style.display='none'">閉じる</button>
-                    </div>
+                <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
+                    <button id="discord-share-btn" onclick="shareToDiscord()">Discordに送信</button>
+                    <button class="modal-close-btn"
+                        onclick="document.getElementById('ranking-modal').style.display='none'">閉じる</button>
                 </div>
             </div>
         </div>
+    </div>
     </div>
 
     <div id="sub-modal" class="modal" style="display:none; z-index:2000;">

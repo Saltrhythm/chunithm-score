@@ -223,152 +223,157 @@ button:hover {
     margin-left: 4px;
 }
 
-/* 検索・フィルター固定エリア */
+/* =================================================================
+   検索・フィルター固定エリア（ベース設定）
+   ================================================================= */
 .search-container {
     position: sticky;
     top: 0;
     background: #f0f4f8;
-    padding: 10px 15px 20px 15px;
-    /* 左右に少し余白を追加 */
+    padding: 15px;
     z-index: 100;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-    /* 少し影をつけて浮かせると見やすい */
+    box-sizing: border-box;
+}
+
+.filter-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* 常時表示するメイン行（検索 + ソート） */
+.main-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
 }
 
 #search-input {
     flex: 1;
-    min-width: 180px;
-    max-width: 250px;
+    min-width: 200px;
+    max-width: 300px;
     padding: 0 20px;
-    /* 左右の余白を多めにとるとカプセル感が出ます */
-    height: 42px;
-    /* フィルターグループの 42px と合わせる */
+    height: 42px; /* 高さを42pxに固定 */
     border: 1px solid #ddd;
     border-radius: 30px;
     box-sizing: border-box;
-    margin-bottom: 0;
-    /* flex-wrapで自然に落ちるので0でOK */
     font-size: 16px;
     background: #fff;
 }
 
-/* Rating入力欄の個別スタイル（style.cssに追加） */
-#min-rating,
-#max-rating {
-    border: none;
-    background: transparent;
-    font-size: 0.9rem;
-    text-align: center;
-    outline: none;
-    padding: 0 5px;
+.filter-group-sort {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
-/* 数値入力のスピンボタン（上下矢印）を隠してスッキリさせる */
+.filter-label-inline {
+    font-weight: bold;
+    font-size: 0.85rem;
+    color: #666;
+}
+
+/* =================================================================
+   ドロワー（アコーディオン）のデザイン
+   ================================================================= */
+.filter-drawer {
+    width: 100%;
+    max-width: 650px;
+    margin: 0 auto;
+    background: #e4ecf5;
+    border-radius: 12px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+/* 開閉スイッチボタンの見た目 */
+.drawer-toggle-btn {
+    padding: 10px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: bold;
+    color: #4a5568;
+    background: #d2daf0;
+    cursor: pointer;
+    list-style: none;
+    outline: none;
+    user-select: none;
+}
+.drawer-toggle-btn::-webkit-details-marker {
+    display: none;
+}
+.drawer-toggle-btn:hover {
+    background: #cbd5e1;
+}
+
+/* ドロワーの中身のレイアウト */
+.drawer-content {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    box-sizing: border-box;
+}
+
+/* ドロワー内の各行 */
+.filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+}
+
+/* カプセルデザイン（グループ） */
+.filter-group {
+    display: flex;
+    align-items: center;
+    background: #fff;
+    padding: 0 12px;
+    border-radius: 30px;
+    border: 1px solid #ddd;
+    height: 42px;
+    box-sizing: border-box;
+}
+
+.filter-select {
+    border: none;
+    background: transparent;
+    font-size: 0.95rem;
+    padding: 0 4px;
+    cursor: pointer;
+    outline: none;
+    height: 100%;
+}
+
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
     -webkit-appearance: none;
     margin: 0;
 }
 
-/* 定数選択の 〜 とデザインを統一 */
+#min-rating, #max-rating {
+    border: none;
+    background: transparent;
+    font-size: 0.9rem;
+    text-align: center;
+    outline: none;
+    padding: 0 2px;
+}
+
 .range-separator {
     color: #999;
     font-size: 0.8rem;
     margin: 0 2px;
 }
 
-
-/* フィルタ全体を包むコンテナ */
-.filter-controls {
-    display: flex;
-    flex-direction: column;
-    /* 段を縦に並べる */
-    gap: 12px;
-    align-items: center;
-    /* 中央寄せ */
-
-    /* --- 全体スクロールの設定 --- */
-    overflow-x: auto;
-    /* 全体で横スクロールを許可 */
-    flex-wrap: nowrap;
-    /* 絶対に折り返さない */
-    width: 100%;
-    -webkit-overflow-scrolling: touch;
-
-    /* スクロールバーを隠す（任意） */
-    scrollbar-width: none;
-
-    margin-bottom: 15px;
-}
-
-/* 各段（行）の設定 */
-.filter-row {
-    display: flex;
-    flex-wrap: nowrap;
-    /* 行の中でも折り返し禁止 */
-    gap: 10px;
-    align-items: center;
-    justify-content: center;
-    /* 中央寄せ */
-
-    /* --- スクロール機能を解除 --- */
-    overflow-x: visible;
-    /* 子要素がはみ出ても、自分ではスクロールさせない */
-    min-width: max-content;
-    /* 中身の横幅を確保し、圧縮されないようにする */
-}
-
-/* スマホで左端が切れないようにする対策 */
-@media (max-width: 600px) {
-    .filter-controls {
-        align-items: flex-start;
-        /* スマホでは左端から表示（スクロール開始位置のため） */
-    }
-
-    .filter-row {
-        justify-content: flex-start;
-        /* 行も左寄せに */
-        padding: 0 15px;
-        /* 左右に少し余白 */
-    }
-}
-
-/* 各パーツが潰れないように固定（必須） */
-.filter-group,
-#search-input,
-.btn-reset,
-.btn-sort {
-    flex-shrink: 0;
-}
-
-/* 定数グループ（カプセルデザイン） */
-.filter-group {
-    display: flex;
-    align-items: center;
-    background: #fff;
-    padding: 0 15px;
-    border-radius: 30px;
-    border: 1px solid #ddd;
-    height: 42px;
-    box-sizing: border-box;
-
-    /* スマホで横幅がいっぱいになったら自然に折り返せるようにする */
-    min-width: fit-content;
-}
-
-/* セレクトボックスの見た目（枠を消してグループに馴染ませる） */
-.filter-select {
-    border: none;
-    background: transparent;
-    font-size: 0.95rem;
-    padding: 0 5px;
-    cursor: pointer;
-    outline: none;
-    height: 100%;
-    /* 親の高さに合わせる */
-}
-
-/* ラベルの左側に少し余白を作る（ランクと定数の間を空ける） */
 .filter-group .filter-label {
     font-weight: bold;
     font-size: 0.85rem;
@@ -376,107 +381,44 @@ input[type="number"]::-webkit-inner-spin-button {
     margin-right: 5px;
 }
 
-/* 最初のラベルだけは左余白をなくして左端に揃える */
 .filter-group .filter-label:not(:first-child) {
-    margin-left: 15px;
-    border-left: 1px solid #eee;
-    /* 縦棒を入れると区切りが明確になります */
-    padding-left: 15px;
-}
-
-/* ランクと定数の間の区切り線をスマホでは消す、または調整する */
-@media (max-width: 480px) {
-    .filter-group .filter-label:not(:first-child) {
-        margin-left: 10px;
-        padding-left: 10px;
-        border-left: 1px solid #eee;
-    }
-
-    /* 文字サイズを少し小さくして収まりを良くする */
-    .filter-label,
-    .filter-select {
-        font-size: 0.80rem;
-    }
-}
-
-
-/* 縦棒（区切り）の設定：前の要素がある場合のみ左側に線を引く */
-.filter-group .filter-label:not(:first-child) {
-    border-left: 1px solid #eee;
     margin-left: 10px;
+    border-left: 1px solid #eee;
     padding-left: 10px;
 }
 
-
-/* フィルタ全体を横並びにするコンテナ */
-.filter-layout-container {
+/* 対象（新曲・旧曲）ボタンのグループ */
+.filter-group-target {
     display: flex;
-    gap: 2px;
-    /* ボタンと入力欄の間の隙間 */
-    align-items: stretch;
-    /* 子要素（ボタン）の高さを揃える */
+    align-items: center;
+    gap: 6px;
 }
 
-/* フィルタ行を縦に並べるグループ */
-.filter-rows-group {
-    flex: 1;
-    /* 残りの幅をすべて使う */
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    /* 行ごとの隙間 */
-    margin-left: 0;
-}
-
-/* 縦長のリセットボタン */
-.btn-reset.vertical-reset {
-    /* デザインの統一 */
-    width: 35px;
-    /* 横幅はスリムに */
-    height: auto;
-    /* stretchによって3行分の高さになる */
-    padding: 10px 0;
-    border-radius: 30px;
-    /* 縦長なので角丸を少し抑えるか、お好みで調整 */
-
-    /* 縦書き設定 */
-    writing-mode: vertical-rl;
-    text-orientation: upright;
-    letter-spacing: 0.2em;
-
-    /* 色設定 */
+/* 新しい横型リセットボタン */
+.btn-reset-horizontal {
+    height: 42px;
+    padding: 0 20px;
     background: #ec5656;
     border: 1px solid #c0392b;
     color: #fff;
+    border-radius: 30px;
     cursor: pointer;
     font-weight: bold;
     font-size: 14px;
     transition: all 0.2s;
-
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-
-    margin-right: 5px;
 }
-
-.btn-reset.vertical-reset:hover {
+.btn-reset-horizontal:hover {
     background: #c0392b;
 }
 
-/* スマホ表示への対応（必要に応じて） */
-@media screen and (max-width: 768px) {
-    .filter-layout-container {
-        flex-direction: row;
-        /* 横並びを維持 */
-    }
-}
-
-/* ソートボタンおよびフィルタボタン共通のデザイン */
+/* ソート・フィルターボタン共通 */
 .btn-sort,
 .btn-filter {
     height: 42px;
-    padding: 0 15px;
+    padding: 0 14px;
     background: #fff;
     border: 1px solid #ddd;
     border-radius: 30px;
@@ -491,20 +433,98 @@ input[type="number"]::-webkit-inner-spin-button {
     align-items: center;
     justify-content: center;
 }
-
 .btn-sort:hover,
 .btn-filter:hover {
     background: #f0f0f0;
     border-color: #bbb;
 }
-
-/* 選択されている状態 */
 .btn-sort.active,
 .btn-filter.active {
     background: #555;
     color: #fff;
     border-color: #555;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* 各パーツの圧縮防止 */
+.filter-group,
+.filter-group-sort,
+.filter-group-target,
+#search-input,
+.btn-sort,
+.btn-filter,
+.btn-reset-horizontal {
+    flex-shrink: 0;
+}
+
+/* =================================================================
+   スマホ表示（画面幅が768px以下の時）の完全1行縦並びレイアウト
+   ================================================================= */
+@media screen and (max-width: 768px) {
+    .search-container {
+        padding: 10px;
+    }
+
+    .main-filter-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    /* 【修正】スマホ環境での曲名入力欄の枠を広げ、高さを他の要素（42px）と完全に統一 */
+    #search-input {
+        max-width: 100%;
+        width: 100%;
+        height: 42px;            /* 高さをしっかり42pxに確保 */
+        padding: 10px 20px;       /* 内側の余白を上下均等に広げる */
+        line-height: 22px;        /* 文字のベースラインを安定させる */
+        appearance: none;
+        -webkit-appearance: none; /* スマホブラウザ特有のインセットシャドウ等の見た目をリセット */
+    }
+
+    .filter-group-sort {
+        justify-content: space-between;
+        width: 100%;
+    }
+    .filter-group-sort .btn-sort {
+        flex: 1;
+        font-size: 13px;
+    }
+
+    .drawer-content {
+        padding: 8px;
+        gap: 8px;
+    }
+
+    .filter-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .filter-group {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .filter-select {
+        font-size: 0.85rem;
+    }
+
+    .filter-group-target {
+        width: 100%;
+        justify-content: space-between;
+    }
+    .filter-group-target .btn-filter {
+        flex: 1;
+        font-size: 13px;
+        padding: 0 5px;
+    }
+
+    /* 最上部に移動したリセットボタンもスマホで押しやすいよう横幅いっぱいに広げる */
+    .btn-reset-horizontal {
+        width: 100%;
+    }
 }
 
 /* =================================================================
