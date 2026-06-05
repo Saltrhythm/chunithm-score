@@ -224,11 +224,60 @@ button:hover {
 }
 
 /* =================================================================
+   追加：適用中フィルターバッジのスタイル
+   ================================================================= */
+.active-filters-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    background: #e4ecf5;      /* ドロワー背景と合わせた淡い青ベース */
+    padding: 8px 15px;
+    border-radius: 30px;      /* カプセル風デザイン */
+    width: 100%;
+    max-width: 650px;
+    margin: 4px auto 0 auto;
+    box-sizing: border-box;
+    animation: fadeIn 0.2s ease; /* パッと出ずに少し滑らかに表示 */
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.active-filters-label {
+    font-size: 12px;
+    font-weight: bold;
+    color: #555;
+    white-space: nowrap;
+}
+
+.active-filters-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+/* フィルターバッジ（条件タグ） */
+.filter-badge {
+    display: inline-flex;
+    align-items: center;
+    background: #ffffff;
+    color: #4a4ae0;           /* チュウニズム風の青文字 */
+    border: 1px solid #4a4ae0;
+    padding: 4px 12px;
+    border-radius: 15px;
+    font-size: 11px;
+    font-weight: bold;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+/* =================================================================
    検索・フィルター固定エリア（ベース設定）
    ================================================================= */
 .search-container {
-    position: sticky;
-    top: 0;
+    position: static;
     background: #f0f4f8;
     padding: 15px;
     z-index: 100;
@@ -458,6 +507,38 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 /* =================================================================
+   修正・追加：Rank/スコア 切り替えセレクトボックスの装飾
+   ================================================================= */
+.filter-mode-select {
+    border: none;
+    background: transparent;
+    font-weight: 700;          /* ★文字を若干太く（太字に） */
+    font-size: 0.85rem;
+    margin-right: 5px;
+    cursor: pointer;
+    outline: none;
+    padding: 0 4px;
+    transition: color 0.2s ease; /* 色が変わるときに少し滑らかにする */
+}
+
+/* ★Rankが選択されているときの赤色クラス */
+.filter-mode-select.mode-rank {
+    color: #e53e3e; 
+}
+
+/* ★スコアが選択されているときの青色クラス */
+.filter-mode-select.mode-score {
+    color: #3182ce; 
+}
+
+/* ドロップダウンの選択肢（中身）の文字は読みやすいようにデフォルトの色（黒/グレー）にする */
+.filter-mode-select option {
+    color: #2d3748;
+    font-weight: normal;
+}
+
+
+/* =================================================================
    スマホ表示（画面幅が768px以下の時）の完全1行縦並びレイアウト
    ================================================================= */
 @media screen and (max-width: 768px) {
@@ -524,6 +605,23 @@ input[type="number"]::-webkit-inner-spin-button {
     /* 最上部に移動したリセットボタンもスマホで押しやすいよう横幅いっぱいに広げる */
     .btn-reset-horizontal {
         width: 100%;
+    }
+
+    /* 既存の .filter-select の部分に並びを安定させるための微調整 */
+    .filter-select {
+        font-size: 0.85rem;
+    }
+
+    /* スコア入力欄がスマホの横幅100%のカプセル内で綺麗に均等配置されるように調整 */
+    .score-filter-container {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        flex: 1;
+    }
+    
+    #min-score, #max-score {
+        width: 75px !important; /* スマホでは少し大きめにしてタップ・視認しやすく */
     }
 }
 

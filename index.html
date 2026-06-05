@@ -61,6 +61,11 @@
                     </div>
                 </div>
 
+                <div id="active-filters-container" class="active-filters-container" style="display: none;">
+                    <span class="active-filters-label">現在の条件:</span>
+                    <div id="active-filters-list" class="active-filters-list"></div>
+                </div>
+
                 <details class="filter-drawer">
                     <summary class="drawer-toggle-btn">フィルター条件を表示 / 非表示</summary>
 
@@ -92,8 +97,13 @@
 
                         <div class="filter-row">
                             <div class="filter-group">
-                                <label class="filter-label">Rank</label>
-                                <div class="rank-filter-container" style="display: flex; align-items: center;">
+                                <select id="filter-mode" class="filter-mode-select mode-rank">
+                                    <option value="rank">Rank</option>
+                                    <option value="score">スコア</option>
+                                </select>
+
+                                <div id="rank-filter-container" class="rank-filter-container"
+                                    style="display: flex; align-items: center;">
                                     <select id="rank-min" class="filter-select" style="width: 75px;">
                                         <option value="1009900">99AJ</option>
                                         <option value="1009000">SSS+</option>
@@ -117,6 +127,15 @@
                                         <option value="990000">S+</option>
                                         <option value="970000">S</option>
                                     </select>
+                                </div>
+
+                                <div id="score-filter-container" class="score-filter-container"
+                                    style="display: none; align-items: center;">
+                                    <input type="number" id="min-score" class="filter-select" min="0" max="1010000"
+                                        step="1" placeholder="0" style="width: 70px;">
+                                    <span class="range-separator">〜</span>
+                                    <input type="number" id="max-score" class="filter-select" min="0" max="1010000"
+                                        step="1" placeholder="1,010,000" style="width: 70px;">
                                 </div>
                             </div>
 

@@ -79,7 +79,7 @@ function toggleTokenVisibility() {
 }
 
 /**
- * スコア読み込みコア関数
+ * スコア読み込み
  */
 async function loadScores() {
     const tokenInput = document.getElementById("token-input");
@@ -216,9 +216,12 @@ function updateFilters() {
     const maxRateInput = document.getElementById('max-rating');
     const lampSelect = document.getElementById('lamp-filter');
 
-    // ★新しく取得する要素
+    // Rank / スコア切り替え用
+    const filterModeSelect = document.getElementById('filter-mode');
     const rankMinSelect = document.getElementById('rank-min');
     const rankMaxSelect = document.getElementById('rank-max');
+    const minScoreInput = document.getElementById('min-score');
+    const maxScoreInput = document.getElementById('max-score');
 
     if (!searchInput || !minConstSelect || !maxConstSelect || !rankMinSelect || !rankMaxSelect || !lampSelect) return;
 
@@ -226,8 +229,16 @@ function updateFilters() {
     const minConst = parseFloat(minConstSelect.value);
     const maxConst = parseFloat(maxConstSelect.value);
 
+    // 切り替えモード（"rank" または "score"）を取得
+    const filterMode = filterModeSelect ? filterModeSelect.value : 'rank';
     const rankMin = parseFloat(rankMinSelect.value);
     const rankMax = parseFloat(rankMaxSelect.value);
+
+    // スコア入力の値を取得し、空文字なら初期値（0〜1010000）を割り振る
+    const minScoreVal = minScoreInput ? minScoreInput.value : "";
+    const maxScoreVal = maxScoreInput ? maxScoreInput.value : "";
+    const minScore = minScoreVal !== "" ? parseFloat(minScoreVal) : 0;
+    const maxScore = maxScoreVal !== "" ? parseFloat(maxScoreVal) : 1010000;
 
     // .value を付けて値を取得し、空文字判定を行います
     const minRateVal = minRateInput ? minRateInput.value : "";
@@ -252,13 +263,17 @@ function updateFilters() {
         const constant = parseFloat(item.const) || 0;
         const matchesConstant = (constant >= minConst && constant <= maxConst);
 
-        // 4. ランク範囲判定
+        // 4. 【修正】Rank または スコア で絞り込み
         const tScore = parseFloat(item.score) || 0;
-
-        // 選択された下限以上、かつ上限「区分」の境界値未満
-        // 例: SSS(1007500) ～ SSS+(1009000) なら 1007500 <= score < 1009900(99AJの境界)
-        // ここでは単純に選択された数値で比較するのが直感的です
-        const matchesRank = (tScore >= rankMin && tScore <= getUpperLimit(rankMax));
+        let matchesRankOrScore = true;
+        
+        if (filterMode === 'rank') {
+            // Rankモード時
+            matchesRankOrScore = (tScore >= rankMin && tScore <= getUpperLimit(rankMax));
+        } else {
+            // スコアモード時（数値の範囲でダイレクトに判定）
+            matchesRankOrScore = (tScore >= minScore && tScore <= maxScore);
+        }
 
         // 5. ランプで絞り込み
         const itemLamp = item.lamp || "None";
@@ -266,15 +281,10 @@ function updateFilters() {
 
         if (lampValue !== 'all') {
             if (lampValue === 'ajc') {
-                // AJCのみを表示
                 matchesLamp = itemLamp.includes('AJC') || itemLamp.includes('JUSTICE CRITICAL');
             } else if (lampValue === 'aj') {
-                // AJ以上を表示（AJCを含める）
-                // includes('AJ') を使うことで、"ALL JUSTICE" と "ALL JUSTICE CRITICAL" の両方にヒットします
                 matchesLamp = itemLamp.includes('AJ') || itemLamp.includes('JUSTICE');
             } else if (lampValue === 'None') {
-                // 未AJ（AJ未満）を表示
-                // 「AJ」という文字が含まれていないものを抽出
                 const hasAJ = itemLamp.includes('AJ') || itemLamp.includes('JUSTICE');
                 matchesLamp = !hasAJ;
             }
@@ -285,7 +295,7 @@ function updateFilters() {
         if (currentTypeFilter === 'old') matchesType = !item.isNew;
         if (currentTypeFilter === 'new') matchesType = item.isNew;
 
-        return matchesTitle && matchesRating && matchesConstant && matchesRank && matchesLamp && matchesType;
+        return matchesTitle && matchesRating && matchesConstant && matchesRankOrScore && matchesLamp && matchesType;
     });
 
     // 6. ソートの実行
@@ -293,6 +303,75 @@ function updateFilters() {
 
     // 描画
     displayScores(filteredData);
+
+
+    // =================================================================
+    // ★【連動拡張】適用中のフィルター条件をバッジでリアルタイム表示
+    // =================================================================
+    const activeContainer = document.getElementById('active-filters-container');
+    const activeList = document.getElementById('active-filters-list');
+
+    if (activeContainer && activeList) {
+        activeList.innerHTML = ''; // 前回のバッジを一旦すべて消去
+        let hasActiveFilter = false; // 初期値から変更されている条件があるかフラグ
+
+        // バッジを生成して追加するミニ関数
+        const addBadge = (text) => {
+            const badge = document.createElement('span');
+            badge.className = 'filter-badge';
+            badge.textContent = text;
+            activeList.appendChild(badge);
+            hasActiveFilter = true; // 変更があったのでフラグを立てる
+        };
+
+        // 1. 単レ (下限または上限が入力されている場合)
+        if (minRateVal !== "" || maxRateVal !== "") {
+            addBadge(`単レ: ${minRateVal || '0'}〜${maxRateVal || '99.99'}`);
+        }
+
+        // 2. ランプ (すべて 'all' 以外の場合)
+        if (lampValue !== 'all') {
+            const lampText = lampSelect.options[lampSelect.selectedIndex]?.text || lampValue;
+            addBadge(`ランプ: ${lampText}`);
+        }
+
+        // 3. 【修正】選択中のモード（Rankかスコア）に応じてバッジの中身をスイッチ
+        if (filterMode === 'rank') {
+            // Rank：下限が '0' 以外、または上限が '1010000(理論値)' 以外の場合に表示
+            if (rankMinSelect.value !== '0' || rankMaxSelect.value !== '1010000') {
+                const minText = rankMinSelect.options[rankMinSelect.selectedIndex]?.text || rankMin;
+                const maxText = rankMaxSelect.options[rankMaxSelect.selectedIndex]?.text || rankMax;
+                addBadge(`Rank: ${minText}〜${maxText}`);
+            }
+        } else {
+            // スコア：下限または上限に入力がある場合に表示
+            if (minScoreVal !== "" || maxScoreVal !== "") {
+                // 三項演算子でカンマ区切りの見栄えにする（1010000 -> 1,010,000）
+                const displayMin = minScoreVal !== "" ? Number(minScoreVal).toLocaleString() : '0';
+                const displayMax = maxScoreVal !== "" ? Number(maxScoreVal).toLocaleString() : '1,010,000';
+                addBadge(`スコア: ${displayMin}〜${displayMax}`);
+            }
+        }
+
+        // 4. 定数 (下限が初期値 '13.5' 以外、または上限が初期値 '16.0' 以外の場合)
+        if (minConstSelect.value !== '13.5' || maxConstSelect.value !== '16.0') {
+            addBadge(`定数: ${minConstSelect.value}〜${maxConstSelect.value}`);
+        }
+
+        // 5. 対象 (全曲 'all' 以外の場合)
+        if (typeof currentTypeFilter !== 'undefined' && currentTypeFilter !== 'all') {
+            const targetBtn = document.getElementById(`filter-${currentTypeFilter}`);
+            const targetText = targetBtn ? targetBtn.textContent.trim() : currentTypeFilter;
+            addBadge(`対象: ${targetText}`);
+        }
+
+        // 変更されたフィルターが1つでもあれば表示、初期状態ならエリアごと隠す
+        if (hasActiveFilter) {
+            activeContainer.style.display = 'flex';
+        } else {
+            activeContainer.style.display = 'none';
+        }
+    }
 }
 
 /**
@@ -338,8 +417,11 @@ function initFilters() {
     const maxRateInput = document.getElementById('max-rating');
     const searchInput = document.getElementById('search-input');
     const lampSelect = document.getElementById('lamp-filter');
+    const filterModeSelect = document.getElementById('filter-mode');
     const rankMinSelect = document.getElementById('rank-min');
     const rankMaxSelect = document.getElementById('rank-max');
+    const minScoreInput = document.getElementById('min-score');
+    const maxScoreInput = document.getElementById('max-score');
 
     if (!minConstSelect || !maxConstSelect) return;
 
@@ -359,14 +441,39 @@ function initFilters() {
     minConstSelect.value = "13.5";
     maxConstSelect.value = "16.0";
 
-    // 各入力へのイベントリスナー登録
+    // 各入力へのイベントリスナー登録 (セレクトボックス等)
     [minConstSelect, maxConstSelect, lampSelect, rankMinSelect, rankMaxSelect].forEach(el => {
         if (el) el.addEventListener('change', updateFilters);
     });
-    [searchInput, minRateInput, maxRateInput].forEach(el => {
+    // 各入力へのイベントリスナー登録 (数値入力・検索窓) ★スコア用の要素も追記
+    [searchInput, minRateInput, maxRateInput, minScoreInput, maxScoreInput].forEach(el => {
         if (el) el.addEventListener('input', updateFilters);
     });
 
+    // ★【新規追加】Rank / スコア モード切り替えイベントとカラー制御
+    if (filterModeSelect) {
+        filterModeSelect.addEventListener('change', (e) => {
+            const currentMode = e.target.value;
+            const rankContainer = document.getElementById('rank-filter-container');
+            const scoreContainer = document.getElementById('score-filter-container');
+
+            if (currentMode === 'rank') {
+                // Rank選択時：赤色クラスを付与し、右側をRank用に切り替え
+                filterModeSelect.classList.add('mode-rank');
+                filterModeSelect.classList.remove('mode-score');
+                if (rankContainer) rankContainer.style.display = 'flex';
+                if (scoreContainer) scoreContainer.style.display = 'none';
+            } else {
+                // スコア選択時：青色クラスを付与し、右側をスコア用に切り替え
+                filterModeSelect.classList.add('mode-score');
+                filterModeSelect.classList.remove('mode-rank');
+                if (rankContainer) rankContainer.style.display = 'none';
+                if (scoreContainer) scoreContainer.style.display = 'flex';
+            }
+            // 表示とバッジを再計算
+            updateFilters();
+        });
+    }
 
     // 7. 表示対象ボタン
     document.querySelectorAll('.btn-filter').forEach(btn => {
@@ -391,10 +498,22 @@ function initFilters() {
             if (maxRateInput) maxRateInput.value = "";
             if (lampSelect) lampSelect.value = "all";
 
-            // ★修正：ランク範囲のリセット
-            // 下限を「0」、上限を「1010000（理論値）」に設定
+            // ランク・スコア範囲のリセット
             if (rankMinSelect) rankMinSelect.value = "0";
             if (rankMaxSelect) rankMaxSelect.value = "1010000";
+            if (minScoreInput) minScoreInput.value = "";
+            if (maxScoreInput) maxScoreInput.value = "";
+
+            // ★【追加】リセット時にモード切り替えも初期の「Rank（赤色）」に戻す
+            if (filterModeSelect) {
+                filterModeSelect.value = "rank";
+                filterModeSelect.classList.add('mode-rank');
+                filterModeSelect.classList.remove('mode-score');
+            }
+            const rankContainer = document.getElementById('rank-filter-container');
+            const scoreContainer = document.getElementById('score-filter-container');
+            if (rankContainer) rankContainer.style.display = 'flex';
+            if (scoreContainer) scoreContainer.style.display = 'none';
 
             document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
             document.getElementById('filter-all').classList.add('active');
@@ -615,9 +734,13 @@ function pickRandomSong() {
     const minRateInput = document.getElementById('min-rating');
     const maxRateInput = document.getElementById('max-rating');
     const lampSelect = document.getElementById('lamp-filter');
-    // ★修正：下限と上限のセレクトボックスを取得
+
+    // ★【連動拡張】Rank / スコア切り替え要素を新しく取得
+    const filterModeSelect = document.getElementById('filter-mode');
     const rankMinSelect = document.getElementById('rank-min');
     const rankMaxSelect = document.getElementById('rank-max');
+    const minScoreInput = document.getElementById('min-score');
+    const maxScoreInput = document.getElementById('max-score');
 
     const searchText = searchInput ? searchInput.value.toLowerCase().trim() : "";
     const minConst = minConstSelect ? parseFloat(minConstSelect.value) : 0;
@@ -625,10 +748,16 @@ function pickRandomSong() {
     const minRate = (minRateInput && minRateInput.value !== "") ? parseFloat(minRateInput.value) : 0;
     const maxRate = (maxRateInput && maxRateInput.value !== "") ? parseFloat(maxRateInput.value) : 99.99;
     const lampValue = lampSelect ? lampSelect.value : 'all';
-    // ★追加：基準スコアと方向の取得
+
+    // モード（"rank" または "score"）と、それぞれの境界値を取得
+    const filterMode = filterModeSelect ? filterModeSelect.value : 'rank';
     const rankMin = rankMinSelect ? parseFloat(rankMinSelect.value) : 0;
     const rankMax = rankMaxSelect ? parseFloat(rankMaxSelect.value) : 1010000;
 
+    const minScoreVal = minScoreInput ? minScoreInput.value : "";
+    const maxScoreVal = maxScoreInput ? maxScoreInput.value : "";
+    const minScore = minScoreVal !== "" ? parseFloat(minScoreVal) : 0;
+    const maxScore = maxScoreVal !== "" ? parseFloat(maxScoreVal) : 1010000;
 
     // ここで candidates を定義
     const candidates = myCurrentRecords.filter(item => {
@@ -641,10 +770,15 @@ function pickRandomSong() {
         const constant = parseFloat(item.const) || 0;
         if (constant < minConst || constant > maxConst) return false;
 
-        // ★修正：ランク範囲判定（スコア比較）
+        // ★【修正】Rankモードかスコアモードかに応じて判定をスイッチ
         const tScore = parseFloat(item.score) || 0;
-        // 下限以上 かつ 上限区分の最大値以下（getUpperLimitを使用）
-        if (tScore < rankMin || tScore > getUpperLimit(rankMax)) return false;
+        if (filterMode === 'rank') {
+            // Rank選択時: 下限以上 かつ 上限区分の最大値以下
+            if (tScore < rankMin || tScore > getUpperLimit(rankMax)) return false;
+        } else {
+            // スコア選択時: 直接入力された数値の範囲で判定
+            if (tScore < minScore || tScore > maxScore) return false;
+        }
 
         const itemLamp = item.lamp || "None";
         if (lampValue !== 'all') {
@@ -683,7 +817,6 @@ function pickRandomSong() {
     const titleEl = document.getElementById('roulette-title');
     const diffEl = document.getElementById('roulette-diff');
 
-    // 3. ルーレット演出
     let count = 0;
     const maxTicks = 20;
     const interval = setInterval(() => {
@@ -701,54 +834,40 @@ function pickRandomSong() {
         }
     }, 150);
 
-    // --- script.js の pickRandomSong 関数内、finishSelection 関数を差し替え ---
-
-    // 4. 最終決定時の処理
     function finishSelection() {
-        // 本当の決定曲を選ぶ
         const picked = candidates[Math.floor(Math.random() * candidates.length)];
 
-        // --- ★ ここから追加：ド派手エフェクト ---
-
-        // ① 画面を一瞬真っ白にフラッシュさせるフラッシュ層を作成
         const flash = document.createElement('div');
         flash.style = `
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: white; z-index: 10001; opacity: 1;
-            transition: opacity 0.5s ease-out; /* 0.5秒かけて消えていく */
+            transition: opacity 0.5s ease-out;
         `;
         document.body.appendChild(flash);
 
-        // ② 決定した曲名の表示を豪華にする
-        titleEl.style.color = "#f1c40f"; // 金色
-        titleEl.style.textShadow = "0 0 15px #fff, 0 0 30px #f1c40f, 0 0 45px #f1c40f"; // 黄金の輝き（グロー効果）
-        titleEl.style.transform = "scale(1.2)"; // 少し大きく
-        titleEl.style.transition = "all 0.5s ease-out"; // 演出を滑らかに
+        titleEl.style.color = "#f1c40f"; 
+        titleEl.style.textShadow = "0 0 15px #fff, 0 0 30px #f1c40f, 0 0 45px #f1c40f"; 
+        titleEl.style.transform = "scale(1.2)"; 
+        titleEl.style.transition = "all 0.5s ease-out"; 
         titleEl.innerText = picked.title;
 
         diffEl.innerText = picked.diff;
-        // 難易度色はルーレット最後のを引き継ぐか、pickedので再設定（ここではpickedで再設定）
         const diffColors = { 'basic': '#22ac22', 'advanced': '#f39c12', 'expert': '#e74c3c', 'master': '#9b59b6', 'ultima': '#222' };
         diffEl.style.backgroundColor = diffColors[picked.diff.toLowerCase()] || '#555';
-        diffEl.style.boxShadow = `0 0 20px ${diffEl.style.backgroundColor}`; // 難易度バッジも光らせる
+        diffEl.style.boxShadow = `0 0 20px ${diffEl.style.backgroundColor}`;
 
-        // ③ フラッシュ層をアニメーション後に削除
         requestAnimationFrame(() => {
-            flash.style.opacity = "0"; // フェードアウト開始
+            flash.style.opacity = "0"; 
             setTimeout(() => {
                 if (document.body.contains(flash)) document.body.removeChild(flash);
-            }, 500); // transitionの時間と合わせる
+            }, 500); 
         });
 
-        // --- ★ ここまで追加 ---
-
-        // 1.5秒待ってから（演出を見せてから）画面を消して、実際の行へ移動
         setTimeout(() => {
             if (document.body.contains(overlay)) {
                 document.body.removeChild(overlay);
             }
 
-            // --- 以降、スクロールとランキング表示のロジックはそのまま ---
             const rows = document.querySelectorAll('#score-body tr');
             let targetRow = null;
             for (let tr of rows) {
@@ -765,7 +884,7 @@ function pickRandomSong() {
                 setTimeout(() => {
                     targetRow.style.transition = "background 0.5s";
                     const originalBg = targetRow.style.background;
-                    targetRow.style.background = "rgba(241, 196, 15, 0.5)"; // スクロール先も金色に光らせる
+                    targetRow.style.background = "rgba(241, 196, 15, 0.5)"; 
                     loadRanking(picked.title, picked.diff, picked.const);
                     setTimeout(() => { targetRow.style.background = originalBg; }, 2000);
                 }, 2000);
@@ -1090,17 +1209,28 @@ async function fetchStats(mode) {
     const typeFilter = document.querySelector('.btn-filter.active')?.getAttribute('data-value') || 'all';
     const minC = document.getElementById('min-constant')?.value || "0";
     const maxC = document.getElementById('max-constant')?.value || "16.0";
-
-    // ★追加：レートの入力値を取得（IDはHTML側に合わせる。例: min-rating）
     const minRate = document.getElementById('min-rating')?.value || "0";
     const maxRate = document.getElementById('max-rating')?.value || "21.0";
-
-    const rMin = document.getElementById('rank-min')?.value || "0";
-    const rMax = document.getElementById('rank-max')?.value || "1010000";
     const lmp = document.getElementById('lamp-filter')?.value || 'all';
+
+    // ★【修正】Rankかスコアのモードを判別し、送る数値を切り替える
+    const filterMode = document.getElementById('filter-mode')?.value || 'rank';
+    let rMin = "0";
+    let rMax = "1010000";
+
+    if (filterMode === 'rank') {
+        rMin = document.getElementById('rank-min')?.value || "0";
+        rMax = document.getElementById('rank-max')?.value || "1010000";
+    } else {
+        const minScoreInput = document.getElementById('min-score');
+        const maxScoreInput = document.getElementById('max-score');
+        rMin = (minScoreInput && minScoreInput.value !== "") ? minScoreInput.value : "0";
+        rMax = (maxScoreInput && maxScoreInput.value !== "") ? maxScoreInput.value : "1010000";
+    }
 
     const requestParams = {
         mode: "get_stats",
+        filterMode: filterMode, // GAS側でも判別できるようにモード情報も追加
         minConst: minC,
         maxConst: maxC,
         minRate: minRate,
@@ -1122,18 +1252,14 @@ async function fetchStats(mode) {
         if (result.status === "success") {
             console.log("GASデータ受信成功", result.data);
 
-            // ★ここに追加！ GASから返ってきた全データを保存
             lastStatsResponse = result.data;
 
-            // --- 1. 不要な通常ランキング用UIを一括非表示 ---
             const controls = document.getElementById('ranking-controls');
             if (controls) controls.style.display = 'none';
 
-            // --- 2. 統計モード用エリアを表示 ---
             const statsControlArea = document.getElementById('stats-control-area');
             if (statsControlArea) statsControlArea.style.display = 'block';
 
-            // グローバル変数にデータを保存
             currentStatsData = (mode === 'song') ? result.data.songRanking : result.data.playerRanking;
             currentStatsMode = mode;
             currentDisplayType = 'count';
@@ -1141,10 +1267,9 @@ async function fetchStats(mode) {
 
             const modal = document.getElementById('ranking-modal');
 
-            // タイトルとフィルタ情報の表示
-            updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp, minRate, maxRate);
+            // ★引数に filterMode を追加
+            updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp, minRate, maxRate, filterMode);
 
-            // 描画実行
             displayStatsRanking();
 
             modal.style.display = "flex";
@@ -1178,13 +1303,11 @@ function displayStatsRanking() {
         statsData.sort((a, b) => b.count - a.count);
     }
 
-    // --- 1. ヘッダー(th)の書き換え ---
     const thead = modal.querySelector('table thead tr');
     if (thead) {
         const nameLabel = currentStatsMode === 'song' ? '楽曲名' : 'プレイヤー';
 
         if (currentDisplayType === 'avg') {
-            // 【平均スコアモード】
             const col4Label = currentStatsMode === 'song' ? '全プレイ人数' : '全プレイ曲数';
             thead.innerHTML = `
                 <th>順位</th>
@@ -1193,7 +1316,6 @@ function displayStatsRanking() {
                 <th style="text-align:center;">${col4Label}</th>
             `;
         } else {
-            // 【数モード】
             const col3Label = currentStatsMode === 'song' ? '達成者数' : '達成曲数';
             thead.innerHTML = `
                 <th>順位</th>
@@ -1204,7 +1326,6 @@ function displayStatsRanking() {
         }
     }
 
-    // --- 2. データ行(td)の生成 ---
     statsData.forEach((row, index) => {
         const displayName = (currentStatsMode === 'song') ? (row.title || "不明") : (row.playerName || "不明");
         const unit = (currentStatsMode === 'song') ? "人" : "曲";
@@ -1212,22 +1333,18 @@ function displayStatsRanking() {
 
         let col3, col4;
         if (currentDisplayType === 'avg') {
-            // --- 平均スコアモードのデータ ---
             const avgVal = (row.avgScore && row.avgScore > 0) ? row.avgScore.toLocaleString() : "---";
-            // 4列目：楽曲別なら全人数、個人別なら全プレイ数
-            // ★ここを修正：楽曲別なら row.totalCountAll、個人別なら row.allPlayCount を参照
 
             let totalCount = 0;
             if (currentStatsMode === 'song') {
-                totalCount = row.totalCountAll || 0; // GAS側で計算した全人数
+                totalCount = row.totalCountAll || 0; 
             } else {
-                totalCount = row.allPlayCount || 0;  // GAS側で計算した全曲数
+                totalCount = row.allPlayCount || 0;  
             }
 
             col3 = `<td style="text-align:center; font-weight:bold; color: #2e7df0;">${avgVal}</td>`;
             col4 = `<td style="text-align:center;">${totalCount}<span style="font-size:10px;"> ${unit}</span></td>`;
         } else {
-            // --- 数モードのデータ ---
             const rateStr = currentDenominator > 0 ? ((row.count / currentDenominator) * 100).toFixed(1) + "%" : "-";
 
             col3 = `<td style="text-align:right; font-weight:bold;">${row.count} ${unit}</td>`;
@@ -1241,15 +1358,11 @@ function displayStatsRanking() {
             ${col4}
         `;
 
-        // --- tr.onclick の設定部分 ---
-        tr.style.cursor = "pointer"; // どちらのモードでも指マークにする
+        tr.style.cursor = "pointer"; 
 
         if (currentStatsMode === 'song') {
-            // 楽曲別ランキングの場合：既存の楽曲詳細を表示
             tr.onclick = () => showSubModal(row);
         } else {
-            // 個人別ランキングの場合：新しく作成した詳細取得関数を呼び出す
-            // row.playerName は GAS から返ってきた playerRanking 内のプロパティ名です
             tr.onclick = () => fetchAndShowPlayerDetail(row.playerName);
         }
 
@@ -1258,18 +1371,26 @@ function displayStatsRanking() {
 
     renderSwitchButton();
 
-    // タイトルの更新（再描画時にタイトルも最新状態にする）
+    // ★【修正】再描画時にも正しい選択状態の値を取得してタイトルを更新
     const typeFilter = document.querySelector('.btn-filter.active')?.getAttribute('data-value') || 'all';
     const minC = document.getElementById('min-constant')?.value;
     const maxC = document.getElementById('max-constant')?.value;
-    // ★追加
     const minRate = document.getElementById('min-rating')?.value;
     const maxRate = document.getElementById('max-rating')?.value;
-
-    const rMin = document.getElementById('rank-min')?.value;
-    const rMax = document.getElementById('rank-max')?.value;
     const lmp = document.getElementById('lamp-filter')?.value;
-    updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp, minRate, maxRate);
+
+    const filterMode = document.getElementById('filter-mode')?.value || 'rank';
+    let rMin = "0";
+    let rMax = "1010000";
+    if (filterMode === 'rank') {
+        rMin = document.getElementById('rank-min')?.value;
+        rMax = document.getElementById('rank-max')?.value;
+    } else {
+        rMin = document.getElementById('min-score')?.value || "0";
+        rMax = document.getElementById('max-score')?.value || "1010000";
+    }
+
+    updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp, minRate, maxRate, filterMode);
 }
 
 /**
@@ -1319,7 +1440,8 @@ function renderSwitchButton() {
     }
 }
 
-function updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp, minRate, maxRate) {
+// ★【修正】引数の最後に filterMode を追加
+function updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp, minRate, maxRate, filterMode) {
     const titleContainer = document.getElementById('ranking-title-container');
     if (!titleContainer) return;
 
@@ -1328,31 +1450,37 @@ function updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp, minRate, maxR
 
     let mainTitle = "";
 
-    // 1. メインタイトルの構築
     if (currentStatsMode === 'song') {
-        // 楽曲別モード：新旧フィルタは無視されるので常に「全曲」
         const modeLabel = (currentDisplayType === 'avg') ? "楽曲別 平均スコア" : "楽曲別 達成人数";
         mainTitle = `<span class="main-title-text">全曲 ${modeLabel} (対象: ${currentDenominator}${unit})</span>`;
     } else {
-        // 個人別モード：新旧フィルタが反映される
         const modeLabel = (currentDisplayType === 'avg') ? "個人別 平均スコア" : "個人別 達成楽曲数";
         mainTitle = `<span class="main-title-text">${typeLabel} ${modeLabel} (対象: ${currentDenominator}${unit})</span>`;
     }
 
-    // 2. サブ情報（フィルタ条件）のテキストを構築 ★ここで定義
     const lampLabel = (lmp === 'all') ? 'すべて' : lmp.toUpperCase();
     let subInfo = "";
 
     if (currentDisplayType === 'avg') {
-        // 平均スコアモード時
         subInfo = `定数: ${minC} ～ ${maxC}`;
     } else {
-        // 達成数モード時
-        // 単曲レートの情報（minRate ～ maxRate）を追加
-        subInfo = `定数: ${minC}～${maxC} / レート: ${minRate}～${maxRate} / スコア: ${rMin}～${rMax} / ランプ: ${lampLabel}`;
+        // ★【修正】モードに応じて、タイトルのフィルター詳細テキストをきれいに切り替える
+        let scoreLabel = "";
+        if (filterMode === 'score') {
+            const displayMin = rMin !== "0" && rMin !== "" ? Number(rMin).toLocaleString() : '0';
+            const displayMax = rMax !== "1010000" && rMax !== "" ? Number(rMax).toLocaleString() : '1,010,000';
+            scoreLabel = `スコア: ${displayMin}～${displayMax}`;
+        } else {
+            const rankMinSelect = document.getElementById('rank-min');
+            const rankMaxSelect = document.getElementById('rank-max');
+            const minText = rankMinSelect ? rankMinSelect.options[rankMinSelect.selectedIndex]?.text : rMin;
+            const maxText = rankMaxSelect ? rankMaxSelect.options[rankMaxSelect.selectedIndex]?.text : rMax;
+            scoreLabel = `Rank: ${minText}～${maxText}`;
+        }
+
+        subInfo = `定数: ${minC}～${maxC} / レート: ${minRate}～${maxRate} / ${scoreLabel} / ランプ: ${lampLabel}`;
     }
 
-    // 3. HTMLへの反映
     titleContainer.innerHTML = `
         ${mainTitle}
         <div class="title-sub-info">${subInfo}</div>
@@ -1403,15 +1531,19 @@ function showSubModal(row) {
         };
     });
 
-    // 4. スコア順にソート（未プレイは最下部へ）
-    displayList.sort((a, b) => b.score - a.score);
+    // 4. スコア順にソート（未プレイは最下部へ安全に固定するロジック）
+    displayList.sort((a, b) => {
+        if (a.score === -1 && b.score !== -1) return 1;  // aが未プレイなら下へ
+        if (a.score !== -1 && b.score === -1) return -1; // bが未プレイなら上へ
+        return b.score - a.score;                        // 両方プレイ済、または両方未プレイならスコア順
+    });
 
     // 5. 行の生成
     displayList.forEach(p => {
         const tr = document.createElement('tr');
 
-        // 条件達成者の行を赤くハイライト
-        if (p.isAchieved) {
+        // 条件達成者の行を赤くハイライト（厳密に true の場合のみ）
+        if (p.isAchieved === true) {
             tr.style.backgroundColor = "rgba(255, 71, 87, 0.15)";
             tr.style.fontWeight = "bold";
         }
@@ -1431,22 +1563,51 @@ function showSubModal(row) {
 }
 
 /**
- * 個人別詳細を取得して表示
+ * 個人別詳細を取得して表示（Rank・スコア切替完全対応版）
  */
 async function fetchAndShowPlayerDetail(playerName) {
-    // 取得中の表示（任意）
     console.log(playerName + "の詳細を取得中...");
+    
+    const subModal = document.getElementById('sub-modal');
+    const title = document.getElementById('sub-modal-title');
+    const tbody = document.getElementById('sub-modal-tbody');
+    
+    if (subModal && title) {
+        title.innerText = `${playerName} の詳細を読み込み中...`;
+        if (tbody) tbody.innerHTML = ""; // 前のデータをクリア
+        subModal.style.display = "flex"; 
+    }
 
-    // 現在のフィルター条件を全て取得
+    // --- 【超重要】選択されているモード（Rank か スコア か）に応じて、取得する値を厳密に切り替える ---
+    const filterMode = document.getElementById('filter-mode')?.value; // "rank" または "score"
+    
+    let rMin = "";
+    let rMax = "";
+
+    if (filterMode === "score") {
+        // 「スコア」手入力モードの場合
+        rMin = document.getElementById('min-score')?.value || "";
+        rMax = document.getElementById('max-score')?.value || "";
+    } else {
+        // 「Rank」セレクトボックスモードの場合（デフォルト）
+        rMin = document.getElementById('rank-min')?.value || "";
+        rMax = document.getElementById('rank-max')?.value || "";
+    }
+
+    // GASに送信するパラメータ群
     const params = {
         mode: "get_player_detail",
+        filterMode: filterMode, // ★GASに現在のモードを教える（追加）
         playerName: playerName,
         minConst: document.getElementById('min-constant')?.value,
         maxConst: document.getElementById('max-constant')?.value,
         minRate: document.getElementById('min-rating')?.value,
         maxRate: document.getElementById('max-rating')?.value,
-        rankMin: document.getElementById('rank-min')?.value,
-        rankMax: document.getElementById('rank-max')?.value,
+        
+        // 選択された側の正しいスコア境界値のみをGASに送る
+        rankMin: rMin,
+        rankMax: rMax,
+        
         lampFilter: document.getElementById('lamp-filter')?.value,
         typeFilter: document.querySelector('.btn-filter.active')?.getAttribute('data-value') || 'all'
     };
@@ -1460,11 +1621,13 @@ async function fetchAndShowPlayerDetail(playerName) {
         const result = await response.json();
 
         if (result.status === "success") {
-            // 既存の showPlayerDetailModal を呼び出して描画
+            // モーダル描画関数を呼び出し
             showPlayerDetailModal({
                 playerName: playerName,
                 details: result.data
             });
+        } else {
+            alert("詳細データの取得に失敗しました: " + (result.message || "Unknown error"));
         }
     } catch (e) {
         console.error("詳細取得エラー:", e);
@@ -1476,7 +1639,7 @@ async function fetchAndShowPlayerDetail(playerName) {
  * 取得した個人詳細データをモーダルに表示する
  */
 function showPlayerDetailModal(playerData) {
-    const subModal = document.getElementById('sub-modal'); // sub-modal を使用
+    const subModal = document.getElementById('sub-modal');
     const tbody = document.getElementById('sub-modal-tbody');
     const title = document.getElementById('sub-modal-title');
     const thead = document.querySelector('#sub-modal-table thead tr');
@@ -1492,21 +1655,31 @@ function showPlayerDetailModal(playerData) {
         <th style="text-align: center; width: 30%;">スコア</th>
     `;
 
+    // Webkit用のスクロールバー非表示スタイルは、ループの外で「1回だけ」適用する
+    const styleId = "scrollbar-hide-style";
+    if (!document.getElementById(styleId)) {
+        const styleTag = document.createElement('style');
+        styleTag.id = styleId;
+        styleTag.textContent = `#sub-modal-tbody div::-webkit-scrollbar { display: none; }`;
+        document.head.appendChild(styleTag);
+    }
+
+    const noScrollbarStyle = "scrollbar-width: none; -ms-overflow-style: none;";
+
     // データの描画
     playerData.details.forEach(item => {
         const tr = document.createElement('tr');
 
-        // ★達成している行をハイライト（背景を薄い赤、文字を赤太字に）
-        if (item.isAchieved) {
+        // ★修正ポイント2：GAS側で判定された isAchieved が「確実に真(true)」である場合のみハイライト
+        if (item.isAchieved === true) {
             tr.style.backgroundColor = "rgba(240, 46, 46, 0.1)";
             tr.style.color = "#d63031";
             tr.style.fontWeight = "bold";
         }
 
-        // ★ 変更ポイント: スクロール用divの内側に「text-align: left;」を明示して、確実に左寄せにします
         tr.innerHTML = `
-            <td style="text-align: left; padding-left: 10px; font-size: 0.85em; width: 70%; max-width: 0;">
-                <div style="display: block; width: 100%; text-align: left; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; padding-right: 5px;">
+            <td style="text-align: left; padding-left: 0px; font-size: 0.85em; width: 70%; max-width: 0;">
+                <div style="display: block; width: 100%; text-align: left; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; padding-left: 5px; padding-right: 5px; ${noScrollbarStyle}">
                     ${item.title}
                 </div>
             </td>
@@ -1514,6 +1687,7 @@ function showPlayerDetailModal(playerData) {
                 ${item.score.toLocaleString()}
             </td>
         `;
+
         tbody.appendChild(tr);
     });
 

@@ -142,7 +142,7 @@ function getRankingFromSheets(ss, title, diff, logSheet) {
             const lampVal = (match[5] !== undefined && match[5] !== null) ? String(match[5]) : "-";
             results.push({ playerName: name, score: scoreVal, lamp: lampVal });
         } else {
-            results.push({ playerName: name, score: "-", lamp: "-" });
+            results.push({playerName: name, score: "-", lamp: "-" });
         }
     }
 
@@ -154,7 +154,7 @@ function getRankingFromSheets(ss, title, diff, logSheet) {
 }
 
 /**
- * 統計情報を取得（高速化版）
+ * 統計情報を取得（高速化版・モード切替対応）
  */
 function getStatsFromSheets(ss, params) {
     const userMapSheet = ss.getSheetByName("UserMap");
@@ -172,13 +172,15 @@ function getStatsFromSheets(ss, params) {
     const rMax = parseFloat(params.rankMax || 1010000);
     const targetLamp = String(params.lampFilter || 'all');
     const typeFilter = String(params.typeFilter || 'all');
+    
+    // ★追加：フロントエンドから送られてきたフィルターモード（"rank" または "score"）
+    const filterMode = String(params.filterMode || "rank");
 
     // 最初に全プレイヤーのシートデータを一括ロードしてメモリに載せる
     const allSheets = ss.getSheets();
     const sheetDataMap = {};
     allSheets.forEach(sheet => {
         const sName = sheet.getName();
-        // ★修正ポイント1：除外リストに "NewSongs" を追加してメモリ負荷を軽減
         if (sName !== "UserMap" && sName !== "MasterData" && sName !== "DebugLog" && sName !== "NewSongs") {
             sheetDataMap[sName] = sheet.getDataRange().getValues();
         }
@@ -221,9 +223,14 @@ function getStatsFromSheets(ss, params) {
             songAggregation[fullTitle].totalScoreAll += cScore;
             songAggregation[fullTitle].totalCountAll++;
 
+            // --- 条件達成判定 (isAchieved) ---
             let isAchieved = true;
             if (cRating < minRating || cRating > maxRating) isAchieved = false;
-            if (cScore < rMin || cScore > getUpperLimitGAS(rMax)) isAchieved = false;
+            
+            // ★修正ポイント：スコア手入力モードの時はrMaxをそのまま、Rankモードの時は自動補正関数を通す
+            let limitMax = (filterMode === "score") ? rMax : getUpperLimitGAS(rMax);
+            if (cScore < rMin || cScore > limitMax) isAchieved = false;
+
             if (targetLamp !== 'all') {
                 if (targetLamp === 'ajc' && !cLamp.includes('AJC')) isAchieved = false;
                 else if (targetLamp === 'aj' && !cLamp.includes('AJ')) isAchieved = false;
@@ -284,6 +291,7 @@ function getStatsFromSheets(ss, params) {
         };
     });
 
+    // ★元々のコード通りのデータ構造で返却（これでundefinedが直ります）
     return {
         playerRanking: results,
         songRanking: songRanking,
@@ -309,10 +317,9 @@ function getUpperLimitGAS(score) {
 }
 
 /**
- * 特定のプレイヤーの詳細データを取得する
+ * 特定のプレイヤーの詳細データを取得する（モード切替対応）
  */
 function getPlayerDetailFromSheet(ss, playerName, params) {
-    // ★修正ポイント4：詳細取得の際も名前の禁止文字を除去して検索できるように統一
     playerName = playerName.replace(/[\*＼\/\\\[\]\?：:]/g, "").trim();
     const sheet = ss.getSheetByName(playerName);
     if (!sheet) return [];
@@ -328,6 +335,9 @@ function getPlayerDetailFromSheet(ss, playerName, params) {
     const rMax = parseFloat(params.rankMax || 1010000);
     const targetLamp = String(params.lampFilter || 'all');
     const typeFilter = String(params.typeFilter || 'all');
+    
+    // ★追加：フロントエンドから送られてきたフィルターモード（"rank" または "score"）
+    const filterMode = String(params.filterMode || "rank");
 
     for (let j = 1; j < data.length; j++) {
         const row = data[j];
@@ -346,9 +356,14 @@ function getPlayerDetailFromSheet(ss, playerName, params) {
                        (typeFilter === 'old' && isNewSongStr !== 'true');
         if (!passType) continue;
 
+        // --- 条件達成判定 (isAchieved) ---
         let isAchieved = true;
         if (cRating < minRating || cRating > maxRating) isAchieved = false;
-        if (cScore < rMin || cScore > getUpperLimitGAS(rMax)) isAchieved = false;
+        
+        // ★修正ポイント：メインの統計集計（getStatsFromSheets）と上限判定ロジックを完全に同期
+        let limitMax = (filterMode === "score") ? rMax : getUpperLimitGAS(rMax);
+        if (cScore < rMin || cScore > limitMax) isAchieved = false;
+
         if (targetLamp !== 'all') {
             if (targetLamp === 'ajc' && !cLamp.includes('AJC')) isAchieved = false;
             else if (targetLamp === 'aj' && !cLamp.includes('AJ')) isAchieved = false;
