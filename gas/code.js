@@ -1,3 +1,9 @@
+/**
+ * ==========================================================================
+ * バックエンド処理（code.gs）- 完全統合版
+ * ==========================================================================
+ */
+
 function doPost(e) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let logSheet = ss.getSheetByName("DebugLog") || ss.insertSheet("DebugLog");
@@ -31,6 +37,21 @@ function doPost(e) {
             return createJsonResponse({ status: "success", data: results });
         }
 
+        // ★追加：VS機能 プレイヤー一覧取得モード（読み取り専用：ロックなしで並列実行OK）
+        if (mode === "get_vs_players") {
+            const sheets = ss.getSheets();
+            const playerNames = sheets.map(s => s.getName()).filter(name => 
+                name !== "UserMap" && name !== "MasterData" && name !== "DebugLog" && name !== "NewSongs" && name !== "マスター" && name !== "設定"
+            ); 
+            return createJsonResponse({ status: "success", players: playerNames });
+        }
+
+        // ★追加：VS機能 スコア比較データ取得モード（読み取り専用：ロックなしで並列実行OK）
+        if (mode === "get_vs_data") {
+            const comparisonData = getVsDataFromSheets(ss, params);
+            return createJsonResponse({ status: "success", data: comparisonData });
+        }
+
         // =================================================================
         // 4. 同期/認証モード (checker) 
         // =================================================================
@@ -44,7 +65,7 @@ function doPost(e) {
             const token = String(params.token || "");
             let playerName = String(params.playerName || "");
             
-            // ★修正ポイント4：プレイヤー名からシート名の禁止文字（/, \, ?, *, [, ], :, ：）を自動除去
+            // プレイヤー名からシート名の禁止文字（/, \, ?, *, [, ], :, ：）を自動除去
             playerName = playerName.replace(/[\*＼\/\\\[\]\?：:]/g, "").trim();
 
             // 先にAPIからデータを取得
@@ -112,7 +133,6 @@ function getRankingFromSheets(ss, title, diff, logSheet) {
     const sheetDataMap = {};
     allSheets.forEach(sheet => {
         const sName = sheet.getName();
-        // ★修正ポイント1：除外リストに "NewSongs" を追加してメモリ負荷を軽減
         if (sName !== "UserMap" && sName !== "MasterData" && sName !== "DebugLog" && sName !== "NewSongs") {
             sheetDataMap[sName] = sheet.getDataRange().getValues();
         }
@@ -173,7 +193,7 @@ function getStatsFromSheets(ss, params) {
     const targetLamp = String(params.lampFilter || 'all');
     const typeFilter = String(params.typeFilter || 'all');
     
-    // ★追加：フロントエンドから送られてきたフィルターモード（"rank" または "score"）
+    // フロントエンドから送られてきたフィルターモード（"rank" または "score"）
     const filterMode = String(params.filterMode || "rank");
 
     // 最初に全プレイヤーのシートデータを一括ロードしてメモリに載せる
@@ -227,7 +247,7 @@ function getStatsFromSheets(ss, params) {
             let isAchieved = true;
             if (cRating < minRating || cRating > maxRating) isAchieved = false;
             
-            // ★修正ポイント：スコア手入力モードの時はrMaxをそのまま、Rankモードの時は自動補正関数を通す
+            // スコア手入力モードの時はrMaxをそのまま、Rankモードの時は自動補正関数を通す
             let limitMax = (filterMode === "score") ? rMax : getUpperLimitGAS(rMax);
             if (cScore < rMin || cScore > limitMax) isAchieved = false;
 
@@ -291,7 +311,6 @@ function getStatsFromSheets(ss, params) {
         };
     });
 
-    // ★元々のコード通りのデータ構造で返却（これでundefinedが直ります）
     return {
         playerRanking: results,
         songRanking: songRanking,
@@ -336,7 +355,7 @@ function getPlayerDetailFromSheet(ss, playerName, params) {
     const targetLamp = String(params.lampFilter || 'all');
     const typeFilter = String(params.typeFilter || 'all');
     
-    // ★追加：フロントエンドから送られてきたフィルターモード（"rank" または "score"）
+    // フロントエンドから送られてきたフィルターモード（"rank" または "score"）
     const filterMode = String(params.filterMode || "rank");
 
     for (let j = 1; j < data.length; j++) {
@@ -360,7 +379,7 @@ function getPlayerDetailFromSheet(ss, playerName, params) {
         let isAchieved = true;
         if (cRating < minRating || cRating > maxRating) isAchieved = false;
         
-        // ★修正ポイント：メインの統計集計（getStatsFromSheets）と上限判定ロジックを完全に同期
+        // メメインの統計集計（getStatsFromSheets）と上限判定ロジックを完全に同期
         let limitMax = (filterMode === "score") ? rMax : getUpperLimitGAS(rMax);
         if (cScore < rMin || cScore > limitMax) isAchieved = false;
 
@@ -382,6 +401,116 @@ function getPlayerDetailFromSheet(ss, playerName, params) {
     return details.sort((a, b) => b.score - a.score);
 }
 
+/**
+ * ★追加：VS機能 スプレッドシート側バックエンドロジック（一括メモリロード高速化版）
+ */
+function getVsDataFromSheets(ss, params) {
+    const myName = String(params.myName || "").trim();
+    const opponents = params.opponents || []; 
+    const minC = parseFloat(params.minConst || 13.5);
+    const maxC = parseFloat(params.maxConst || 16.0);
+
+    const targetPlayers = [myName, ...opponents].filter(p => p !== "");
+    
+    // 一括で対象プレイヤーのシートデータをオブジェクト化（高速化）
+    const allSheets = ss.getSheets();
+    const sheetDataMap = {};
+    allSheets.forEach(sheet => {
+        const sName = sheet.getName();
+        if (targetPlayers.includes(sName)) {
+            sheetDataMap[sName] = sheet.getDataRange().getValues();
+        }
+    });
+
+    const songMap = {};
+
+    targetPlayers.forEach(pName => {
+        const data = sheetDataMap[pName];
+        if (!data) return;
+
+        for (let j = 1; j < data.length; j++) {
+            const row = data[j];
+            if (!row || row.length < 4) continue;
+
+            const songName = String(row[0] || "不明な曲");
+            const diff = String(row[1] || "");
+            const cConst = parseFloat(row[2] || 0);
+            const cScore = parseFloat(row[3] || 0);
+
+            if (cConst < minC || cConst > maxC) continue;
+
+            const fullTitle = diff ? `${songName} [${diff}]` : songName;
+
+            if (!songMap[fullTitle]) {
+                songMap[fullTitle] = {
+                    title: fullTitle,
+                    constant: cConst,
+                    scores: {} 
+                };
+            }
+            songMap[fullTitle].scores[pName] = cScore;
+        }
+    });
+
+    const vsRows = [];
+    let winCount = 0, drawCount = 0, loseCount = 0;
+    let rank1 = 0, rank2 = 0, rank3 = 0, rank4 = 0;
+
+    Object.keys(songMap).forEach(title => {
+        const song = songMap[title];
+        const allScoresList = targetPlayers.map(p => song.scores[p] || 0);
+        if (Math.max(...allScoresList) === 0) return;
+
+        const myScore = song.scores[myName] || 0;
+
+        const scoreRankList = targetPlayers.map(p => {
+            return { name: p, score: song.scores[p] || 0 };
+        });
+        
+        // 基本のスコア降順ソート
+        scoreRankList.sort((a, b) => b.score - a.score);
+
+        let myRank = 1;
+        for (let i = 0; i < scoreRankList.length; i++) {
+            if (scoreRankList[i].score > myScore) { myRank++; }
+        }
+
+        let matchResult = ""; 
+        if (opponents.length === 1) {
+            const oppScore = song.scores[opponents[0]] || 0;
+            if (myScore > oppScore) { matchResult = "WIN"; winCount++; } 
+            else if (myScore === oppScore) { matchResult = "DRAW"; drawCount++; } 
+            else { matchResult = "LOSE"; loseCount++; }
+        } else {
+            if (myRank === 1) rank1++;
+            else if (myRank === 2) rank2++;
+            else if (myRank === 3) rank3++;
+            else if (myRank === 4) rank4++;
+        }
+
+        vsRows.push({
+            title: song.title,
+            constant: song.constant,
+            myScore: myScore,
+            myRank: myRank,
+            matchResult: matchResult,
+            rankList: scoreRankList 
+        });
+    });
+
+    return {
+        vsRows: vsRows,
+        summary: {
+            win: winCount, draw: drawCount, lose: loseCount,
+            rank1: rank1, rank2: rank2, rank3: rank3, rank4: rank4
+        },
+        opponents: opponents,
+        myName: myName,
+        minConst: minC,
+        maxConst: maxC
+    };
+}
+
 function updateUserSheet(ss, name, records) {
     let sheet = ss.getSheetByName(name) || ss.insertSheet(name);
     sheet.clear();
@@ -391,15 +520,26 @@ function updateUserSheet(ss, name, records) {
 
     if (records && records.length > 0) {
         records.sort((a, b) => b.rating - a.rating);
-        const rows = records.map(r => [
-            String(r.title || ""),
-            String(r.diff || ""),
-            r.const || 0,
-            r.score || 0,
-            r.rating || 0,
-            String(r.lamp || ""),
-            String(r.isNew || "")
-        ]);
+        const rows = records.map(r => {
+            // 💡 修正部分：曲名（タイトル）のエスケープ処理
+            let cleanTitle = String(r.title || "");
+            
+            // 「010」のように、頭が「0」から始まる2桁以上の数字だけの曲名の場合、
+            // 先頭に「'」を強制付与してスプレッドシートの自動数値変換をブロックします。
+            if (/^0\d+$/.test(cleanTitle)) {
+                cleanTitle = "'" + cleanTitle;
+            }
+
+            return [
+                cleanTitle, // エスケープ済みのタイトル
+                String(r.diff || ""),
+                r.const || 0,
+                r.score || 0,
+                r.rating || 0,
+                String(r.lamp || ""),
+                String(r.isNew || "")
+            ];
+        });
         sheet.getRange(2, 1, rows.length, header.length).setValues(rows);
     }
 }

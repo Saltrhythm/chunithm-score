@@ -1695,7 +1695,483 @@ function showPlayerDetailModal(playerData) {
     document.getElementById('sub-modal').style.display = 'flex';
 }
 
+/**
+ * ==========================================================================
+ * VS機能 フロントエンド処理 JavaScript（タイマン＆複数人 完全統合版）
+ * ==========================================================================
+ */
 
+document.addEventListener("DOMContentLoaded", () => {
+    const vsBtn = document.getElementById('vs-btn');
+    if (vsBtn) {
+        vsBtn.innerText = "VS (スコア比較)";
+        vsBtn.onclick = openVsModal;
+    }
+});
+
+let cachedVsPlayers = []; 
+let lastVsResponseData = null; // GASから返ってきた比較データを保持するグローバル変数
+
+/**
+ * ログイン中のプレイヤー名を自動取得する共通ヘルパー関数
+ * 既存の rating-container 内の表示や構造は一切変えず、
+ * そこに表示されているテキストからプレイヤー名だけを安全にサンプリングします。
+ */
+function getLoggedInPlayerName() {
+    const nameElement = document.querySelector('#rating-average strong') 
+                     || document.querySelector('.rating-container strong')
+                     || document.querySelector('.user-name');
+    
+    if (nameElement) {
+        const name = nameElement.innerText || nameElement.textContent;
+        if (name && name.trim() !== "Player" && name.trim() !== "") {
+            return name.trim();
+        }
+    }
+
+    let cachedName = localStorage.getItem('chuni_player_name');
+    if (cachedName) return cachedName.trim();
+    
+    return "";
+}
+
+/**
+ * モーダル起動・プレイヤー一覧の読み込み
+ */
+async function openVsModal() {
+    const vsBtn = document.getElementById('vs-btn');
+    if (vsBtn) { vsBtn.disabled = true; vsBtn.innerText = "プレイヤー読込中..."; }
+
+    try {
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ mode: "get_vs_players" })
+        });
+        const result = await response.json();
+
+        if (result.status === "success") {
+            cachedVsPlayers = result.players || [];
+            
+            // 自分の名前を自動取得
+            const myName = getLoggedInPlayerName();
+            
+            // ★修正：HTML側のID「vs-my-name-display」をピンポイントで取得して名前を書き換える
+            const myNameDisplay = document.getElementById('vs-my-name-display');
+            if (myNameDisplay) {
+                myNameDisplay.innerText = myName || "（プレイヤー未同期）";
+            }
+
+            // メイン画面の定数フィルター（min-constant / max-constant）から現在の値を引き継ぎ
+            const mainMinC = document.getElementById('min-constant')?.value || "13.5";
+            const mainMaxC = document.getElementById('max-constant')?.value || "16.0";
+
+            // VSモーダル側のセレクトボックスにメイン画面の選択値をセット（小数点第1位の文字列として確実にセット）
+            const minConstEl = document.getElementById('vs-min-const');
+            const maxConstEl = document.getElementById('vs-max-const');
+            
+            if (minConstEl) {
+                const parsedMin = parseFloat(mainMinC);
+                minConstEl.value = isNaN(parsedMin) ? "13.5" : parsedMin.toFixed(1);
+            }
+            if (maxConstEl) {
+                const parsedMax = parseFloat(mainMaxC);
+                maxConstEl.value = isNaN(parsedMax) ? "16.0" : parsedMax.toFixed(1);
+            }
+
+            renderVsOpponents();
+            document.getElementById('vs-setup-modal').style.display = "flex";
+        } else {
+            alert("プレイヤー名の取得に失敗しました: " + result.message);
+        }
+    } catch (e) {
+        console.error("VSシステムエラー:", e);
+        alert("通信に失敗しました。");
+    } finally {
+        if (vsBtn) { vsBtn.disabled = false; vsBtn.innerText = "VS (スコア比較)"; }
+    }
+}
+
+function renderVsOpponents() {
+    const container = document.getElementById('vs-opponents-container');
+    if (!container) return;
+    container.innerHTML = "";
+    
+    // 自動取得した自分の名前をベースに除外処理を行う
+    const myName = getLoggedInPlayerName();
+    
+    cachedVsPlayers.forEach(p => {
+        if (p === myName) return; // 自分を対戦相手リストに出さない
+        const div = document.createElement('div');
+        div.className = "vs-checkbox-item";
+        div.innerHTML = `<label><input type="checkbox" class="vs-opp-checkbox" value="${p}" onchange="checkVsOpponentLimit(this)"><span>${p}</span></label>`;
+        container.appendChild(div);
+    });
+}
+
+function checkVsOpponentLimit(checkbox) {
+    const checkedBoxes = document.querySelectorAll('.vs-opp-checkbox:checked');
+    if (checkedBoxes.length > 3) { checkbox.checked = false; alert("対戦相手は最大3人までしか選択できません。"); }
+}
+
+function closeVsSetupModal() { document.getElementById('vs-setup-modal').style.display = "none"; }
+function closeVsResultModal() { document.getElementById('vs-result-modal').style.display = "none"; }
+
+/**
+ * 比較実行・データ受信
+ */
+async function startVsCompare() {
+    const myName = getLoggedInPlayerName();
+    if (!myName) { alert("あなたのプレイヤー名が取得できません。一度同期を行ってください。"); return; }
+    
+    const checkedBoxes = document.querySelectorAll('.vs-opp-checkbox:checked');
+    const opponents = Array.from(checkedBoxes).map(cb => cb.value);
+    if (opponents.length === 0) { alert("対戦相手を少なくとも1人選択してください。"); return; }
+
+    // VSモーダル内、あるいはメイン画面の「min-constant」「max-constant eclipse」からリアルタイムに選択範囲を取得
+    const minC = document.getElementById('vs-min-const')?.value || document.getElementById('min-constant')?.value || "13.5";
+    const maxC = document.getElementById('vs-max-const')?.value || document.getElementById('max-constant')?.value || "16.0";
+    
+    const startBtn = document.getElementById('vs-start-btn');
+    if (startBtn) { startBtn.disabled = true; startBtn.innerText = "比較中..."; }
+
+    try {
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ mode: "get_vs_data", myName: myName, opponents: opponents, minConst: parseFloat(minC), maxConst: parseFloat(maxC) })
+        });
+        const result = await response.json();
+
+        if (result.status === "success") {
+            closeVsSetupModal();
+            lastVsResponseData = result.data; 
+            renderVsResult(); 
+        } else {
+            alert("エラー: " + result.message);
+        }
+    } catch (e) {
+        console.error("VS通信エラー:", e);
+        alert("通信に失敗しました。");
+    } finally {
+        if (startBtn) { startBtn.disabled = false; startBtn.innerText = "スコアを比較する"; }
+    }
+}
+
+/**
+ * 誰を基準にするかセレクトボックスが変更された際のリレンダー用関数（複数人用）
+ */
+function handleBasePlayerChange(selectElement) {
+    renderVsResult(selectElement.value);
+}
+
+/**
+ * 結果画面のメイン描画（タイマンと複数人を完全分離して生成）
+ * ★修正：3人・4人対戦時、基準プレイヤーの列は「名前のみ（順位なし）」「スコアのみ」に洗練
+ */
+function renderVsResult(forcedBasePlayer) {
+    const container = document.getElementById('vs-result-dynamic-container');
+    if (!container || !lastVsResponseData) return;
+    container.innerHTML = "";
+
+    const data = lastVsResponseData;
+    const oppCount = data.opponents.length;
+    const totalPlayersCount = oppCount + 1; 
+    const formatScore = (sc) => sc === 0 ? `<span style="color:#aaa;">-</span>` : sc.toLocaleString();
+
+    // 💡 共通で利用する「横並びボタン」のHTMLコンポーネント
+    const actionButtonsHtml = `
+        <div class="vs-action-row" style="display: flex; justify-content: center; gap: 12px; margin: 15px 0;">
+            <button class="vs-btn-back-setup" 
+                    onclick="document.getElementById('vs-result-modal').style.display='none'; if(document.getElementById('vs-setup-modal')){ document.getElementById('vs-setup-modal').style.display='flex'; }" 
+                    style="padding: 10px 16px; font-size: 14px; font-weight: bold; background-color: #0076f6; color: #fff; border: none; border-radius: 6px; cursor: pointer; flex: 1; max-width: 160px; white-space: nowrap;">
+                設定画面に戻る
+            </button>
+            <button class="vs-btn-close-modal" 
+                    onclick="document.getElementById('vs-result-modal').style.display='none';" 
+                    style="padding: 10px 16px; font-size: 14px; font-weight: bold; background-color: #8e8e93; color: #fff; border: none; border-radius: 6px; cursor: pointer; flex: 1; max-width: 120px; white-space: nowrap;">
+                閉じる
+            </button>
+        </div>
+    `;
+
+    // ==========================================================================
+    // A. 【タイマンの場合（対戦相手が1人の場合）】
+    // ==========================================================================
+    if (oppCount === 1) {
+        const oppName = data.opponents[0];
+        const vsRows = [...data.vsRows];
+        const totalSongs = vsRows.length;
+
+        let html = `
+            <div class="vs-header-left">
+                <strong>定数:</strong> ${data.minConst} ～ ${data.maxConst} （全 ${totalSongs} 曲）<br>
+                <strong>対戦相手:</strong> ${oppName}
+            </div>
+        `;
+
+        html += `
+            <div class="vs-header-center">
+                <span style="color:#f02e2e; font-weight:bold; margin:0 10px;">WIN: <span style="font-size:18px;">${data.summary.win}</span> 曲</span>
+                <span style="color:#00a310; font-weight:bold; margin:0 10px;">DRAW: <span style="font-size:18px;">${data.summary.draw}</span> 曲</span>
+                <span style="color:#2e7df0; font-weight:bold; margin:0 10px;">LOSE: <span style="font-size:18px;">${data.summary.lose}</span> 曲</span>
+            </div>
+        `;
+
+        // [上部] 横並びボタンを配置
+        html += actionButtonsHtml;
+
+        // ソートロジック（WIN -> DRAW -> LOSE の順）
+        vsRows.sort((a, b) => {
+            const resPriority = { "WIN": 1, "DRAW": 2, "LOSE": 3 };
+            const pA = resPriority[a.matchResult] || 99;
+            const pB = resPriority[b.matchResult] || 99;
+            if (pA !== pB) return pA - pB;
+
+            const oppScoreA = a.rankList.find(p => p.name === oppName)?.score || 0;
+            const diffA = a.myScore - oppScoreA;
+            const oppScoreB = b.rankList.find(p => p.name === oppName)?.score || 0;
+            const diffB = b.myScore - oppScoreB;
+
+            if (a.matchResult === "WIN") return diffB - diffA;
+            if (a.matchResult === "LOSE") return diffB - diffA;
+            return b.constant - a.constant;
+        });
+
+        html += `
+            <div class="vs-table-scroll-container">
+                <table class="vs-table-single">
+                    <thead>
+                        <tr>
+                            <th class="vs-col-title">曲名</th>
+                            <th class="vs-col-const">定数</th>
+                            <th class="vs-col-score">${data.myName}</th>
+                            <th class="vs-col-diff">点差</th>
+                            <th class="vs-col-score">${oppName}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        if (totalSongs === 0) {
+            html += `<tr><td colspan="5" style="text-align:center; padding:20px; color:#999;">対象データがありません。</td></tr>`;
+        }
+
+        vsRows.forEach(row => {
+            const myScore = row.myScore;
+            const oppScore = row.rankList.find(p => p.name === oppName)?.score || 0;
+            const diff = myScore - oppScore;
+
+            let diffStr = "0";
+            let diffClass = "vs-diff-draw";
+            if (row.matchResult === "WIN") {
+                diffStr = "+" + diff.toLocaleString();
+                diffClass = "vs-diff-win";
+            } else if (row.matchResult === "LOSE") {
+                diffStr = diff.toLocaleString();
+                diffClass = "vs-diff-lose";
+            }
+
+            html += `
+                <tr>
+                    <td class="vs-col-title"><div class="vs-song-title-scroll">${row.title}</div></td>
+                    <td class="vs-col-const">${row.constant.toFixed(1)}</td>
+                    <td class="vs-col-score">${formatScore(myScore)}</td>
+                    <td class="vs-col-diff ${diffClass}">${diffStr}</td>
+                    <td class="vs-col-score">${formatScore(oppScore)}</td>
+                </tr>
+            `;
+        });
+
+        html += `</tbody></table></div>`;
+
+        // [下部] 横並びボタンを配置
+        html += actionButtonsHtml;
+        container.innerHTML = html;
+
+    // ==========================================================================
+    // B. 【3人、4人対戦の場合】
+    // ==========================================================================
+    } else {
+        const basePlayer = forcedBasePlayer || data.myName;
+        const vsRows = [...data.vsRows];
+        const totalSongs = vsRows.length;
+        const allActivePlayers = [data.myName, ...data.opponents];
+
+        // 基準プレイヤー選択セレクトボックス
+        let html = `
+            <div style="text-align:left; margin-bottom:15px; font-size:16px; font-weight:bold;">
+                <select id="vs-base-player-select" class="vs-select" style="width:auto; display:inline-block; font-size:15px; padding:4px 8px; margin-right:5px;" onchange="handleBasePlayerChange(this)">
+        `;
+        allActivePlayers.forEach(p => {
+            const selected = (p === basePlayer) ? "selected" : "";
+            html += `<option value="${p}" ${selected}>${p}</option>`;
+        });
+        html += `</select> のスコア比較結果</div>`;
+
+        const displayOpponents = allActivePlayers.filter(p => p !== basePlayer).join('、');
+        html += `
+            <div class="vs-header-left">
+                <strong>定数:</strong> ${data.minConst} ～ ${data.maxConst} （全 ${totalSongs} 曲）<br>
+                <strong>対戦相手:</strong> ${displayOpponents}
+            </div>
+        `;
+
+        // 各順位バケットの初期化
+        const buckets = {};
+        for (let r = 1; r <= totalPlayersCount; r++) { buckets[r] = []; }
+
+        // 楽曲を順位ごとに仕分け
+        vsRows.forEach(row => {
+            const baseScore = row.rankList.find(p => p.name === basePlayer)?.score || 0;
+            let exactRank = 1;
+            row.rankList.forEach(p => {
+                if (p.name !== basePlayer && p.score > baseScore) { exactRank++; }
+            });
+            
+            if (exactRank > totalPlayersCount) exactRank = totalPlayersCount;
+
+            const othersSorted = row.rankList
+                .filter(p => p.name !== basePlayer)
+                .sort((a, b) => b.score - a.score);
+
+            buckets[exactRank].push({
+                title: row.title,
+                constant: row.constant,
+                baseScore: baseScore,
+                others: othersSorted
+            });
+        });
+
+        // サマリー表示
+        html += `<div class="vs-header-center">`;
+        for (let r = 1; r <= totalPlayersCount; r++) {
+            html += `<span style="font-weight:bold; margin:0 10px;">${r}位: <span style="font-size:18px;">${buckets[r].length}</span> 曲</span>`;
+        }
+        html += `</div>`;
+
+        // [上部] 横並びボタンを配置
+        html += actionButtonsHtml;
+
+        // アコーディオン（順位ドロワー）の生成
+        for (let dRank = 1; dRank <= totalPlayersCount; dRank++) {
+            const songList = buckets[dRank];
+            songList.sort((a, b) => b.constant - a.constant); // 定数降順
+
+            html += `
+                <details class="vs-drawer" ${dRank === 1 ? 'open' : ''}>
+                    <summary>${dRank}位の楽曲 (${songList.length} 曲)</summary>
+                    <div class="vs-drawer-content">
+                        <div class="vs-table-scroll-container">
+                            <table class="vs-table-single">
+                                <thead>
+                                    <tr>
+                                        <th class="vs-col-title">曲名</th>
+                                        <th class="vs-col-const">定数</th>
+            `;
+
+            // ヘッダー生成（💡修正：基準プレイヤーの列は、順位を表示せず「プレイヤー名のみ」にする）
+            for (let idx = 1; idx <= totalPlayersCount; idx++) {
+                if (idx === dRank) {
+                    html += `<th class="vs-col-score vs-multi-my-column-header">${basePlayer}</th>`;
+                } else {
+                    html += `<th class="vs-col-score">${idx === 1 ? '1位' : idx + '位'}</th>`;
+                }
+            }
+
+            html += `
+                                    </tr>
+                                </thead>
+                                <tbody>
+            `;
+
+            if (songList.length === 0) {
+                html += `<tr><td colspan="${2 + totalPlayersCount}" style="text-align:center; padding:20px; color:#999;">該当する楽曲がありません。</td></tr>`;
+            }
+
+            songList.forEach(song => {
+                html += `
+                    <tr>
+                        <td class="vs-col-title"><div class="vs-song-title-scroll">${song.title}</div></td>
+                        <td class="vs-col-const">${song.constant.toFixed(1)}</td>
+                `;
+
+                // 各順位列（1位〜最大4位）のデータを生成
+                for (let idx = 1; idx <= totalPlayersCount; idx++) {
+                    if (idx === dRank) {
+                        // 基準プレイヤーの要素は、名前を出さずに「純粋なスコアのみ」にする
+                        html += `
+                            <td class="vs-col-score vs-multi-my-cell">
+                                <div class="vs-multi-player-score-large">${formatScore(song.baseScore)}</div>
+                            </td>
+                        `;
+                    } else {
+                        // 他プレイヤーは今まで通り「名前」＋「スコア」を表示
+                        const otherIdx = (idx < dRank) ? (idx - 1) : (idx - 2);
+                        const otherPlayer = song.others[otherIdx];
+                        
+                        if (otherPlayer) {
+                            html += `
+                                <td class="vs-col-score">
+                                    <div class="vs-multi-player-name">${otherPlayer.name}</div>
+                                    <div class="vs-multi-player-score">${formatScore(otherPlayer.score)}</div>
+                                </td>
+                            `;
+                        } else {
+                            html += `<td class="vs-col-score" style="color:#aaa;">-</td>`;
+                        }
+                    }
+                }
+                html += `</tr>`;
+            });
+
+            html += `</tbody></table></div></div></details>`;
+        }
+
+        // [下部] 横並びボタンを配置
+        html += actionButtonsHtml;
+        container.innerHTML = html;
+    }
+
+    document.getElementById('vs-result-modal').style.display = "flex";
+}
+
+/**
+ * ★追加：VS設定画面の定数セレクトボックス（0.1刻み）を自動生成する処理
+ * ページ読み込み時に実行されます
+ */
+document.addEventListener("DOMContentLoaded", () => {
+    const minSelect = document.getElementById("vs-min-const");
+    const maxSelect = document.getElementById("vs-max-const");
+    
+    if (!minSelect || !maxSelect) return;
+
+    const start = 13.5;
+    const end = 16.0;
+    const step = 0.1;
+
+    // 1. 下限側の生成：昇順（13.5 -> 16.0）
+    for (let i = Math.round(start * 10); i <= Math.round(end * 10); i += Math.round(step * 10)) {
+        const val = (i / 10).toFixed(1);
+        const opt = document.createElement("option");
+        opt.value = val;
+        opt.textContent = val;
+        
+        if (val === "13.5") opt.selected = true; // 初期状態
+        minSelect.appendChild(opt);
+    }
+
+    // 2. 上限側の生成：降順（16.0 -> 13.5）
+    for (let i = Math.round(end * 10); i >= Math.round(start * 10); i -= Math.round(step * 10)) {
+        const val = (i / 10).toFixed(1);
+        const opt = document.createElement("option");
+        opt.value = val;
+        opt.textContent = val;
+        
+        if (val === "16.0") opt.selected = true; // 初期状態
+        maxSelect.appendChild(opt);
+    }
+});
 
 /**
  * サブモーダルを閉じる

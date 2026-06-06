@@ -166,7 +166,7 @@
             <button id="stats-player-btn" class="btn-stats" onclick="fetchStats('player')">統計 (個人別)</button>
             <button id="stats-song-btn" class="btn-stats" onclick="fetchStats('song')">統計 (楽曲別)</button>
             <button id="random-btn" class="btn-random" onclick="pickRandomSong()">課題曲選出</button>
-            <button id="vs-btn" class="btn-vs">VS(実装予定)</button>
+            <button id="vs-btn" class="btn-vs" onclick="openVsModal()">VS(スコア比較)</button>
         </div>
 
         <div id="loading">データを取得中...</div>
@@ -253,6 +253,54 @@
                 </table>
             </div>
             <button onclick="closeSubModal()" class="sub-modal-close-btn">閉じる</button>
+        </div>
+    </div>
+
+    <div id="vs-setup-modal" class="vs-modal">
+        <div class="vs-modal-content">
+            <h3 class="vs-modal-title">VS機能 (スコア比較)</h3>
+
+            <div class="vs-player-section">
+                <label>プレイヤー（あなた）: </label>
+                <span id="vs-my-name-display" style="font-weight: bold; font-size: 1.1em; color: #333;">
+                    読み込み中...
+                </span>
+            </div>
+
+            <div class="vs-form-group">
+                <label>対戦相手を選択 (最大3人まで)</label>
+                <div id="vs-opponents-container" class="vs-checkbox-container">
+                </div>
+            </div>
+
+            <div class="vs-flex-row">
+                <div class="vs-flex-item">
+                    <label>定数下限</label>
+                    <select id="vs-min-const" class="vs-select"></select>
+                </div>
+                <div class="vs-flex-item">
+                    <label>定数上限</label>
+                    <select id="vs-max-const" class="vs-select"></select>
+                </div>
+            </div>
+
+            <div class="vs-btn-container">
+                <button id="vs-start-btn" class="btn-stats"
+                    style="background:#2e7df0; color:#fff; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; font-weight:bold;"
+                    onclick="startVsCompare()">スコアを比較する</button>
+                <button
+                    style="background:#ccc; color:#333; border:none; padding:10px 20px; border-radius:4px; cursor:pointer;"
+                    onclick="closeVsSetupModal()">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="vs-result-modal" class="vs-modal">
+        <div class="vs-modal-content vs-result-modal-content">
+            <h3 class="vs-result-title">VS 比較結果</h3>
+
+            <div id="vs-result-dynamic-container"></div>
+
         </div>
     </div>
 

@@ -1686,3 +1686,442 @@ td {
         text-align: left;
     }
 }
+
+/* ==========================================================================
+   VS機能専用 スタイルシート（タイマン＆複数人対応 完全統合版）
+   ========================================================================== */
+
+/* -----------------------------------------
+   モーダル共通構造
+   ----------------------------------------- */
+.vs-modal {
+    display: none; 
+    position: fixed; 
+    top: 0; 
+    left: 0; 
+    width: 100%; 
+    height: 100%; 
+    background: rgba(0,0,0,0.5); 
+    z-index: 1000; 
+    justify-content: center; 
+    align-items: center;
+}
+.vs-modal-content {
+    background: #fff; 
+    padding: 20px; 
+    border-radius: 8px; 
+    width: 90%; 
+    max-width: 450px; 
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3); 
+    color: #333; 
+    text-align: left;
+}
+/* 結果画面は表やドロワーが広がるため、最大幅を大きめに確保 */
+.vs-result-modal-content {
+    max-width: 900px; 
+    max-height: 90%; 
+    overflow-y: auto;
+}
+.vs-modal-title { margin-top: 0; border-bottom: 2px solid #2e7df0; padding-bottom: 8px; color: #2e7df0; }
+.vs-result-title { margin-top: 0; border-bottom: 2px solid #f02e2e; padding-bottom: 8px; text-align: center; color: #f02e2e; }
+
+/* -----------------------------------------
+   設定画面用 フォーム要素
+   ----------------------------------------- */
+.vs-form-group { margin-bottom: 15px; }
+.vs-form-group label { font-weight: bold; display: block; margin-bottom: 5px; }
+.vs-select, .vs-input { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 14px; box-sizing: border-box; }
+.vs-checkbox-container { max-height: 150px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; border-radius: 4px; background: #f9f9f9; }
+.vs-checkbox-item { margin: 6px 0; }
+.vs-checkbox-item label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
+.vs-flex-row { display: flex; gap: 10px; margin-bottom: 20px; }
+.vs-flex-item { flex: 1; }
+.vs-btn-container { display: flex; justify-content: center; gap: 10px; }
+
+/* -----------------------------------------
+   ヘッダー情報エリア（レイアウト枠）
+   ----------------------------------------- */
+/* 【要件】定数・対戦相手などの情報を左寄せに */
+.vs-header-left {
+    text-align: left;
+    font-size: 14px;
+    color: #444;
+    margin-bottom: 12px;
+    line-height: 1.6;
+}
+/* 【要件】WIN/DRAW/LOSE や 順位サマリーを真ん中寄せに */
+.vs-header-center {
+    text-align: center;
+    margin-bottom: 20px;
+    padding: 10px;
+    background: #f9f9f9;
+    border-radius: 6px;
+    font-size: 15px;
+}
+
+/* -----------------------------------------
+   ★要件：比較テーブル ＆ 横スクロール制御
+   ----------------------------------------- */
+/* 【要件】表全体を横スクロール可能にするためのコンテナ */
+.vs-table-wrapper {
+    overflow-x: auto; 
+    width: 100%;
+    max-height: 400px; 
+    border: 1px solid #ddd; 
+    border-radius: 4px;
+    margin-bottom: 5px;
+}
+.vs-table {
+    width: 100%; 
+    border-collapse: collapse; 
+    font-size: 13px;
+    table-layout: fixed; /* 列幅を固定して横スクロールを安定化 */
+}
+/* 【要件】上部に position: sticky; で見出しを固定表示 */
+.vs-table thead tr { 
+    background: #2e7df0; 
+    color: #fff; 
+    position: sticky; 
+    top: 0; 
+    z-index: 10; 
+}
+.vs-table th, .vs-table td { padding: 10px 6px; border-bottom: 1px solid #ddd; box-sizing: border-box; }
+.vs-table tbody tr:nth-child(even) { background: #fcfcfc; }
+
+/* 【要件】曲名列を狭く固定し、長い場合はセル内で横スクロール（バーは非表示） */
+.vs-song-title-scroll {
+    max-width: 160px; 
+    overflow-x: auto;       /* 横スクロール有効化 */
+    white-space: nowrap;    /* 改行禁止 */
+    display: block;
+    padding: 2px 0;
+    -ms-overflow-style: none;  /* IE, Edge でスクロールバーを非表示 */
+    scrollbar-width: none;     /* Firefox でスクロールバーを非表示 */
+}
+/* 【要件】Chrome, Safari で曲名スクロールバーを非表示にする */
+.vs-song-title-scroll::-webkit-scrollbar {
+    display: none; 
+}
+
+/* -----------------------------------------
+   ★要件：タイマン専用 点差の色分けスタイル
+   ----------------------------------------- */
+.vs-diff-win { color: #2e7df0; font-weight: bold; }  /* WINなら + で青文字 */
+.vs-diff-draw { color: #333333; font-weight: bold; } /* DRAWなら 0 で黒文字 */
+.vs-diff-lose { color: #f02e2e; font-weight: bold; } /* LOSEなら - で赤文字 */
+
+/* -----------------------------------------
+   ★要件：複数人対戦専用 ドロワー（アコーディオン）
+   ----------------------------------------- */
+/* 【要件】各順位の表を格納するドロワー（デフォルト全非表示） */
+.vs-drawer {
+    margin-bottom: 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: #fff;
+    overflow: hidden;
+    text-align: left;
+}
+.vs-drawer summary {
+    padding: 12px 15px;
+    background: #f5f5f5;
+    font-weight: bold;
+    font-size: 14px;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid transparent;
+    transition: background 0.2s;
+}
+.vs-drawer summary:hover { background: #eee; }
+.vs-drawer[open] summary {
+    border-bottom: 1px solid #ddd;
+    background: #eef5ff; /* 開いている時はほんのり青背景 */
+}
+.vs-drawer-content {
+    padding: 10px;
+    background: #fff;
+}
+
+/* 複数人用：2段組レイアウト */
+.vs-cell-name { font-size: 11px; color: #666; margin-bottom: 2px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vs-cell-score { font-size: 13px; font-weight: 500; text-align: center; }
+
+/* 【要件】複数人対戦時、基準プレイヤーの列（背景とスコア）を赤く強調 */
+.vs-multi-highlight-me {
+    background: #fff0f0 !important; /* セル背景を薄赤に */
+}
+.vs-multi-highlight-me .vs-cell-score {
+    color: #f02e2e !important;    /* スコアを赤文字に */
+    font-weight: bold !important; /* 太く強調 */
+}
+
+/* ==========================================================================
+   VS機能 タイマン（1対1）1テーブル固定＆スクロール スタイル
+   ========================================================================== */
+
+/* スクロールを統御する外枠コンテナ */
+.vs-table-scroll-container {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid #e5e5ea;
+    border-radius: 6px;
+    position: relative;
+    margin-top: 10px;
+}
+
+/* 1つに統合されたテーブルの基本設定 */
+.vs-table-single { 
+    width: 100%; 
+    border-collapse: separate; 
+    border-spacing: 0;
+    table-layout: fixed; 
+}
+
+/* セルの基本デザイン */
+.vs-table-single th, .vs-table-single td { 
+    padding: 10px 4px; 
+    vertical-align: middle;
+    border-bottom: 1px solid #e5e5ea;
+    background-color: #fff; /* 固定列の背景が透けないように白に固定 */
+    box-sizing: border-box;
+}
+
+.vs-table-single th { 
+    font-weight: bold !important; 
+    font-size: 1.05em !important; 
+    background-color: #f5f5f7;
+}
+
+/* --------------------------------------------------------------------------
+   【PC環境（デフォルト）】の列配置
+   -------------------------------------------------------------------------- */
+.vs-table-single .vs-col-title {
+    position: -webkit-sticky;
+    position: sticky;
+    left: 0;
+    z-index: 20; /* 💡修正：階層を20に統一し、すべてのスクロール要素を下に潜り込ませる */
+    text-align: left;
+    width: 160px; /* PCでの曲名幅 */
+    border-right: 1px solid #e5e5ea;
+}
+
+.vs-table-single .vs-col-const {
+    position: -webkit-sticky;
+    position: sticky;
+    left: 160px; /* PCでの定数の固定位置(1列目の右隣) */
+    z-index: 20; /* 💡修正：階層を20に統一し、すべてのスクロール要素を下に潜り込ませる */
+    text-align: center !important;
+    width: 60px; /* PCでの定数幅 */
+    color: #666;
+    font-weight: normal;
+    border-right: 2px solid #ccc; /* 数値列との境界線 */
+}
+
+/* 💡修正：古い競合設定「th.vs-col-title, th.vs-col-const { z-index: 11; }」は
+   見出しだけが浮き上がる原因になるため完全に撤廃・削除しました。 */
+
+/* PCでのスクロール対象列の幅指定 */
+.vs-table-single .vs-col-score { 
+    position: relative;
+    z-index: 1; /* 💡追加：固定列(20)より低い値を明示し、見出しも確実に下に潜り込ませる */
+    text-align: center !important; 
+    font-weight: 500; 
+}
+.vs-table-single .vs-col-diff  { 
+    position: relative;
+    z-index: 1; /* 💡追加：固定列(20)より低い値を明示し、見出しも確実に下に潜り込ませる */
+    text-align: center !important; 
+    font-weight: bold; 
+}
+
+
+/* --------------------------------------------------------------------------
+   【スマートフォン環境】の完全最適化（画面幅 768px 以下）
+   ========================================================================== */
+@media screen and (max-width: 768px) {
+    /* 全体の合計幅（100px + 35px + 78px + 82px + 78px = 373px）を適用してガッチリ固定 */
+    .vs-table-single {
+        width: 373px !important;
+        min-width: 373px !important;
+        max-width: 373px !important;
+    }
+
+    /* スマホ時は、すべての見出し（th）の文字サイズを 0.85em に一律統一 */
+    .vs-table-single th {
+        font-size: 0.85em !important;
+    }
+
+    /* スマホ：曲名 100px （★確実に左寄せ＋文字サイズを他と統一） */
+    .vs-table-single th.vs-col-title,
+    .vs-table-single td.vs-col-title {
+        z-index: 20 !important; /* 💡追加：スマホ時も確実に最上層(20)をキープ */
+        width: 100px !important;
+        min-width: 100px !important;
+        max-width: 100px !important;
+        text-align: left !important; /* 強制的に左寄せ */
+        font-size: 0.85em !important; /* 他の列と文字の大きさを完全に統一 */
+        padding-left: 6px !important; /* 左側に少しだけ余白を作って見やすく */
+    }
+
+    /* スマホ：定数 35px */
+    .vs-table-single th.vs-col-const,
+    .vs-table-single td.vs-col-const {
+        left: 100px !important; /* 固定位置を曲名の幅ぴったりに */
+        z-index: 20 !important; /* 💡追加：スマホ時も確実に最上層(20)をキープ */
+        width: 35px !important;
+        min-width: 35px !important;
+        max-width: 35px !important;
+        font-size: 0.85em !important;
+        padding: 10px 0px !important; /* 左右の余白を完全にゼロにして35pxをフルに使う */
+        
+        white-space: nowrap !important;
+        text-overflow: clip !important;        /* 三点リーダー（...）化を強制無効 */
+        overflow: visible !important;          /* 文字を隠さずすべて見せる */
+        text-align: center !important;
+        border-right: 1px solid #ccc !important; /* 境界線 */
+    }
+
+    /* スマホ：3列目（あなたのスコア） */
+    .vs-table-single th.vs-col-score:nth-child(3),
+    .vs-table-single td.vs-col-score:nth-child(3) {
+        width: 78px !important; 
+        min-width: 78px !important;
+        max-width: 78px !important;
+        padding-left: 12px !important; /* 固定列との間の余白・余裕スペース */
+        font-size: 0.85em !important;
+    }
+
+    /* スマホ：4列目（点差） */
+    .vs-table-single th.vs-col-diff,
+    .vs-table-single td.vs-col-diff { 
+        width: 82px !important; 
+        min-width: 82px !important;
+        max-width: 82px !important;
+        font-size: 0.85em !important;
+    }
+
+    /* スマホ：5列目（相手のスコア） */
+    .vs-table-single th.vs-col-score:nth-child(5),
+    .vs-table-single td.vs-col-score:nth-child(5) { 
+        width: 78px !important; 
+        min-width: 78px !important;
+        max-width: 78px !important;
+        font-size: 0.85em !important;
+    }
+}
+
+/* ==========================================================================
+   VS機能：複数人アコーディオン内のレイアウト・横スクロール・マイ列強調
+   ========================================================================== */
+
+/* アコーディオン（ドロワー）の基本設定 */
+.vs-drawer {
+    margin-bottom: 10px;
+    border: 1px solid #e5e5ea;
+    border-radius: 8px;
+    background: #fff;
+    overflow: hidden;
+}
+
+.vs-drawer summary {
+    padding: 12px;
+    font-weight: bold;
+    background-color: #f2f2f7;
+    color: #1c1c1e;
+    cursor: pointer;
+    outline: none;
+    user-select: none;
+    border-bottom: 1px solid transparent;
+}
+
+.vs-drawer[open] summary {
+    border-bottom: 1px solid #e5e5ea;
+}
+
+.vs-drawer-content {
+    padding: 0;
+    background: #fff;
+}
+
+/* アコーディオン内のスクロールコンテナ微調整 */
+.vs-drawer-content .vs-table-scroll-container {
+    margin-top: 0;
+    margin-bottom: 0;
+    border: none;
+    border-radius: 0;
+}
+
+/* 他のプレイヤー用のテキスト配置スタイル */
+.vs-multi-player-name {
+    font-size: 10px;
+    color: #666;
+    font-weight: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 76px;
+    margin: 0 auto;
+    padding-bottom: 2px;
+}
+
+.vs-multi-player-score {
+    font-size: 12px;
+    color: #1c1c1e;
+    font-weight: 500;
+}
+
+/* 基準プレイヤー専用のスコアのみ表示用スタイル（1行で綺麗に見せる） */
+.vs-multi-player-score-large {
+    font-size: 13px;
+    color: #e02424 !important;
+    font-weight: bold !important;
+    line-height: 1.8;
+}
+
+/* 基準プレイヤーの位置（列・セル）のハイライト */
+.vs-table-single th.vs-multi-my-column-header {
+    position: relative;
+    z-index: 1 !important; /* 💡修正：赤見出しも固定列(20)より必ず下に潜り込ませる */
+    background-color: #ff3b30 !important; /* はっきりとした赤背景 */
+    color: #ffffff !important;           /* 文字は白 */
+    font-weight: bold !important;
+}
+
+.vs-table-single td.vs-multi-my-cell {
+    background-color: #fff2f2 !important; /* 薄い赤背景 */
+}
+
+/* --------------------------------------------------------------------------
+   【スマートフォン環境】での複数人戦専用・合計横幅のフィッティング（768px以下）
+   -------------------------------------------------------------------------- */
+@media screen and (max-width: 768px) {
+    /* 💡 修正：4位の列（6列目）までスマホ画面内にゆとりを持って収めるため、
+       複数人テーブルの合計幅を【473px】（+100px拡張）にガッチリ固定ロックします。
+       
+       これにより、タイマンの計算設計である
+       「曲名(100px) + 定数(35px) = 左側135px固定」の吸着挙動を1ミリも崩すことなく、
+       右側のスクロール可動域（238px → 338px）が広がり、全プレイヤー列が等幅で収まります。
+    */
+    .vs-drawer-content .vs-table-single {
+        width: 473px !important;
+        min-width: 473px !important;
+        max-width: 473px !important;
+    }
+
+    /* 各プレイヤー列（th / td）の等幅設定をさらに安定化 */
+    .vs-drawer-content .vs-table-single th.vs-col-score,
+    .vs-drawer-content .vs-table-single td.vs-col-score {
+        position: relative;
+        z-index: 1; /* 💡追加：複数人の各スコア見出しも固定列の下を通るように保証 */
+        width: 84px !important;
+        min-width: 84px !important;
+        max-width: 84px !important;
+        font-size: 0.85em !important;
+    }
+    
+    /* スマホ用に基準プレイヤーセルの文字サイズ微調整 */
+    .vs-drawer-content .vs-table-single td.vs-multi-my-cell .vs-multi-player-score-large {
+        font-size: 0.9em !important;
+    }
+}
