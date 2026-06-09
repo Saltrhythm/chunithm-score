@@ -156,6 +156,22 @@
                                 <button id="filter-new" class="btn-filter filter-btn-unit" data-value="new">新曲</button>
                             </div>
                         </div>
+
+                        <div class="filter-row">
+                            <div class="filter-group-target" style="gap: 12px;">
+                                <label class="trend-switch-label"
+                                    style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: bold; color: #555; cursor: pointer; user-select: none;">
+                                    <input type="checkbox" id="trend-enable-switch"
+                                        style="transform: scale(1.1); cursor: pointer;">
+                                    傾向フィルターを有効化
+                                </label>
+
+                                <button class="btn-trend-filter" data-trend="POWER">POWER</button>
+                                <button class="btn-trend-filter" data-trend="NOTES">NOTES</button>
+                                <button class="btn-trend-filter" data-trend="CHUNI">CHUNI</button>
+                                <button class="btn-trend-filter" data-trend="TRICKY">TRICKY</button>
+                            </div>
+                        </div>
                     </div>
                 </details>
 
@@ -188,10 +204,17 @@
         </div>
 
 
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
         <div id="ranking-modal" style="display: none;">
             <div class="modal-content">
 
                 <h3 id="ranking-title-container"></h3>
+
+                <div id="radar-chart-container" class="radar-chart-container"
+                    style="max-width: 300px; height: 260px; margin: 5px auto 15px auto;">
+                    <canvas id="radar-canvas"></canvas>
+                </div>
 
                 <div id="stats-control-area" style="text-align: center; margin-bottom: 5px;"></div>
 
@@ -256,7 +279,7 @@
         </div>
     </div>
 
-    <div id="vs-setup-modal" class="vs-modal">
+<div id="vs-setup-modal" class="vs-modal">
         <div class="vs-modal-content">
             <h3 class="vs-modal-title">VS機能 (スコア比較)</h3>
 
@@ -284,7 +307,24 @@
                 </div>
             </div>
 
-            <div class="vs-btn-container">
+            <div class="vs-form-group" style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <label style="font-weight: bold; margin: 0;">傾向フィルター (VS専用)</label>
+                    <label class="vs-switch">
+                        <input type="checkbox" id="vs-trend-enable-switch" onchange="toggleVsTrendFilters()">
+                        <span class="vs-slider"></span>
+                    </label>
+                </div>
+                
+                <div id="vs-trend-buttons-container" class="vs-trend-container vs-disabled">
+                    <button type="button" class="vs-btn-trend-filter" data-trend="POWER" onclick="toggleVsTrendButton(this)">POWER</button>
+                    <button type="button" class="vs-btn-trend-filter" data-trend="NOTES" onclick="toggleVsTrendButton(this)">NOTES</button>
+                    <button type="button" class="vs-btn-trend-filter" data-trend="CHUNI" onclick="toggleVsTrendButton(this)">CHUNI</button>
+                    <button type="button" class="vs-btn-trend-filter" data-trend="TRICKY" onclick="toggleVsTrendButton(this)">TRICKY</button>
+                </div>
+            </div>
+            
+            <div class="vs-btn-container" style="margin-top: 20px;">
                 <button id="vs-start-btn" class="btn-stats"
                     style="background:#2e7df0; color:#fff; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; font-weight:bold;"
                     onclick="startVsCompare()">スコアを比較する</button>

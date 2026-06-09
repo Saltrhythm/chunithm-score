@@ -537,6 +537,84 @@ input[type="number"]::-webkit-inner-spin-button {
     font-weight: normal;
 }
 
+/* =================================================================
+   追加：Trend（傾向）フィルターボタンの個別装飾
+   ================================================================= */
+/* 共通ベーススタイル（.btn-filter の仕様を継承） */
+.btn-trend-filter {
+    height: 42px;
+    padding: 0 14px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 30px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #555;
+    font-weight: bold;
+    transition: all 0.2s;
+    white-space: nowrap;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.btn-trend-filter:hover {
+    background: #f0f0f0;
+    border-color: #bbb;
+}
+
+/* OFF（非アクティブ）状態：少し薄くして非選択であることを表現 */
+.btn-trend-filter:not(.active) {
+    background: #f5f5f5;
+    color: #aaa;
+    border-color: #ddd;
+    box-shadow: none;
+    text-decoration: line-through; /* 💡直感的に除外していることがわかるデザイン */
+}
+
+/* 各トレンド個別のON（アクティブ）カラー設定 */
+/* POWER (青) */
+.btn-trend-filter[data-trend="POWER"].active {
+    background: #36a2eb;
+    color: #fff;
+    border-color: #36a2eb;
+    box-shadow: 0 2px 5px rgba(54, 162, 235, 0.3);
+}
+/* NOTES (黄) */
+.btn-trend-filter[data-trend="NOTES"].active {
+    background: #d7a62e;
+    color: #fff;
+    border-color: #d7a62e;
+    box-shadow: 0 2px 5px rgba(215, 166, 46, 0.3);
+}
+/* CHUNI (緑) */
+.btn-trend-filter[data-trend="CHUNI"].active {
+    background: #239898;
+    color: #fff;
+    border-color: #239898;
+    box-shadow: 0 2px 5px rgba(35, 152, 152, 0.3);
+}
+/* TRICKY (紫) */
+.btn-trend-filter[data-trend="TRICKY"].active {
+    background: #9966ff;
+    color: #fff;
+    border-color: #9966ff;
+    box-shadow: 0 2px 5px rgba(153, 102, 255, 0.3);
+}
+
+/* トレンド機能全体が無効化されているときのボタンの見た目 */
+.btn-trend-filter.trend-disabled {
+    background: #e2e8f0 !important;
+    color: #94a3b8 !important;
+    border-color: #cbd5e1 !important;
+    cursor: not-allowed !important;
+    box-shadow: none !important;
+    text-decoration: none !important;
+    opacity: 0.6;
+}
+
+
 
 /* =================================================================
    スマホ表示（画面幅が768px以下の時）の完全1行縦並びレイアウト
@@ -622,6 +700,20 @@ input[type="number"]::-webkit-inner-spin-button {
     
     #min-score, #max-score {
         width: 75px !important; /* スマホでは少し大きめにしてタップ・視認しやすく */
+    }
+
+    /* トレンドボタンの親要素をスマホ幅いっぱいに均等配置 */
+    .filter-row .filter-group-target:has(.btn-trend-filter) {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    /* トレンドボタン自体をスマホ画面で横並び均等に広げる */
+    .btn-trend-filter {
+        flex: 1;
+        font-size: 12px;      /* スマホで文字がはみ出さないよう微調整 */
+        padding: 0 4px;
+        text-align: center;
     }
 }
 
@@ -1183,26 +1275,14 @@ td:nth-child(2) {
     align-items: center;
 }
 
-
-/* 曲名の横の難易度・定数、または統計条件 */
-.title-sub-info {
-    color: #888888;
-    font-size: 0.95em;
-    font-weight: bold;
-    margin-left: 10px;
-}
-
 #ranking-title-container {
-    display: block;
+    display: flex;            /* ★block から flex に変更 */
+    flex-direction: column;   /* ★1行目と2行目を縦に並べる */
+    align-items: flex-start;  /* ★左寄せにする */
     word-break: break-all;
-    /* 長いタイトルでも強制改行 */
     line-height: 1.4;
-    align-items: baseline;
-    /* 文字の底辺を揃える */
-    flex-wrap: wrap;
-    /* 入り切らない時だけ自然に折り返し */
-    gap: 8px;
-    /* 要素同士のスキマ */
+    gap: 2px;                 /* ★1行目と2行目の隙間をギリギリまで詰める */
+    margin-bottom: 0;         /* ★下の要素との不要な余白を消す */
 }
 
 /* メインの文字（ALL統計ランキングなど） */
@@ -1223,8 +1303,8 @@ td:nth-child(2) {
     color: #888888;
     font-size: 0.9em;
     font-weight: bold;
-    white-space: nowrap;
-    /* 条件の途中で変な改行をさせない */
+    white-space: normal; /* ★nowrapからnormalに変更（自然に改行させる） */
+    margin-left: 0;      /* ★左のズレをなくすため0にする */
 }
 
 /* --- スマホ専用の調整 (@media) --- */
@@ -1244,8 +1324,8 @@ td:nth-child(2) {
         color: #888888;
         font-size: 0.6em;
         font-weight: bold;
-        white-space: nowrap;
-        /* 条件の途中で変な改行をさせない */
+        white-space: normal; /* ★ここもnormalに変更 */
+        margin-left: 0;      /* ★ここも0にする */
     }
 }
 
@@ -1737,6 +1817,73 @@ td {
 .vs-flex-row { display: flex; gap: 10px; margin-bottom: 20px; }
 .vs-flex-item { flex: 1; }
 .vs-btn-container { display: flex; justify-content: center; gap: 10px; }
+
+/* -----------------------------------------
+   VS機能専用 傾向フィルター装飾
+   ----------------------------------------- */
+/* VS専用 スイッチトグルのデザイン */
+.vs-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+.vs-switch input { opacity: 0; width: 0; height: 0; }
+.vs-slider {
+  position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #ccc; transition: .3s; border-radius: 24px;
+}
+.vs-slider:before {
+  position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
+  background-color: white; transition: .3s; border-radius: 50%;
+}
+.vs-switch input:checked + .vs-slider { background-color: #2e7df0; }
+.vs-switch input:checked + .vs-slider:before { transform: translateX(20px); }
+
+/* ボタンコンテナとベースボタン設定 */
+.vs-trend-container {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; transition: opacity 0.3s;
+}
+.vs-btn-trend-filter {
+  padding: 6px 12px; font-size: 13px; border: 1px solid #ccc; background: #fff;
+  color: #333; border-radius: 20px; cursor: pointer; transition: all 0.2s; font-weight: bold;
+}
+.vs-btn-trend-filter:hover { background: #f0f0f0; border-color: #999; }
+
+/* スイッチOFF時の無効化スタイル */
+.vs-trend-container.vs-disabled {
+  opacity: 0.5; pointer-events: none;
+}
+
+/* ★ 各トレンド個別のON（アクティブ）カラー設定 (VS専用版) */
+/* POWER (青) */
+.vs-btn-trend-filter[data-trend="POWER"].active {
+    background: #36a2eb;
+    color: #fff;
+    border-color: #36a2eb;
+    box-shadow: 0 2px 5px rgba(54, 162, 235, 0.3);
+}
+/* NOTES (黄) */
+.vs-btn-trend-filter[data-trend="NOTES"].active {
+    background: #d7a62e;
+    color: #fff;
+    border-color: #d7a62e;
+    box-shadow: 0 2px 5px rgba(215, 166, 46, 0.3);
+}
+/* CHUNI (緑) */
+.vs-btn-trend-filter[data-trend="CHUNI"].active {
+    background: #239898;
+    color: #fff;
+    border-color: #239898;
+    box-shadow: 0 2px 5px rgba(35, 152, 152, 0.3);
+}
+/* TRICKY (紫) */
+.vs-btn-trend-filter[data-trend="TRICKY"].active {
+    background: #9966ff;
+    color: #fff;
+    border-color: #9966ff;
+    box-shadow: 0 2px 5px rgba(153, 102, 255, 0.3);
+}
 
 /* -----------------------------------------
    ヘッダー情報エリア（レイアウト枠）

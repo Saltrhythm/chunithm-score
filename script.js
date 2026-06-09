@@ -71,10 +71,10 @@ function toggleTokenVisibility() {
 
     if (input.type === "password") {
         input.type = "text";
-        btn.innerText = "🔒"; 
+        btn.innerText = "🔒";
     } else {
         input.type = "password";
-        btn.innerText = "👁️"; 
+        btn.innerText = "👁️";
     }
 }
 
@@ -193,7 +193,7 @@ function handleSuccess(result) {
 
     // 4. レート計算と表示
     calculatechuniRate(result.playerName);
-    
+
     // 確実にデータを引き渡す
     displayScores(myCurrentRecords);
 
@@ -205,8 +205,9 @@ function handleSuccess(result) {
     }
 }
 
+
 /**
- * フィルター（検索窓 + セレクトボックス）の値を読み取って表示を更新する
+ * フィルター（検索窓 + セレクトボックス + トレンド）の値を読み取って表示を更新する
  */
 function updateFilters() {
     const searchInput = document.getElementById('search-input');
@@ -249,6 +250,11 @@ function updateFilters() {
 
     const lampValue = lampSelect.value;
 
+    // 💡 トレンド有効化スイッチの状態を取得
+    const trendSwitch = document.getElementById('trend-enable-switch');
+    const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
+    const activeTrends = Array.from(document.querySelectorAll('.btn-trend-filter.active')).map(btn => btn.getAttribute('data-trend'));
+
     // フィルタリング実行
     const filteredData = myCurrentRecords.filter(item => {
         // 1. 曲名で絞り込み
@@ -263,15 +269,13 @@ function updateFilters() {
         const constant = parseFloat(item.const) || 0;
         const matchesConstant = (constant >= minConst && constant <= maxConst);
 
-        // 4. 【修正】Rank または スコア で絞り込み
+        // 4. Rank または スコア で絞り込み
         const tScore = parseFloat(item.score) || 0;
         let matchesRankOrScore = true;
-        
+
         if (filterMode === 'rank') {
-            // Rankモード時
             matchesRankOrScore = (tScore >= rankMin && tScore <= getUpperLimit(rankMax));
         } else {
-            // スコアモード時（数値の範囲でダイレクトに判定）
             matchesRankOrScore = (tScore >= minScore && tScore <= maxScore);
         }
 
@@ -295,7 +299,18 @@ function updateFilters() {
         if (currentTypeFilter === 'old') matchesType = !item.isNew;
         if (currentTypeFilter === 'new') matchesType = item.isNew;
 
-        return matchesTitle && matchesRating && matchesConstant && matchesRankOrScore && matchesLamp && matchesType;
+        // 💡 修正：トレンドフィルター判定
+        let matchesTrend = true;
+        if (isTrendEnabled) {
+            // トレンド機能有効時：設定されているトレンドが現在ONのボタンに含まれている曲のみ（未設定Noneは自動除外）
+            const songTrend = item.mainTrend || "None";
+            matchesTrend = activeTrends.includes(songTrend);
+        } else {
+            // トレンド機能無効時：未設定含め全ての曲を通過させる
+            matchesTrend = true;
+        }
+
+        return matchesTitle && matchesRating && matchesConstant && matchesRankOrScore && matchesLamp && matchesType && matchesTrend;
     });
 
     // 6. ソートの実行
@@ -306,71 +321,252 @@ function updateFilters() {
 
 
     // =================================================================
-    // ★【連動拡張】適用中のフィルター条件をバッジでリアルタイム表示
+    // ★適用中のフィルター条件をバッジでリアルタイム表示
     // =================================================================
     const activeContainer = document.getElementById('active-filters-container');
     const activeList = document.getElementById('active-filters-list');
 
     if (activeContainer && activeList) {
-        activeList.innerHTML = ''; // 前回のバッジを一旦すべて消去
-        let hasActiveFilter = false; // 初期値から変更されている条件があるかフラグ
+        activeList.innerHTML = '';
+        let hasActiveFilter = false;
 
-        // バッジを生成して追加するミニ関数
         const addBadge = (text) => {
             const badge = document.createElement('span');
             badge.className = 'filter-badge';
             badge.textContent = text;
             activeList.appendChild(badge);
-            hasActiveFilter = true; // 変更があったのでフラグを立てる
+            hasActiveFilter = true;
         };
 
-        // 1. 単レ (下限または上限が入力されている場合)
         if (minRateVal !== "" || maxRateVal !== "") {
             addBadge(`単レ: ${minRateVal || '0'}〜${maxRateVal || '99.99'}`);
         }
 
-        // 2. ランプ (すべて 'all' 以外の場合)
         if (lampValue !== 'all') {
             const lampText = lampSelect.options[lampSelect.selectedIndex]?.text || lampValue;
             addBadge(`ランプ: ${lampText}`);
         }
 
-        // 3. 【修正】選択中のモード（Rankかスコア）に応じてバッジの中身をスイッチ
         if (filterMode === 'rank') {
-            // Rank：下限が '0' 以外、または上限が '1010000(理論値)' 以外の場合に表示
             if (rankMinSelect.value !== '0' || rankMaxSelect.value !== '1010000') {
                 const minText = rankMinSelect.options[rankMinSelect.selectedIndex]?.text || rankMin;
                 const maxText = rankMaxSelect.options[rankMaxSelect.selectedIndex]?.text || rankMax;
                 addBadge(`Rank: ${minText}〜${maxText}`);
             }
         } else {
-            // スコア：下限または上限に入力がある場合に表示
             if (minScoreVal !== "" || maxScoreVal !== "") {
-                // 三項演算子でカンマ区切りの見栄えにする（1010000 -> 1,010,000）
                 const displayMin = minScoreVal !== "" ? Number(minScoreVal).toLocaleString() : '0';
                 const displayMax = maxScoreVal !== "" ? Number(maxScoreVal).toLocaleString() : '1,010,000';
                 addBadge(`スコア: ${displayMin}〜${displayMax}`);
             }
         }
 
-        // 4. 定数 (下限が初期値 '13.5' 以外、または上限が初期値 '16.0' 以外の場合)
         if (minConstSelect.value !== '13.5' || maxConstSelect.value !== '16.0') {
             addBadge(`定数: ${minConstSelect.value}〜${maxConstSelect.value}`);
         }
 
-        // 5. 対象 (全曲 'all' 以外の場合)
         if (typeof currentTypeFilter !== 'undefined' && currentTypeFilter !== 'all') {
             const targetBtn = document.getElementById(`filter-${currentTypeFilter}`);
             const targetText = targetBtn ? targetBtn.textContent.trim() : currentTypeFilter;
             addBadge(`対象: ${targetText}`);
         }
 
-        // 変更されたフィルターが1つでもあれば表示、初期状態ならエリアごと隠す
+        // 💡 修正：トレンド有効時のみバッジを連動
+        if (isTrendEnabled) {
+            const inactiveTrends = Array.from(document.querySelectorAll('.btn-trend-filter:not(.active)')).map(btn => btn.getAttribute('data-trend'));
+            if (inactiveTrends.length > 0 && inactiveTrends.length < 4) {
+                addBadge(`除外傾向: ${inactiveTrends.join(', ')}`);
+            } else if (inactiveTrends.length === 4) {
+                addBadge(`傾向: 表示なし`);
+            } else {
+                addBadge(`傾向フィルター適用中`);
+            }
+        }
+
         if (hasActiveFilter) {
             activeContainer.style.display = 'flex';
         } else {
             activeContainer.style.display = 'none';
         }
+    }
+}
+
+/**
+ * フィルター初期化
+ */
+function initFilters() {
+    const minConstSelect = document.getElementById('min-constant');
+    const maxConstSelect = document.getElementById('max-constant');
+    const minRateInput = document.getElementById('min-rating');
+    const maxRateInput = document.getElementById('max-rating');
+    const searchInput = document.getElementById('search-input');
+    const lampSelect = document.getElementById('lamp-filter');
+    const filterModeSelect = document.getElementById('filter-mode');
+    const rankMinSelect = document.getElementById('rank-min');
+    const rankMaxSelect = document.getElementById('rank-max');
+    const minScoreInput = document.getElementById('min-score');
+    const maxScoreInput = document.getElementById('max-score');
+    const trendSwitch = document.getElementById('trend-enable-switch');
+
+    if (!minConstSelect || !maxConstSelect) return;
+
+    // 定数セレクトボックスの中身生成
+    minConstSelect.innerHTML = "";
+    maxConstSelect.innerHTML = "";
+    for (let i = 135; i <= 160; i++) {
+        const val = (i / 10).toFixed(1);
+        minConstSelect.insertAdjacentHTML('beforeend', `<option value="${val}">${val}</option>`);
+    }
+    for (let i = 160; i >= 135; i--) {
+        const val = (i / 10).toFixed(1);
+        maxConstSelect.insertAdjacentHTML('beforeend', `<option value="${val}">${val}</option>`);
+    }
+
+    minConstSelect.value = "13.5";
+    maxConstSelect.value = "16.0";
+
+    [minConstSelect, maxConstSelect, lampSelect, rankMinSelect, rankMaxSelect].forEach(el => {
+        if (el) el.addEventListener('change', updateFilters);
+    });
+    [searchInput, minRateInput, maxRateInput, minScoreInput, maxScoreInput].forEach(el => {
+        if (el) el.addEventListener('input', updateFilters);
+    });
+
+    if (filterModeSelect) {
+        filterModeSelect.addEventListener('change', (e) => {
+            const currentMode = e.target.value;
+            const rankContainer = document.getElementById('rank-filter-container');
+            const scoreContainer = document.getElementById('score-filter-container');
+
+            if (currentMode === 'rank') {
+                filterModeSelect.classList.add('mode-rank');
+                filterModeSelect.classList.remove('mode-score');
+                if (rankContainer) rankContainer.style.display = 'flex';
+                if (scoreContainer) scoreContainer.style.display = 'none';
+            } else {
+                filterModeSelect.classList.add('mode-score');
+                filterModeSelect.classList.remove('mode-rank');
+                if (rankContainer) rankContainer.style.display = 'none';
+                if (scoreContainer) scoreContainer.style.display = 'flex';
+            }
+            updateFilters();
+        });
+    }
+
+    // 表示対象ボタン
+    document.querySelectorAll('.btn-filter').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            if (e.target.id === 'filter-all') currentTypeFilter = 'all';
+            else if (e.target.id === 'filter-old') currentTypeFilter = 'old';
+            else if (e.target.id === 'filter-new') currentTypeFilter = 'new';
+            updateFilters();
+        });
+    });
+
+    // 💡 修正：初期状態の設定（デフォルトは無効化、ボタンは全OFF風グレー）
+    if (trendSwitch) {
+        trendSwitch.checked = false; // デフォルトOFF
+    }
+    document.querySelectorAll('.btn-trend-filter').forEach(btn => {
+        btn.classList.remove('active');
+        btn.classList.add('trend-disabled'); // 専用のグレーアウトクラス付与
+    });
+
+    // 💡 修正：有効化スイッチの切り替えイベント
+    if (trendSwitch) {
+        trendSwitch.addEventListener('change', (e) => {
+            const isEnabled = e.target.checked;
+            document.querySelectorAll('.btn-trend-filter').forEach(btn => {
+                if (isEnabled) {
+                    // スイッチがONになったら：すべてのトレンドボタンをONにする
+                    btn.classList.add('active');
+                    btn.classList.remove('trend-disabled');
+                } else {
+                    // スイッチがOFFになったら：すべて非活性化のグレーに戻す
+                    btn.classList.remove('active');
+                    btn.classList.add('trend-disabled');
+                }
+            });
+            updateFilters();
+        });
+    }
+
+    // 💡 修正：トレンドボタン自体のクリックイベント
+    document.querySelectorAll('.btn-trend-filter').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            // スイッチがOFFの時はボタンを押しても何もさせない
+            if (trendSwitch && !trendSwitch.checked) return;
+
+            e.target.classList.toggle('active');
+            updateFilters();
+        });
+    });
+
+    // リセットボタン
+    const clearBtn = document.getElementById('clear-filter');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            if (searchInput) searchInput.value = "";
+            if (minConstSelect) minConstSelect.value = "13.5";
+            if (maxConstSelect) maxConstSelect.value = "16.0";
+            if (minRateInput) minRateInput.value = "";
+            if (maxRateInput) maxRateInput.value = "";
+            if (lampSelect) lampSelect.value = "all";
+
+            if (rankMinSelect) rankMinSelect.value = "0";
+            if (rankMaxSelect) rankMaxSelect.value = "1010000";
+            if (minScoreInput) minScoreInput.value = "";
+            if (maxScoreInput) maxScoreInput.value = "";
+
+            if (filterModeSelect) {
+                filterModeSelect.value = "rank";
+                filterModeSelect.classList.add('mode-rank');
+                filterModeSelect.classList.remove('mode-score');
+            }
+            const rankContainer = document.getElementById('rank-filter-container');
+            const scoreContainer = document.getElementById('score-filter-container');
+            if (rankContainer) rankContainer.style.display = 'flex';
+            if (scoreContainer) scoreContainer.style.display = 'none';
+
+            document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
+            document.getElementById('filter-all').classList.add('active');
+            currentTypeFilter = 'all';
+
+            // 💡 修正：リセット時はトレンド機能自体をデフォルト（無効化）に戻す
+            if (trendSwitch) trendSwitch.checked = false;
+            document.querySelectorAll('.btn-trend-filter').forEach(b => {
+                b.classList.remove('active');
+                b.classList.add('trend-disabled');
+            });
+
+            currentSortKey = 'rating';
+            document.getElementById('sort-Rating')?.classList.add('active');
+            document.getElementById('sort-score')?.classList.remove('active');
+
+            updateFilters();
+        });
+    }
+
+    // ソート切り替えボタン
+    const sortRatingBtn = document.getElementById('sort-Rating');
+    const sortScoreBtn = document.getElementById('sort-score');
+    if (sortRatingBtn) {
+        sortRatingBtn.addEventListener('click', () => {
+            currentSortKey = 'rating';
+            sortRatingBtn.classList.add('active');
+            sortScoreBtn.classList.remove('active');
+            updateFilters();
+        });
+    }
+    if (sortScoreBtn) {
+        sortScoreBtn.addEventListener('click', () => {
+            currentSortKey = 'techScore';
+            sortScoreBtn.classList.add('active');
+            sortRatingBtn.classList.remove('active');
+            updateFilters();
+        });
     }
 }
 
@@ -407,147 +603,6 @@ function sortData(data) {
     });
 }
 
-/**
- * フィルター初期化
- */
-function initFilters() {
-    const minConstSelect = document.getElementById('min-constant');
-    const maxConstSelect = document.getElementById('max-constant');
-    const minRateInput = document.getElementById('min-rating');
-    const maxRateInput = document.getElementById('max-rating');
-    const searchInput = document.getElementById('search-input');
-    const lampSelect = document.getElementById('lamp-filter');
-    const filterModeSelect = document.getElementById('filter-mode');
-    const rankMinSelect = document.getElementById('rank-min');
-    const rankMaxSelect = document.getElementById('rank-max');
-    const minScoreInput = document.getElementById('min-score');
-    const maxScoreInput = document.getElementById('max-score');
-
-    if (!minConstSelect || !maxConstSelect) return;
-
-    // 定数セレクトボックスの中身生成
-    minConstSelect.innerHTML = "";
-    maxConstSelect.innerHTML = "";
-    for (let i = 135; i <= 160; i++) {
-        const val = (i / 10).toFixed(1);
-        minConstSelect.insertAdjacentHTML('beforeend', `<option value="${val}">${val}</option>`);
-    }
-    for (let i = 160; i >= 135; i--) {
-        const val = (i / 10).toFixed(1);
-        maxConstSelect.insertAdjacentHTML('beforeend', `<option value="${val}">${val}</option>`);
-    }
-
-    // デフォルト値設定
-    minConstSelect.value = "13.5";
-    maxConstSelect.value = "16.0";
-
-    // 各入力へのイベントリスナー登録 (セレクトボックス等)
-    [minConstSelect, maxConstSelect, lampSelect, rankMinSelect, rankMaxSelect].forEach(el => {
-        if (el) el.addEventListener('change', updateFilters);
-    });
-    // 各入力へのイベントリスナー登録 (数値入力・検索窓) ★スコア用の要素も追記
-    [searchInput, minRateInput, maxRateInput, minScoreInput, maxScoreInput].forEach(el => {
-        if (el) el.addEventListener('input', updateFilters);
-    });
-
-    // ★【新規追加】Rank / スコア モード切り替えイベントとカラー制御
-    if (filterModeSelect) {
-        filterModeSelect.addEventListener('change', (e) => {
-            const currentMode = e.target.value;
-            const rankContainer = document.getElementById('rank-filter-container');
-            const scoreContainer = document.getElementById('score-filter-container');
-
-            if (currentMode === 'rank') {
-                // Rank選択時：赤色クラスを付与し、右側をRank用に切り替え
-                filterModeSelect.classList.add('mode-rank');
-                filterModeSelect.classList.remove('mode-score');
-                if (rankContainer) rankContainer.style.display = 'flex';
-                if (scoreContainer) scoreContainer.style.display = 'none';
-            } else {
-                // スコア選択時：青色クラスを付与し、右側をスコア用に切り替え
-                filterModeSelect.classList.add('mode-score');
-                filterModeSelect.classList.remove('mode-rank');
-                if (rankContainer) rankContainer.style.display = 'none';
-                if (scoreContainer) scoreContainer.style.display = 'flex';
-            }
-            // 表示とバッジを再計算
-            updateFilters();
-        });
-    }
-
-    // 7. 表示対象ボタン
-    document.querySelectorAll('.btn-filter').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
-            e.target.classList.add('active');
-            if (e.target.id === 'filter-all') currentTypeFilter = 'all';
-            else if (e.target.id === 'filter-old') currentTypeFilter = 'old';
-            else if (e.target.id === 'filter-new') currentTypeFilter = 'new';
-            updateFilters();
-        });
-    });
-
-    // 8. リセットボタン
-    const clearBtn = document.getElementById('clear-filter');
-    if (clearBtn) {
-        clearBtn.addEventListener('click', () => {
-            if (searchInput) searchInput.value = "";
-            if (minConstSelect) minConstSelect.value = "13.5";
-            if (maxConstSelect) maxConstSelect.value = "16.0";
-            if (minRateInput) minRateInput.value = "";
-            if (maxRateInput) maxRateInput.value = "";
-            if (lampSelect) lampSelect.value = "all";
-
-            // ランク・スコア範囲のリセット
-            if (rankMinSelect) rankMinSelect.value = "0";
-            if (rankMaxSelect) rankMaxSelect.value = "1010000";
-            if (minScoreInput) minScoreInput.value = "";
-            if (maxScoreInput) maxScoreInput.value = "";
-
-            // ★【追加】リセット時にモード切り替えも初期の「Rank（赤色）」に戻す
-            if (filterModeSelect) {
-                filterModeSelect.value = "rank";
-                filterModeSelect.classList.add('mode-rank');
-                filterModeSelect.classList.remove('mode-score');
-            }
-            const rankContainer = document.getElementById('rank-filter-container');
-            const scoreContainer = document.getElementById('score-filter-container');
-            if (rankContainer) rankContainer.style.display = 'flex';
-            if (scoreContainer) scoreContainer.style.display = 'none';
-
-            document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
-            document.getElementById('filter-all').classList.add('active');
-            currentTypeFilter = 'all';
-
-            // ソートもデフォルト（Rating）に戻す場合
-            currentSortKey = 'rating';
-            document.getElementById('sort-Rating')?.classList.add('active');
-            document.getElementById('sort-score')?.classList.remove('active');
-
-            updateFilters();
-        });
-    }
-
-    // 6. ソート切り替えボタン
-    const sortRatingBtn = document.getElementById('sort-Rating');
-    const sortScoreBtn = document.getElementById('sort-score');
-    if (sortRatingBtn) {
-        sortRatingBtn.addEventListener('click', () => {
-            currentSortKey = 'rating';
-            sortRatingBtn.classList.add('active');
-            sortScoreBtn.classList.remove('active');
-            updateFilters();
-        });
-    }
-    if (sortScoreBtn) {
-        sortScoreBtn.addEventListener('click', () => {
-            currentSortKey = 'techScore';
-            sortScoreBtn.classList.add('active');
-            sortRatingBtn.classList.remove('active');
-            updateFilters();
-        });
-    }
-}
 
 
 /**
@@ -630,7 +685,7 @@ function calculatechuniRate(playerName) {
 
 
 /**
- * 画面にスコアを表示する
+ * 画面にスコアを表示する（💡既存CSS完全継承・Main Trend色変更版）
  */
 function displayScores(data) {
     console.log("--- displayScores開始 ---");
@@ -651,8 +706,16 @@ function displayScores(data) {
     body.innerHTML = "";
     const fragment = document.createDocumentFragment();
 
-    // ★ 表示件数を上位100件に制限
+    // ★ 表示件数を上位200件に制限
     const limitedData = data.slice(0, 200);
+
+    // 各属性に対応する専用カラーコード
+    const colorMap = {
+        'POWER': '#36a2eb', // 青
+        'NOTES': '#d7a62e', // 黄
+        'CHUNI': '#239898', // 緑
+        'TRICKY': '#9966ff'  // 紫
+    };
 
     limitedData.forEach((item, index) => {
         // GAS側から送られてくる diff (MAS, ULT等) を取得
@@ -683,9 +746,18 @@ function displayScores(data) {
         // 2. 新曲バッジ (item.isNew判定は既存ロジックを継続)
         const newBadge = item.isNew ? `<span class="new-song-label">NEW</span>` : "";
 
+        // 💡【修正】既存CSSを100%活かし、カラーだけを綺麗に上書きするトレンドHTML
+        let trendHtml = "";
+        if (item.mainTrend && item.mainTrend !== "None") {
+            const trendColor = colorMap[item.mainTrend] || "#555";
+            // スラッシュ「/」はインライン色指定をせず、.diff-level-cell の元の色（#555）をそのまま適用
+            // トレンド名だけ span で囲って color のみを指定（太さやサイズはCSSを継承）
+            trendHtml = ` / <span style="color: ${trendColor};">${item.mainTrend}</span>`;
+        }
+
         // --- 3. テーブル行の作成 ---
         const tr = document.createElement('tr');
-        tr.className = diff
+        tr.className = diff;
         tr.style.cursor = "pointer"; // クリック可能であることを示す
 
         // クリックイベント：ランキング機能を呼び出す
@@ -704,12 +776,12 @@ function displayScores(data) {
             }
         }
 
-        // HTML組み立て
+        // HTML組み立て (💡diff-level-cellの本来のスタイルを一切崩さずに結合)
         tr.innerHTML = `
             <td class="num-cell">${index + 1}</td> 
             <td>
                 <div class="title-cell">${newBadge}${item.title || "Unknown"}</div>
-                <div class="diff-level-cell">${diff} ${displayLevel}</div>
+                <div class="diff-level-cell">${diff} ${displayLevel}${trendHtml}</div>
             </td>
             <td class="lamp-cell">${lampHtml}</td>
             <td class="t-score-cell"><span class="t-score">${tScore.toLocaleString()}</span></td>
@@ -759,6 +831,11 @@ function pickRandomSong() {
     const minScore = minScoreVal !== "" ? parseFloat(minScoreVal) : 0;
     const maxScore = maxScoreVal !== "" ? parseFloat(maxScoreVal) : 1010000;
 
+    // 💡 トレンド有効化スイッチと、ONになっているトレンドボタンの情報を取得
+    const trendSwitch = document.getElementById('trend-enable-switch');
+    const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
+    const activeTrends = Array.from(document.querySelectorAll('.btn-trend-filter.active')).map(btn => btn.getAttribute('data-trend'));
+
     // ここで candidates を定義
     const candidates = myCurrentRecords.filter(item => {
         const title = String(item.title || "").toLowerCase();
@@ -790,6 +867,16 @@ function pickRandomSong() {
 
         if (currentTypeFilter === 'old' && item.isNew) return false;
         if (currentTypeFilter === 'new' && !item.isNew) return false;
+
+        // 💡 追加：傾向フィルター有効化スイッチとの完全連動判定
+        if (isTrendEnabled) {
+            // 傾向フィルターが「オン」のとき：未設定(None)は除外し、ONのトレンド属性のみを許可
+            const songTrend = item.mainTrend || "None";
+            if (!activeTrends.includes(songTrend)) return false;
+        } else {
+            // 傾向フィルターが「オフ」のとき：未設定も含めて全ての曲を通過させる
+            // (何も判定せずスルーしてOK)
+        }
 
         return true;
     });
@@ -845,10 +932,10 @@ function pickRandomSong() {
         `;
         document.body.appendChild(flash);
 
-        titleEl.style.color = "#f1c40f"; 
-        titleEl.style.textShadow = "0 0 15px #fff, 0 0 30px #f1c40f, 0 0 45px #f1c40f"; 
-        titleEl.style.transform = "scale(1.2)"; 
-        titleEl.style.transition = "all 0.5s ease-out"; 
+        titleEl.style.color = "#f1c40f";
+        titleEl.style.textShadow = "0 0 15px #fff, 0 0 30px #f1c40f, 0 0 45px #f1c40f";
+        titleEl.style.transform = "scale(1.2)";
+        titleEl.style.transition = "all 0.5s ease-out";
         titleEl.innerText = picked.title;
 
         diffEl.innerText = picked.diff;
@@ -857,10 +944,10 @@ function pickRandomSong() {
         diffEl.style.boxShadow = `0 0 20px ${diffEl.style.backgroundColor}`;
 
         requestAnimationFrame(() => {
-            flash.style.opacity = "0"; 
+            flash.style.opacity = "0";
             setTimeout(() => {
                 if (document.body.contains(flash)) document.body.removeChild(flash);
-            }, 500); 
+            }, 500);
         });
 
         setTimeout(() => {
@@ -884,7 +971,7 @@ function pickRandomSong() {
                 setTimeout(() => {
                     targetRow.style.transition = "background 0.5s";
                     const originalBg = targetRow.style.background;
-                    targetRow.style.background = "rgba(241, 196, 15, 0.5)"; 
+                    targetRow.style.background = "rgba(241, 196, 15, 0.5)";
                     loadRanking(picked.title, picked.diff, picked.const);
                     setTimeout(() => { targetRow.style.background = originalBg; }, 2000);
                 }, 2000);
@@ -896,7 +983,7 @@ function pickRandomSong() {
 }
 
 /**
- * 特定の曲のランキングを取得して表示
+ * 特定の曲のランキングを取得して表示（💡既存CSS完全対応・トレンド表示修正版）
  */
 async function loadRanking(title, diff, songConst) {
 
@@ -907,9 +994,11 @@ async function loadRanking(title, diff, songConst) {
     // --- 1. 表示エリアの切り替え（統計モードから通常モードへ復帰） ---
     const controls = document.getElementById('ranking-controls');
     const statsControlArea = document.getElementById('stats-control-area');
+    const radarContainer = document.getElementById('radar-chart-container'); // ★追加
 
     if (controls) controls.style.display = 'block';           // グラフや範囲ボタンを表示
     if (statsControlArea) statsControlArea.style.display = 'none'; // 統計用切り替えボタンを隠す
+    if (radarContainer) radarContainer.style.display = 'block';     // ★追加：通常モードなのでレーダーを表示する
 
     // --- 2. テーブルヘッダーを通常用にリセット ---
     const modalTableHead = document.querySelector('#ranking-modal table thead tr');
@@ -933,11 +1022,20 @@ async function loadRanking(title, diff, songConst) {
         canvas.style.display = 'block'; // キャンバスを表示
     }
 
-    // 難易度と定数を span で囲んで1行に構成
+    // レーダーチャートの古いインスタンスがあれば、モーダルを開いた瞬間に一度クリアする
+    if (radarChartInstance) {
+        radarChartInstance.destroy();
+        radarChartInstance = null;
+    }
+
+    // 💡 修正：元のCSS（.title-sub-info）をそのまま使える1行構造に戻し、トレンドの受け皿を用意
     const displayDiff = diff ? diff.toUpperCase() : "";
     titleContainer.innerHTML = `
         ${title} 
-        <span class="title-sub-info">${displayDiff} ${songConst || ""}</span>
+        <span class="title-sub-info">
+            <span class="diff-const-txt">${displayDiff} ${songConst || ""}</span>
+            <span id="trend-container"></span>
+        </span>
     `.trim();
 
     rankingBody.innerHTML = "<tr><td colspan='4'>読み込み中...</td></tr>";
@@ -967,7 +1065,6 @@ async function loadRanking(title, diff, songConst) {
 
                 // ★ 行タップ：非表示にしてグラフを再描画
                 tr.onclick = function (e) {
-                    // セル内の他のクリックイベント（もしあれば）と競合しないよう念のため
                     this.style.display = "none";
                     drawRankingChart();
                 };
@@ -980,7 +1077,6 @@ async function loadRanking(title, diff, songConst) {
                 let scoreVal = row.score;
                 const displayScore = (typeof scoreVal === 'number') ? scoreVal.toLocaleString() : scoreVal;
 
-                // loadRanking などのループ処理内
                 const lampText = row.lamp || "";
                 let badgeClass = "";
 
@@ -1001,31 +1097,232 @@ async function loadRanking(title, diff, songConst) {
                 rankingBody.appendChild(tr);
             });
 
-            // 初回描画
+            // 初回描画（数直線グラフ）
             drawRankingChart(result.data);
+
+            // ★【修正】レーダーチャートの初回描画に、loadRankingが受け取った songConst をバトンタッチする
+            drawRadarChart(result.songProps, songConst);
+
+            // 💡【修正】読み込み完了後に、トレンドテキストをインラインで安全に流し込む
+            const trendContainer = document.getElementById('trend-container');
+            if (trendContainer && result.songProps) {
+                const props = result.songProps;
+
+                // 各属性に対応する専用カラーコード
+                const colorMap = {
+                    'POWER': '#36a2eb', // 青
+                    'NOTES': '#d7a62e', // 黄
+                    'CHUNI': '#239898', // 緑
+                    'TRICKY': '#9966ff'  // 紫
+                };
+
+                let html = "";
+
+                // Main Trendの記述
+                if (props.mainTrend && props.mainTrend !== "None") {
+                    const mainColor = colorMap[props.mainTrend] || "#666";
+                    // 難易度と少し離すために左マージン
+                    html += `<span style="color: ${mainColor}; font-weight: 900; margin-left: 12px;">${props.mainTrend}</span>`;
+
+                    // Sub Trendの記述 (None以外かつMainと重複しない場合)
+                    if (props.subTrend && props.subTrend !== "None" && props.subTrend !== props.mainTrend) {
+                        const subColor = colorMap[props.subTrend] || "#666";
+                        html += ` <span style="color: #888; font-weight: normal;">/</span> <span style="color: ${subColor}; font-weight: 900;">${props.subTrend}</span>`;
+                    }
+                }
+                trendContainer.innerHTML = html;
+            }
 
         } else {
             rankingBody.innerHTML = "<tr><td colspan='4'>データがありません</td></tr>";
+            drawRadarChart(null, songConst);
         }
     } catch (e) {
+        console.error(e);
         rankingBody.innerHTML = "<tr><td colspan='4'>エラーが発生しました</td></tr>";
+        drawRadarChart(null, songConst);
     }
 }
 
 // モーダルを閉じる処理（window.onload または initFilters 内に追加）
 document.querySelector('.close-ranking')?.addEventListener('click', () => {
     document.getElementById('ranking-modal').style.display = "none";
+    // 💡 閉じた時もチャートをクリアしてメモリを解放
+    if (radarChartInstance) {
+        radarChartInstance.destroy();
+        radarChartInstance = null;
+    }
 });
 
 window.onclick = (event) => {
     const modal = document.getElementById('ranking-modal');
-    if (event.target == modal) modal.style.display = "none";
+    if (event.target == modal) {
+        modal.style.display = "none";
+        // 💡 閉じた時もチャートをクリアしてメモリを解放
+        if (radarChartInstance) {
+            radarChartInstance.destroy();
+            radarChartInstance = null;
+        }
+    }
 };
 
 
 // 状態保持用の変数
 let selectedPlayer = null;
 let lastRankingData = []; // 再描画用にデータを保持
+let radarChartInstance = null; // 💡 追加：レーダーチャートのインスタンス保持用
+
+/**
+ * 💡 完全修正版：レーダーチャートを描画する関数
+ * （呼び出し元から渡された定数を確実に反映するバージョン）
+ */
+function drawRadarChart(props, songConst) {
+    const canvas = document.getElementById('radar-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    // すでにグラフが描画されている場合は一度破棄して初期化
+    if (radarChartInstance) {
+        radarChartInstance.destroy();
+        radarChartInstance = null;
+    }
+
+    // 譜面傾向データがない、またはすべて0の場合はキャンバスをクリアして終了
+    if (!props || (!props.tairyoku && !props.kenban && !props.chuni && !props.kuse)) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        return;
+    }
+
+    // ----------------------------------------------------
+    // ★ 渡された引数を確実に数値化し、計算誤差を排除
+    // ----------------------------------------------------
+    let currentConst = parseFloat(songConst);
+
+    // 万が一、定数が渡されなかった場合の最終安全策（デフォルト15.0）
+    if (isNaN(currentConst)) {
+        currentConst = 15.0;
+    }
+
+    // 小数点第1位に確実に丸める（例: 15.1000003 などを 15.1 に）
+    currentConst = Math.round(currentConst * 10) / 10;
+
+    // 15.0を基準とした差分を整数（0.1 = 1）として算出
+    const diffDiff = Math.round((currentConst - 15.0) * 10);
+    
+    // 基本の上限値16に、差分×4を加算
+    let maxLimit = 16 + (diffDiff * 4);
+    
+    // 【安全ガード】定数が15.0未満（14.5など）の曲でも、上限は16未満に下げない
+    if (maxLimit < 16) {
+        maxLimit = 16;
+    }
+
+    // 上限を確実に4等分するための1マスの幅
+    const stepInterval = maxLimit / 4;
+    // ----------------------------------------------------
+
+    // 各属性の値を配列化
+    const dataValues = [
+        props.tairyoku || 0,
+        props.kenban || 0,
+        props.chuni || 0,
+        props.kuse || 0
+    ];
+
+    const chartBgColor = 'rgba(255, 71, 87, 0.18)';     // 網掛け（赤色の透明）
+    const chartBorderColor = 'rgba(255, 71, 87, 1)';   // 外枠の線（不透明な赤）
+    const pointColor = 'rgba(255, 71, 87, 1)';         // 頂点のポインター（不透明な赤）
+
+    // レーダーチャートを新規生成
+    radarChartInstance = new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: ['POWER', 'NOTES', 'CHUNI', 'TRICKY'],
+            datasets: [{
+                label: '譜面傾向度',
+                data: dataValues,
+                backgroundColor: chartBgColor,
+                borderColor: chartBorderColor,
+                borderWidth: 2.5,
+                pointBackgroundColor: pointColor,
+                pointBorderColor: '#fff',
+                pointBorderWidth: 1.5,
+                pointRadius: 4,
+                pointHoverRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        title: function (context) {
+                            const labelMap = {
+                                'POWER': '体力要求度',
+                                'NOTES': '鍵盤力要求度',
+                                'CHUNI': 'チュウニ力要求度',
+                                'TRICKY': '癖度'
+                            };
+                            return labelMap[context[0].label] || context[0].label;
+                        },
+                        label: function (context) {
+                            return ` 数値: ${context.raw.toFixed(1)}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                r: {
+                    angleLines: { display: true, color: 'rgba(0, 0, 0, 0.1)' },
+                    grid: { color: 'rgba(0, 0, 0, 0.08)' },
+                    min: 0,
+                    max: maxLimit, // 正確な上限値をロック
+                    ticks: {
+                        stepSize: stepInterval, // 均等な幅
+                        maxTicksLimit: 5,       // 確実に4分割（線5本）
+                        font: { size: 9 },
+                        backdropColor: 'transparent'
+                    },
+                    pointLabels: {
+                        font: {
+                            size: 13,
+                            weight: '900',
+                            family: 'sans-serif',
+                            lineHeight: 1.4  // ★【追加】1行目と2行目の間に程よい上下の余白を作る
+                        },
+                        // ★【最重要】すべての行のテキストを「中央寄せ」に強制固定する
+                        textAlign: 'center', 
+                        
+                        // 頂点ラベルのテキストを動的にカスタマイズ
+                        callback: function(label, index) {
+                            let val = 0;
+                            if (label === 'POWER') val = props.tairyoku || 0;
+                            if (label === 'NOTES') val = props.kenban || 0;
+                            if (label === 'CHUNI') val = props.chuni || 0;
+                            if (label === 'TRICKY') val = props.kuse || 0;
+                            
+                            // 前方のスペース（空白）を無くし、純粋な数値だけにします
+                            // textAlign: 'center' の効果で、これだけで自動的に真ん中にドカンと配置されます
+                            return [label, `${val.toFixed(2)}`];
+                        },
+                        // ラベルの個別カラー（青・黄・緑・紫）
+                        color: function (context) {
+                            const colors = [
+                                'rgba(54, 162, 235, 1)',   // POWER (青)
+                                'rgba(215, 166, 46, 1)',   // NOTES (黄)
+                                'rgba(35, 152, 152, 1)',   // CHUNI (緑)
+                                'rgba(153, 102, 255, 1)'  // TRICKY (紫)
+                            ];
+                            return colors[context.index] || '#333';
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
 
 function drawRankingChart(data) {
     if (data) lastRankingData = data; // データをキャッシュ
@@ -1213,7 +1510,6 @@ async function fetchStats(mode) {
     const maxRate = document.getElementById('max-rating')?.value || "21.0";
     const lmp = document.getElementById('lamp-filter')?.value || 'all';
 
-    // ★【修正】Rankかスコアのモードを判別し、送る数値を切り替える
     const filterMode = document.getElementById('filter-mode')?.value || 'rank';
     let rMin = "0";
     let rMax = "1010000";
@@ -1228,9 +1524,16 @@ async function fetchStats(mode) {
         rMax = (maxScoreInput && maxScoreInput.value !== "") ? maxScoreInput.value : "1010000";
     }
 
+    // ★【重要修正】傾向フィルターの選択状態を取得
+    const trendSwitch = document.getElementById('trend-enable-switch');
+    const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
+    const activeTrends = isTrendEnabled
+        ? Array.from(document.querySelectorAll('.btn-trend-filter.active')).map(btn => btn.getAttribute('data-trend'))
+        : [];
+
     const requestParams = {
         mode: "get_stats",
-        filterMode: filterMode, // GAS側でも判別できるようにモード情報も追加
+        filterMode: filterMode,
         minConst: minC,
         maxConst: maxC,
         minRate: minRate,
@@ -1238,7 +1541,9 @@ async function fetchStats(mode) {
         rankMin: rMin,
         rankMax: rMax,
         lampFilter: lmp,
-        typeFilter: typeFilter
+        typeFilter: typeFilter,
+        isTrendEnabled: isTrendEnabled,
+        activeTrends: activeTrends
     };
 
     try {
@@ -1260,15 +1565,15 @@ async function fetchStats(mode) {
             const statsControlArea = document.getElementById('stats-control-area');
             if (statsControlArea) statsControlArea.style.display = 'block';
 
+            const radarContainer = document.getElementById('radar-chart-container'); // ★追加
+            if (radarContainer) radarContainer.style.display = 'none';     // ★追加：統計モードなのでレーダーを隠す
+
             currentStatsData = (mode === 'song') ? result.data.songRanking : result.data.playerRanking;
             currentStatsMode = mode;
             currentDisplayType = 'count';
             currentDenominator = (mode === 'song') ? result.data.totalUsers : result.data.theoryCount;
 
             const modal = document.getElementById('ranking-modal');
-
-            // ★引数に filterMode を追加
-            updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp, minRate, maxRate, filterMode);
 
             displayStatsRanking();
 
@@ -1337,9 +1642,9 @@ function displayStatsRanking() {
 
             let totalCount = 0;
             if (currentStatsMode === 'song') {
-                totalCount = row.totalCountAll || 0; 
+                totalCount = row.totalCountAll || 0;
             } else {
-                totalCount = row.allPlayCount || 0;  
+                totalCount = row.allPlayCount || 0;
             }
 
             col3 = `<td style="text-align:center; font-weight:bold; color: #2e7df0;">${avgVal}</td>`;
@@ -1358,7 +1663,7 @@ function displayStatsRanking() {
             ${col4}
         `;
 
-        tr.style.cursor = "pointer"; 
+        tr.style.cursor = "pointer";
 
         if (currentStatsMode === 'song') {
             tr.onclick = () => showSubModal(row);
@@ -1370,27 +1675,7 @@ function displayStatsRanking() {
     });
 
     renderSwitchButton();
-
-    // ★【修正】再描画時にも正しい選択状態の値を取得してタイトルを更新
-    const typeFilter = document.querySelector('.btn-filter.active')?.getAttribute('data-value') || 'all';
-    const minC = document.getElementById('min-constant')?.value;
-    const maxC = document.getElementById('max-constant')?.value;
-    const minRate = document.getElementById('min-rating')?.value;
-    const maxRate = document.getElementById('max-rating')?.value;
-    const lmp = document.getElementById('lamp-filter')?.value;
-
-    const filterMode = document.getElementById('filter-mode')?.value || 'rank';
-    let rMin = "0";
-    let rMax = "1010000";
-    if (filterMode === 'rank') {
-        rMin = document.getElementById('rank-min')?.value;
-        rMax = document.getElementById('rank-max')?.value;
-    } else {
-        rMin = document.getElementById('min-score')?.value || "0";
-        rMax = document.getElementById('max-score')?.value || "1010000";
-    }
-
-    updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp, minRate, maxRate, filterMode);
+    updateStatsTitle();
 }
 
 /**
@@ -1400,7 +1685,6 @@ function renderSwitchButton() {
     const container = document.getElementById('stats-control-area');
     if (!container) return;
 
-    // --- 1. ボタンを配置するためのラッパー（並びを整える列）を作る ---
     let btnGroup = document.getElementById('stats-btn-group');
     if (!btnGroup) {
         btnGroup = document.createElement('div');
@@ -1412,12 +1696,11 @@ function renderSwitchButton() {
         container.appendChild(btnGroup);
     }
 
-    // --- 2. 切替ボタンの作成/更新 ---
     let switchBtn = document.getElementById('stats-switch-btn');
     if (!switchBtn) {
         switchBtn = document.createElement('button');
         switchBtn.id = 'stats-switch-btn';
-        switchBtn.className = 'switch-mode-btn'; // CSSの既存スタイルを使用
+        switchBtn.className = 'switch-mode-btn';
         btnGroup.appendChild(switchBtn);
     }
     switchBtn.innerText = (currentDisplayType === 'count') ? "平均スコア順に切替" : "達成数順に切替";
@@ -1426,12 +1709,11 @@ function renderSwitchButton() {
         displayStatsRanking();
     };
 
-    // --- 3. 閉じるボタンの作成/追加 (未作成の場合のみ) ---
     let closeBtn = document.getElementById('stats-top-close-btn');
     if (!closeBtn) {
         closeBtn = document.createElement('button');
         closeBtn.id = 'stats-top-close-btn';
-        closeBtn.className = 'modal-close-btn'; // 既存の赤やグレーのスタイルを適用
+        closeBtn.className = 'modal-close-btn';
         closeBtn.innerText = "閉じる";
         closeBtn.onclick = () => {
             document.getElementById('ranking-modal').style.display = 'none';
@@ -1440,10 +1722,20 @@ function renderSwitchButton() {
     }
 }
 
-// ★【修正】引数の最後に filterMode を追加
-function updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp, minRate, maxRate, filterMode) {
+/**
+ * 統計モーダルのタイトル更新
+ */
+function updateStatsTitle() {
     const titleContainer = document.getElementById('ranking-title-container');
     if (!titleContainer) return;
+
+    const typeFilter = document.querySelector('.btn-filter.active')?.getAttribute('data-value') || 'all';
+    const minC = document.getElementById('min-constant')?.value || "0";
+    const maxC = document.getElementById('max-constant')?.value || "16.0";
+    const minRate = document.getElementById('min-rating')?.value || "0";
+    const maxRate = document.getElementById('max-rating')?.value || "21.0";
+    const lmp = document.getElementById('lamp-filter')?.value || 'all';
+    const filterMode = document.getElementById('filter-mode')?.value || 'rank';
 
     const typeLabel = typeFilter === 'new' ? '新曲' : typeFilter === 'old' ? '旧曲' : '全曲';
     const unit = (currentStatsMode === 'song') ? "人" : "曲";
@@ -1461,32 +1753,57 @@ function updateStatsTitle(typeFilter, minC, maxC, rMin, rMax, lmp, minRate, maxR
     const lampLabel = (lmp === 'all') ? 'すべて' : lmp.toUpperCase();
     let subInfo = "";
 
+    const trendSwitch = document.getElementById('trend-enable-switch');
+    const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
+    let trendHtml = "";
+
+    if (isTrendEnabled) {
+        const activeTrends = Array.from(document.querySelectorAll('.btn-trend-filter.active')).map(btn => btn.getAttribute('data-trend'));
+
+        const trendColors = {
+            'POWER': { bg: '#36a2eb', text: '#ffffff' },
+            'NOTES': { bg: '#be901f', text: '#ffffff' },
+            'CHUNI': { bg: '#239898', text: '#ffffff' },
+            'TRICKY': { bg: '#9966ff', text: '#ffffff' }
+        };
+
+        if (activeTrends.length === 0) {
+            trendHtml = ` / <span style="color: #94a3b8; font-weight: bold;">傾向:なし</span>`;
+        } else {
+            const badges = activeTrends.map(trend => {
+                const colors = trendColors[trend] || { bg: '#718093', text: '#ffffff' };
+                return `<span style="background: ${colors.bg}; color: ${colors.text}; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 4px; font-weight: bold; display: inline-block; vertical-align: middle;">${trend}</span>`;
+            }).join('');
+            trendHtml = ` / <span style="font-weight: bold; display: inline-block; align-items: center;">傾向:${badges}</span>`;
+        }
+    }
+
     if (currentDisplayType === 'avg') {
-        subInfo = `定数: ${minC} ～ ${maxC}`;
+        subInfo = `定数: ${minC} ～ ${maxC}${trendHtml}`;
     } else {
-        // ★【修正】モードに応じて、タイトルのフィルター詳細テキストをきれいに切り替える
         let scoreLabel = "";
         if (filterMode === 'score') {
-            const displayMin = rMin !== "0" && rMin !== "" ? Number(rMin).toLocaleString() : '0';
-            const displayMax = rMax !== "1010000" && rMax !== "" ? Number(rMax).toLocaleString() : '1,010,000';
+            const rMin = document.getElementById('min-score')?.value || "0";
+            const rMax = document.getElementById('max-score')?.value || "1010000";
+            const displayMin = Number(rMin).toLocaleString();
+            const displayMax = Number(rMax).toLocaleString();
             scoreLabel = `スコア: ${displayMin}～${displayMax}`;
         } else {
             const rankMinSelect = document.getElementById('rank-min');
             const rankMaxSelect = document.getElementById('rank-max');
-            const minText = rankMinSelect ? rankMinSelect.options[rankMinSelect.selectedIndex]?.text : rMin;
-            const maxText = rankMaxSelect ? rankMaxSelect.options[rankMaxSelect.selectedIndex]?.text : rMax;
+            const minText = rankMinSelect ? rankMinSelect.options[rankMinSelect.selectedIndex]?.text : "0";
+            const maxText = rankMaxSelect ? rankMaxSelect.options[rankMaxSelect.selectedIndex]?.text : "1010000";
             scoreLabel = `Rank: ${minText}～${maxText}`;
         }
 
-        subInfo = `定数: ${minC}～${maxC} / レート: ${minRate}～${maxRate} / ${scoreLabel} / ランプ: ${lampLabel}`;
+        subInfo = `定数: ${minC}～${maxC} / レート: ${minRate}～${maxRate} / ${scoreLabel} / ランプ: ${lampLabel}${trendHtml}`;
     }
 
     titleContainer.innerHTML = `
         ${mainTitle}
-        <div class="title-sub-info">${subInfo}</div>
+        <div class="title-sub-info" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 4px;">${subInfo}</div>
     `;
 }
-
 
 function showSubModal(row) {
     const subModal = document.getElementById('sub-modal');
@@ -1499,7 +1816,6 @@ function showSubModal(row) {
     subTitle.innerText = row.title || "プレイヤー状況一覧";
     subTbody.innerHTML = "";
 
-    // ヘッダーを「プレイヤー詳細用」にリセット（配置を整える）
     if (thead) {
         thead.innerHTML = `
             <th style="text-align:center; padding-left: 15px;">プレイヤー</th>
@@ -1507,7 +1823,6 @@ function showSubModal(row) {
         `;
     }
 
-    // 1. GASから届いた「この曲をプレイした人（全員）」をMap化
     const playDataMap = new Map();
     if (row.players) {
         row.players.forEach(p => {
@@ -1518,31 +1833,26 @@ function showSubModal(row) {
         });
     }
 
-    // 2. 全プレイヤーのリスト（GASからの結果から抽出）
     const allPlayers = lastStatsResponse.playerRanking.map(p => p.playerName);
 
-    // 3. 表示用のデータ配列を作成
     const displayList = allPlayers.map(name => {
         const data = playDataMap.get(name);
         return {
             name: name,
-            score: data ? data.score : -1, // 未プレイは-1
+            score: data ? data.score : -1,
             isAchieved: data ? data.isAchieved : false
         };
     });
 
-    // 4. スコア順にソート（未プレイは最下部へ安全に固定するロジック）
     displayList.sort((a, b) => {
-        if (a.score === -1 && b.score !== -1) return 1;  // aが未プレイなら下へ
-        if (a.score !== -1 && b.score === -1) return -1; // bが未プレイなら上へ
-        return b.score - a.score;                        // 両方プレイ済、または両方未プレイならスコア順
+        if (a.score === -1 && b.score !== -1) return 1;
+        if (a.score !== -1 && b.score === -1) return -1;
+        return b.score - a.score;
     });
 
-    // 5. 行の生成
     displayList.forEach(p => {
         const tr = document.createElement('tr');
 
-        // 条件達成者の行を赤くハイライト（厳密に true の場合のみ）
         if (p.isAchieved === true) {
             tr.style.backgroundColor = "rgba(255, 71, 87, 0.15)";
             tr.style.fontWeight = "bold";
@@ -1563,53 +1873,56 @@ function showSubModal(row) {
 }
 
 /**
- * 個人別詳細を取得して表示（Rank・スコア切替完全対応版）
+ * 個人別詳細を取得して表示
  */
 async function fetchAndShowPlayerDetail(playerName) {
     console.log(playerName + "の詳細を取得中...");
-    
+
     const subModal = document.getElementById('sub-modal');
     const title = document.getElementById('sub-modal-title');
     const tbody = document.getElementById('sub-modal-tbody');
-    
+
     if (subModal && title) {
         title.innerText = `${playerName} の詳細を読み込み中...`;
-        if (tbody) tbody.innerHTML = ""; // 前のデータをクリア
-        subModal.style.display = "flex"; 
+        if (tbody) tbody.innerHTML = "";
+        subModal.style.display = "flex";
     }
 
-    // --- 【超重要】選択されているモード（Rank か スコア か）に応じて、取得する値を厳密に切り替える ---
-    const filterMode = document.getElementById('filter-mode')?.value; // "rank" または "score"
-    
-    let rMin = "";
-    let rMax = "";
+    const filterMode = document.getElementById('filter-mode')?.value;
+
+    let rMin = "0";
+    let rMax = "1010000";
 
     if (filterMode === "score") {
-        // 「スコア」手入力モードの場合
-        rMin = document.getElementById('min-score')?.value || "";
-        rMax = document.getElementById('max-score')?.value || "";
+        rMin = document.getElementById('min-score')?.value || "0";
+        rMax = document.getElementById('max-score')?.value || "1010000";
     } else {
-        // 「Rank」セレクトボックスモードの場合（デフォルト）
-        rMin = document.getElementById('rank-min')?.value || "";
-        rMax = document.getElementById('rank-max')?.value || "";
+        rMin = document.getElementById('rank-min')?.value || "0";
+        rMax = document.getElementById('rank-max')?.value || "1010000";
     }
 
-    // GASに送信するパラメータ群
+    // ★【重要修正】個人詳細取得時にも傾向フィルターの状態を取得
+    const trendSwitch = document.getElementById('trend-enable-switch');
+    const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
+    const activeTrends = isTrendEnabled
+        ? Array.from(document.querySelectorAll('.btn-trend-filter.active')).map(btn => btn.getAttribute('data-trend'))
+        : [];
+
     const params = {
         mode: "get_player_detail",
-        filterMode: filterMode, // ★GASに現在のモードを教える（追加）
+        filterMode: filterMode,
         playerName: playerName,
-        minConst: document.getElementById('min-constant')?.value,
-        maxConst: document.getElementById('max-constant')?.value,
-        minRate: document.getElementById('min-rating')?.value,
-        maxRate: document.getElementById('max-rating')?.value,
-        
-        // 選択された側の正しいスコア境界値のみをGASに送る
+        minConst: document.getElementById('min-constant')?.value || "0",
+        maxConst: document.getElementById('max-constant')?.value || "16.0",
+        minRate: document.getElementById('min-rating')?.value || "0",
+        maxRate: document.getElementById('max-rating')?.value || "21.0",
         rankMin: rMin,
         rankMax: rMax,
-        
-        lampFilter: document.getElementById('lamp-filter')?.value,
-        typeFilter: document.querySelector('.btn-filter.active')?.getAttribute('data-value') || 'all'
+        lampFilter: document.getElementById('lamp-filter')?.value || 'all',
+        typeFilter: document.querySelector('.btn-filter.active')?.getAttribute('data-value') || 'all',
+        // ★【重要修正】GAS側に傾向フィルターの情報を送信する
+        isTrendEnabled: isTrendEnabled,
+        activeTrends: activeTrends
     };
 
     try {
@@ -1621,7 +1934,6 @@ async function fetchAndShowPlayerDetail(playerName) {
         const result = await response.json();
 
         if (result.status === "success") {
-            // モーダル描画関数を呼び出し
             showPlayerDetailModal({
                 playerName: playerName,
                 details: result.data
@@ -1643,19 +1955,17 @@ function showPlayerDetailModal(playerData) {
     const tbody = document.getElementById('sub-modal-tbody');
     const title = document.getElementById('sub-modal-title');
     const thead = document.querySelector('#sub-modal-table thead tr');
-    
+
     if (!title || !tbody || !thead) return;
 
     title.innerText = `${playerData.playerName} の詳細`;
     tbody.innerHTML = "";
 
-    // 横幅の比率を「70% : 30%」に完全固定
     thead.innerHTML = `
         <th style="text-align: center; padding-left: 0px; width: 70%;">楽曲名</th>
         <th style="text-align: center; width: 30%;">スコア</th>
     `;
 
-    // Webkit用のスクロールバー非表示スタイルは、ループの外で「1回だけ」適用する
     const styleId = "scrollbar-hide-style";
     if (!document.getElementById(styleId)) {
         const styleTag = document.createElement('style');
@@ -1666,11 +1976,9 @@ function showPlayerDetailModal(playerData) {
 
     const noScrollbarStyle = "scrollbar-width: none; -ms-overflow-style: none;";
 
-    // データの描画
     playerData.details.forEach(item => {
         const tr = document.createElement('tr');
 
-        // ★修正ポイント2：GAS側で判定された isAchieved が「確実に真(true)」である場合のみハイライト
         if (item.isAchieved === true) {
             tr.style.backgroundColor = "rgba(240, 46, 46, 0.1)";
             tr.style.color = "#d63031";
@@ -1691,7 +1999,6 @@ function showPlayerDetailModal(playerData) {
         tbody.appendChild(tr);
     });
 
-    // モーダルを表示
     document.getElementById('sub-modal').style.display = 'flex';
 }
 
@@ -1709,7 +2016,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 });
 
-let cachedVsPlayers = []; 
+let cachedVsPlayers = [];
 let lastVsResponseData = null; // GASから返ってきた比較データを保持するグローバル変数
 
 /**
@@ -1718,10 +2025,10 @@ let lastVsResponseData = null; // GASから返ってきた比較データを保�
  * そこに表示されているテキストからプレイヤー名だけを安全にサンプリングします。
  */
 function getLoggedInPlayerName() {
-    const nameElement = document.querySelector('#rating-average strong') 
-                     || document.querySelector('.rating-container strong')
-                     || document.querySelector('.user-name');
-    
+    const nameElement = document.querySelector('#rating-average strong')
+        || document.querySelector('.rating-container strong')
+        || document.querySelector('.user-name');
+
     if (nameElement) {
         const name = nameElement.innerText || nameElement.textContent;
         if (name && name.trim() !== "Player" && name.trim() !== "") {
@@ -1731,7 +2038,7 @@ function getLoggedInPlayerName() {
 
     let cachedName = localStorage.getItem('chuni_player_name');
     if (cachedName) return cachedName.trim();
-    
+
     return "";
 }
 
@@ -1752,10 +2059,10 @@ async function openVsModal() {
 
         if (result.status === "success") {
             cachedVsPlayers = result.players || [];
-            
+
             // 自分の名前を自動取得
             const myName = getLoggedInPlayerName();
-            
+
             // ★修正：HTML側のID「vs-my-name-display」をピンポイントで取得して名前を書き換える
             const myNameDisplay = document.getElementById('vs-my-name-display');
             if (myNameDisplay) {
@@ -1769,7 +2076,7 @@ async function openVsModal() {
             // VSモーダル側のセレクトボックスにメイン画面の選択値をセット（小数点第1位の文字列として確実にセット）
             const minConstEl = document.getElementById('vs-min-const');
             const maxConstEl = document.getElementById('vs-max-const');
-            
+
             if (minConstEl) {
                 const parsedMin = parseFloat(mainMinC);
                 minConstEl.value = isNaN(parsedMin) ? "13.5" : parsedMin.toFixed(1);
@@ -1796,10 +2103,10 @@ function renderVsOpponents() {
     const container = document.getElementById('vs-opponents-container');
     if (!container) return;
     container.innerHTML = "";
-    
+
     // 自動取得した自分の名前をベースに除外処理を行う
     const myName = getLoggedInPlayerName();
-    
+
     cachedVsPlayers.forEach(p => {
         if (p === myName) return; // 自分を対戦相手リストに出さない
         const div = document.createElement('div');
@@ -1818,20 +2125,99 @@ function closeVsSetupModal() { document.getElementById('vs-setup-modal').style.d
 function closeVsResultModal() { document.getElementById('vs-result-modal').style.display = "none"; }
 
 /**
- * 比較実行・データ受信
+ * ★追加：VS設定画面の傾向フィルタースイッチのON/OFF制御
+ */
+function toggleVsTrendFilters() {
+    const switchEl = document.getElementById('vs-trend-enable-switch');
+    const containerEl = document.getElementById('vs-trend-buttons-container');
+    if (!switchEl || !containerEl) return;
+
+    if (switchEl.checked) {
+        containerEl.classList.remove('vs-disabled'); // 明るくしてクリック可能にする
+    } else {
+        containerEl.classList.add('vs-disabled');    // 半透明にしてクリック不可にする
+        // スイッチがOFFになったら、選択されていたボタンのactiveクラスをすべて解除する
+        const activeButtons = containerEl.querySelectorAll('.vs-btn-trend-filter.active');
+        activeButtons.forEach(btn => btn.classList.remove('active'));
+    }
+}
+
+/**
+ * ★追加：VS専用 傾向フィルターボタンの選択/解除切り替え
+ */
+function toggleVsTrendButton(buttonElement) {
+    // スイッチ自体がOFFなら何もしない
+    const switchEl = document.getElementById('vs-trend-enable-switch');
+    if (!switchEl || !switchEl.checked) return;
+
+    // activeクラスがついていれば外し、ついていなければつける
+    buttonElement.classList.toggle('active');
+}
+
+/**
+ * ★追加：VS設定画面の定数セレクトボックス（0.1刻み）を自動生成する処理
+ * ページ読み込み時に実行されます
+ */
+document.addEventListener("DOMContentLoaded", () => {
+    const minSelect = document.getElementById("vs-min-const");
+    const maxSelect = document.getElementById("vs-max-const");
+
+    if (!minSelect || !maxSelect) return;
+
+    const start = 13.5;
+    const end = 16.0;
+    const step = 0.1;
+
+    // 1. 下限側の生成：昇順（13.5 -> 16.0）
+    for (let i = Math.round(start * 10); i <= Math.round(end * 10); i += Math.round(step * 10)) {
+        const val = (i / 10).toFixed(1);
+        const opt = document.createElement("option");
+        opt.value = val;
+        opt.textContent = val;
+
+        if (val === "13.5") opt.selected = true; // 初期状態
+        minSelect.appendChild(opt);
+    }
+
+    // 2. 上限側の生成：降順（16.0 -> 13.5）
+    for (let i = Math.round(end * 10); i >= Math.round(start * 10); i -= Math.round(step * 10)) {
+        const val = (i / 10).toFixed(1);
+        const opt = document.createElement("option");
+        opt.value = val;
+        opt.textContent = val;
+
+        if (val === "16.0") opt.selected = true; // 初期状態
+        maxSelect.appendChild(opt);
+    }
+});
+
+/**
+ * 【完全統合版】比較実行・データ受信（VS専用の傾向フィルター連動）
  */
 async function startVsCompare() {
     const myName = getLoggedInPlayerName();
     if (!myName) { alert("あなたのプレイヤー名が取得できません。一度同期を行ってください。"); return; }
-    
+
     const checkedBoxes = document.querySelectorAll('.vs-opp-checkbox:checked');
     const opponents = Array.from(checkedBoxes).map(cb => cb.value);
     if (opponents.length === 0) { alert("対戦相手を少なくとも1人選択してください。"); return; }
 
-    // VSモーダル内、あるいはメイン画面の「min-constant」「max-constant eclipse」からリアルタイムに選択範囲を取得
-    const minC = document.getElementById('vs-min-const')?.value || document.getElementById('min-constant')?.value || "13.5";
-    const maxC = document.getElementById('vs-max-const')?.value || document.getElementById('max-constant')?.value || "16.0";
+    // VSモーダル内のセレクトボックスから選択範囲を取得
+    const minC = document.getElementById('vs-min-const')?.value || "13.5";
+    const maxC = document.getElementById('vs-max-const')?.value || "16.0";
+
+    // ----------------------------------------------------
+    // VS設定画面専用のUIから傾向フィルターの状態を取得
+    // ----------------------------------------------------
+    const vsTrendSwitch = document.getElementById('vs-trend-enable-switch');
+    const isTrendEnabled = vsTrendSwitch ? vsTrendSwitch.checked : false;
     
+    // コンテナ内にある「active」クラスが付いたボタンの data-trend 値（POWER, NOTES等）を集める
+    const activeTrends = isTrendEnabled
+        ? Array.from(document.querySelectorAll('#vs-trend-buttons-container .vs-btn-trend-filter.active')).map(btn => btn.getAttribute('data-trend'))
+        : [];
+    // ----------------------------------------------------
+
     const startBtn = document.getElementById('vs-start-btn');
     if (startBtn) { startBtn.disabled = true; startBtn.innerText = "比較中..."; }
 
@@ -1839,14 +2225,22 @@ async function startVsCompare() {
         const response = await fetch(GAS_URL, {
             method: "POST",
             headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({ mode: "get_vs_data", myName: myName, opponents: opponents, minConst: parseFloat(minC), maxConst: parseFloat(maxC) })
+            body: JSON.stringify({ 
+                mode: "get_vs_data", 
+                myName: myName, 
+                opponents: opponents, 
+                minConst: parseFloat(minC), 
+                maxConst: parseFloat(maxC),
+                isTrendEnabled: isTrendEnabled, // GAS側に独立したスイッチの状態を送信
+                activeTrends: activeTrends       // GAS側に選択された具体的な傾向リストを送信
+            })
         });
         const result = await response.json();
 
         if (result.status === "success") {
             closeVsSetupModal();
-            lastVsResponseData = result.data; 
-            renderVsResult(); 
+            lastVsResponseData = result.data;
+            renderVsResult();
         } else {
             alert("エラー: " + result.message);
         }
@@ -1867,7 +2261,7 @@ function handleBasePlayerChange(selectElement) {
 
 /**
  * 結果画面のメイン描画（タイマンと複数人を完全分離して生成）
- * ★修正：3人・4人対戦時、基準プレイヤーの列は「名前のみ（順位なし）」「スコアのみ」に洗練
+ * ★修正：既存の傾向表示ロジック・カラー（NOTES: #be901f 等）と完全に統一
  */
 function renderVsResult(forcedBasePlayer) {
     const container = document.getElementById('vs-result-dynamic-container');
@@ -1876,8 +2270,38 @@ function renderVsResult(forcedBasePlayer) {
 
     const data = lastVsResponseData;
     const oppCount = data.opponents.length;
-    const totalPlayersCount = oppCount + 1; 
+    const totalPlayersCount = oppCount + 1;
     const formatScore = (sc) => sc === 0 ? `<span style="color:#aaa;">-</span>` : sc.toLocaleString();
+
+    // ----------------------------------------------------
+    // ★【修正】ご提示いただいた既存の傾向表示ロジックとの完全統合
+    // ----------------------------------------------------
+    let trendHtml = "";
+    const vsTrendSwitch = document.getElementById('vs-trend-enable-switch');
+    const isTrendEnabled = vsTrendSwitch ? vsTrendSwitch.checked : false;
+
+    if (isTrendEnabled) {
+        // VS専用コンテナ内のアクティブなボタンから data-trend を取得
+        const activeTrends = Array.from(document.querySelectorAll('#vs-trend-buttons-container .vs-btn-trend-filter.active')).map(btn => btn.getAttribute('data-trend'));
+
+        const trendColors = {
+            'POWER': { bg: '#36a2eb', text: '#ffffff' },
+            'NOTES': { bg: '#be901f', text: '#ffffff' }, // 統一されたカラー
+            'CHUNI': { bg: '#239898', text: '#ffffff' },
+            'TRICKY': { bg: '#9966ff', text: '#ffffff' }
+        };
+
+        if (activeTrends.length === 0) {
+            trendHtml = ` / <span style="color: #94a3b8; font-weight: bold;">傾向: 表示なし</span>`;
+        } else {
+            const badges = activeTrends.map(trend => {
+                const colors = trendColors[trend] || { bg: '#718093', text: '#ffffff' };
+                return `<span style="background: ${colors.bg}; color: ${colors.text}; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 4px; font-weight: bold; display: inline-block; vertical-align: middle;">${trend}</span>`;
+            }).join('');
+            trendHtml = ` / <span style="font-weight: bold; display: inline-block; align-items: center;">傾向:${badges}</span>`;
+        }
+    }
+    // ----------------------------------------------------
 
     // 💡 共通で利用する「横並びボタン」のHTMLコンポーネント
     const actionButtonsHtml = `
@@ -1903,9 +2327,10 @@ function renderVsResult(forcedBasePlayer) {
         const vsRows = [...data.vsRows];
         const totalSongs = vsRows.length;
 
+        // ★ 定数の横辺りに自然に繋がるように ${trendHtml} を配置
         let html = `
-            <div class="vs-header-left">
-                <strong>定数:</strong> ${data.minConst} ～ ${data.maxConst} （全 ${totalSongs} 曲）<br>
+            <div class="vs-header-left" style="line-height: 1.6; margin-bottom: 10px;">
+                <strong>定数:</strong> ${data.minConst} ～ ${data.maxConst}${trendHtml} （全 ${totalSongs} 曲）<br>
                 <strong>対戦相手:</strong> ${oppName}
             </div>
         `;
@@ -1989,9 +2414,9 @@ function renderVsResult(forcedBasePlayer) {
         html += actionButtonsHtml;
         container.innerHTML = html;
 
-    // ==========================================================================
-    // B. 【3人、4人対戦の場合】
-    // ==========================================================================
+        // ==========================================================================
+        // B. 【3人、4人対戦の場合】
+        // ==========================================================================
     } else {
         const basePlayer = forcedBasePlayer || data.myName;
         const vsRows = [...data.vsRows];
@@ -2009,10 +2434,11 @@ function renderVsResult(forcedBasePlayer) {
         });
         html += `</select> のスコア比較結果</div>`;
 
+        // ★ 定数の横辺りに自然に繋がるように ${trendHtml} を配置
         const displayOpponents = allActivePlayers.filter(p => p !== basePlayer).join('、');
         html += `
-            <div class="vs-header-left">
-                <strong>定数:</strong> ${data.minConst} ～ ${data.maxConst} （全 ${totalSongs} 曲）<br>
+            <div class="vs-header-left" style="line-height: 1.6; margin-bottom: 10px;">
+                <strong>定数:</strong> ${data.minConst} ～ ${data.maxConst}${trendHtml} （全 ${totalSongs} 曲）<br>
                 <strong>対戦相手:</strong> ${displayOpponents}
             </div>
         `;
@@ -2028,7 +2454,7 @@ function renderVsResult(forcedBasePlayer) {
             row.rankList.forEach(p => {
                 if (p.name !== basePlayer && p.score > baseScore) { exactRank++; }
             });
-            
+
             if (exactRank > totalPlayersCount) exactRank = totalPlayersCount;
 
             const othersSorted = row.rankList
@@ -2070,7 +2496,7 @@ function renderVsResult(forcedBasePlayer) {
                                         <th class="vs-col-const">定数</th>
             `;
 
-            // ヘッダー生成（💡修正：基準プレイヤーの列は、順位を表示せず「プレイヤー名のみ」にする）
+            // ヘッダー生成
             for (let idx = 1; idx <= totalPlayersCount; idx++) {
                 if (idx === dRank) {
                     html += `<th class="vs-col-score vs-multi-my-column-header">${basePlayer}</th>`;
@@ -2099,17 +2525,15 @@ function renderVsResult(forcedBasePlayer) {
                 // 各順位列（1位〜最大4位）のデータを生成
                 for (let idx = 1; idx <= totalPlayersCount; idx++) {
                     if (idx === dRank) {
-                        // 基準プレイヤーの要素は、名前を出さずに「純粋なスコアのみ」にする
                         html += `
                             <td class="vs-col-score vs-multi-my-cell">
                                 <div class="vs-multi-player-score-large">${formatScore(song.baseScore)}</div>
                             </td>
                         `;
                     } else {
-                        // 他プレイヤーは今まで通り「名前」＋「スコア」を表示
                         const otherIdx = (idx < dRank) ? (idx - 1) : (idx - 2);
                         const otherPlayer = song.others[otherIdx];
-                        
+
                         if (otherPlayer) {
                             html += `
                                 <td class="vs-col-score">
@@ -2135,43 +2559,6 @@ function renderVsResult(forcedBasePlayer) {
 
     document.getElementById('vs-result-modal').style.display = "flex";
 }
-
-/**
- * ★追加：VS設定画面の定数セレクトボックス（0.1刻み）を自動生成する処理
- * ページ読み込み時に実行されます
- */
-document.addEventListener("DOMContentLoaded", () => {
-    const minSelect = document.getElementById("vs-min-const");
-    const maxSelect = document.getElementById("vs-max-const");
-    
-    if (!minSelect || !maxSelect) return;
-
-    const start = 13.5;
-    const end = 16.0;
-    const step = 0.1;
-
-    // 1. 下限側の生成：昇順（13.5 -> 16.0）
-    for (let i = Math.round(start * 10); i <= Math.round(end * 10); i += Math.round(step * 10)) {
-        const val = (i / 10).toFixed(1);
-        const opt = document.createElement("option");
-        opt.value = val;
-        opt.textContent = val;
-        
-        if (val === "13.5") opt.selected = true; // 初期状態
-        minSelect.appendChild(opt);
-    }
-
-    // 2. 上限側の生成：降順（16.0 -> 13.5）
-    for (let i = Math.round(end * 10); i >= Math.round(start * 10); i -= Math.round(step * 10)) {
-        const val = (i / 10).toFixed(1);
-        const opt = document.createElement("option");
-        opt.value = val;
-        opt.textContent = val;
-        
-        if (val === "16.0") opt.selected = true; // 初期状態
-        maxSelect.appendChild(opt);
-    }
-});
 
 /**
  * サブモーダルを閉じる
