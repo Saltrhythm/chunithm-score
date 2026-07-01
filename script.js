@@ -983,7 +983,8 @@ function pickRandomSong() {
 }
 
 /**
- * 特定の曲のランキングを取得して表示（💡既存CSS完全対応・トレンド表示修正版）
+ * 💡 修正版：特定の曲のランキングを取得して表示
+ * （データが到着するまで、難易度・定数部分は一切表示させない仕様）
  */
 async function loadRanking(title, diff, songConst) {
 
@@ -994,11 +995,11 @@ async function loadRanking(title, diff, songConst) {
     // --- 1. 表示エリアの切り替え（統計モードから通常モードへ復帰） ---
     const controls = document.getElementById('ranking-controls');
     const statsControlArea = document.getElementById('stats-control-area');
-    const radarContainer = document.getElementById('radar-chart-container'); // ★追加
+    const radarContainer = document.getElementById('radar-chart-container');
 
-    if (controls) controls.style.display = 'block';           // グラフや範囲ボタンを表示
-    if (statsControlArea) statsControlArea.style.display = 'none'; // 統計用切り替えボタンを隠す
-    if (radarContainer) radarContainer.style.display = 'block';     // ★追加：通常モードなのでレーダーを表示する
+    if (controls) controls.style.display = 'block';           
+    if (statsControlArea) statsControlArea.style.display = 'none'; 
+    if (radarContainer) radarContainer.style.display = 'block';     
 
     // --- 2. テーブルヘッダーを通常用にリセット ---
     const modalTableHead = document.querySelector('#ranking-modal table thead tr');
@@ -1019,23 +1020,19 @@ async function loadRanking(title, diff, songConst) {
     if (canvas) {
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        canvas.style.display = 'block'; // キャンバスを表示
+        canvas.style.display = 'block'; 
     }
 
-    // レーダーチャートの古いインスタンスがあれば、モーダルを開いた瞬間に一度クリアする
     if (radarChartInstance) {
         radarChartInstance.destroy();
         radarChartInstance = null;
     }
 
-    // 💡 修正：元のCSS（.title-sub-info）をそのまま使える1行構造に戻し、トレンドの受け皿を用意
+    // 💡【変更点】初期状態では曲名のみを表示し、サブ情報エリア（.title-sub-info）は中身を完全に空にしておきます
     const displayDiff = diff ? diff.toUpperCase() : "";
     titleContainer.innerHTML = `
         ${title} 
-        <span class="title-sub-info">
-            <span class="diff-const-txt">${displayDiff} ${songConst || ""}</span>
-            <span id="trend-container"></span>
-        </span>
+        <span class="title-sub-info"></span>
     `.trim();
 
     rankingBody.innerHTML = "<tr><td colspan='4'>読み込み中...</td></tr>";
@@ -1060,20 +1057,19 @@ async function loadRanking(title, diff, songConst) {
             rankingBody.innerHTML = "";
             result.data.forEach((row, index) => {
                 const tr = document.createElement('tr');
-                tr.style.cursor = "pointer"; // クリック可能であることを示す
-                tr.dataset.playerName = row.playerName; // グラフ連動用に名前を保持
+                tr.style.cursor = "pointer"; 
+                tr.dataset.playerName = row.playerName; 
 
-                // ★ 行タップ：非表示にしてグラフを再描画
                 tr.onclick = function (e) {
                     this.style.display = "none";
-                    drawRankingChart();
+                    if (typeof drawRankingChart === "function") {
+                        drawRankingChart();
+                    }
                 };
 
-                // 自分の名前を強調
                 const myName = localStorage.getItem('chunirec_player_name');
                 if (row.playerName === myName) tr.classList.add('my-rank');
 
-                // スコアの表示処理
                 let scoreVal = row.score;
                 const displayScore = (typeof scoreVal === 'number') ? scoreVal.toLocaleString() : scoreVal;
 
@@ -1083,7 +1079,6 @@ async function loadRanking(title, diff, songConst) {
                 if (lampText.includes("AJC")) badgeClass = "ajc-badge";
                 else if (lampText.includes("AJ")) badgeClass = "aj-badge";
                 else if (lampText.includes("FC")) badgeClass = "fc-badge";
-                else badgeClass = "";
 
                 tr.innerHTML = `
                     <td class="rank-cell">${index + 1}</td>
@@ -1097,50 +1092,65 @@ async function loadRanking(title, diff, songConst) {
                 rankingBody.appendChild(tr);
             });
 
-            // 初回描画（数直線グラフ）
-            drawRankingChart(result.data);
+            if (typeof drawRankingChart === "function") {
+                drawRankingChart(result.data);
+            }
 
-            // ★【修正】レーダーチャートの初回描画に、loadRankingが受け取った songConst をバトンタッチする
-            drawRadarChart(result.songProps, songConst);
+            // GASから返ってきた MasterData 基準の最新定数があればそれを最優先、なければ引数の songConst を適用
+            const latestConst = (result.songProps && result.songProps.constant) ? result.songProps.constant : songConst;
 
-            // 💡【修正】読み込み完了後に、トレンドテキストをインラインで安全に流し込む
-            const trendContainer = document.getElementById('trend-container');
-            if (trendContainer && result.songProps) {
+            if (typeof drawRadarChart === "function") {
+                drawRadarChart(result.songProps, latestConst);
+            }
+
+            // 💡【重要変更点】データが正常に到着したここから、難易度・最新定数・トレンドを一斉に組み立てて流し込みます！
+            const subInfoContainer = titleContainer.querySelector('.title-sub-info');
+            if (subInfoContainer && result.songProps) {
                 const props = result.songProps;
+                
+                // GASから届いた最新定数を安全にパース、なければ手元の定数を使用
+                const finalConst = props.constant ? parseFloat(props.constant).toFixed(1) : parseFloat(latestConst).toFixed(1);
 
                 // 各属性に対応する専用カラーコード
                 const colorMap = {
-                    'POWER': '#36a2eb', // 青
-                    'NOTES': '#d7a62e', // 黄
-                    'CHUNI': '#239898', // 緑
-                    'TRICKY': '#9966ff'  // 紫
+                    'POWER': '#36a2eb', 
+                    'NOTES': '#d7a62e', 
+                    'CHUNI': '#239898', 
+                    'TRICKY': '#9966ff'  
                 };
 
-                let html = "";
+                // ① 難易度と最新定数の土台を作成
+                let subHtml = `<span class="diff-const-txt">${displayDiff} ${finalConst}</span><span id="trend-container"></span>`;
+                subInfoContainer.innerHTML = subHtml;
 
-                // Main Trendの記述
-                if (props.mainTrend && props.mainTrend !== "None") {
-                    const mainColor = colorMap[props.mainTrend] || "#666";
-                    // 難易度と少し離すために左マージン
-                    html += `<span style="color: ${mainColor}; font-weight: 900; margin-left: 12px;">${props.mainTrend}</span>`;
+                // ② トレンド部分の組み立てと流し込み
+                const trendContainer = document.getElementById('trend-container');
+                if (trendContainer) {
+                    let trendHtml = "";
 
-                    // Sub Trendの記述 (None以外かつMainと重複しない場合)
-                    if (props.subTrend && props.subTrend !== "None" && props.subTrend !== props.mainTrend) {
-                        const subColor = colorMap[props.subTrend] || "#666";
-                        html += ` <span style="color: #888; font-weight: normal;">/</span> <span style="color: ${subColor}; font-weight: 900;">${props.subTrend}</span>`;
+                    // Main Trendの記述
+                    if (props.mainTrend && props.mainTrend !== "None") {
+                        const mainColor = colorMap[props.mainTrend] || "#666";
+                        trendHtml += `<span style="color: ${mainColor}; font-weight: 900; margin-left: 12px;">${props.mainTrend}</span>`;
+
+                        // Sub Trendの記述
+                        if (props.subTrend && props.subTrend !== "None" && props.subTrend !== props.mainTrend) {
+                            const subColor = colorMap[props.subTrend] || "#666";
+                            trendHtml += ` <span style="color: #888; font-weight: normal;">/</span> <span style="color: ${subColor}; font-weight: 900;">${props.subTrend}</span>`;
+                        }
                     }
+                    trendContainer.innerHTML = trendHtml;
                 }
-                trendContainer.innerHTML = html;
             }
 
         } else {
             rankingBody.innerHTML = "<tr><td colspan='4'>データがありません</td></tr>";
-            drawRadarChart(null, songConst);
+            if (typeof drawRadarChart === "function") drawRadarChart(null, songConst);
         }
     } catch (e) {
         console.error(e);
         rankingBody.innerHTML = "<tr><td colspan='4'>エラーが発生しました</td></tr>";
-        drawRadarChart(null, songConst);
+        if (typeof drawRadarChart === "function") drawRadarChart(null, songConst);
     }
 }
 
