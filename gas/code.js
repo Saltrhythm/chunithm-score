@@ -21,7 +21,7 @@ function doPost(e) {
             const t = String(params.title || "");
             const d = String(params.diff || "");
             const results = getRankingFromSheets(ss, t, d, params, logSheet);
-            const songProps = getSongPropsFromMaster(ss, t, d);
+            const songProps = getSongPropsFromMaster(ss, t, d); 
             return createJsonResponse({ status: "success", data: results, songProps: songProps });
         }
 
@@ -41,9 +41,9 @@ function doPost(e) {
         // VS機能 プレイヤー一覧取得モード
         if (mode === "get_vs_players") {
             const sheets = ss.getSheets();
-            const playerNames = sheets.map(s => s.getName()).filter(name =>
+            const playerNames = sheets.map(s => s.getName()).filter(name => 
                 name !== "UserMap" && name !== "MasterData" && name !== "DebugLog" && name !== "NewSongs" && name !== "マスター" && name !== "設定"
-            );
+            ); 
             return createJsonResponse({ status: "success", players: playerNames });
         }
 
@@ -63,7 +63,7 @@ function doPost(e) {
             try {
                 const token = String(params.token || "");
                 let playerName = String(params.playerName || "");
-
+                
                 playerName = playerName.replace(/[\*＼\/\\\[\]\?：:]/g, "").trim();
 
                 // 認証トークンのハッシュ化処理
@@ -81,7 +81,7 @@ function doPost(e) {
 
                     if (sameNameIndex !== -1) {
                         userMapSheet.getRange(sameNameIndex + 1, 1).setValue(hashedToken);
-                        userRowIndex = sameNameIndex;
+                        userRowIndex = sameNameIndex; 
                     } else if (!playerName) {
                         return createJsonResponse({ status: "need_name" });
                     } else {
@@ -132,13 +132,13 @@ function getRankingFromSheets(ss, title, diff, params, logSheet) {
     // 💡 トレンドフィルターの有無に関わらず、MasterDataから最新定数とMainTrendを事前に取得する
     let songConst = 0;
     let songMainTrend = "None";
-
+    
     const masterSheet = ss.getSheetByName("MasterData");
     if (masterSheet) {
         const masterData = masterSheet.getDataRange().getValues();
         if (masterData.length > 1) {
             const headerRow = masterData[0].map(h => String(h).toLowerCase().trim());
-
+            
             // J列の見出し（maintrend）のインデックスを探す（なければデフォルトJ=9）
             let mainIdx = headerRow.findIndex(h => h.includes("maintrend") || h === "main");
             if (mainIdx === -1) mainIdx = 9;
@@ -149,7 +149,7 @@ function getRankingFromSheets(ss, title, diff, params, logSheet) {
             for (let i = 1; i < masterData.length; i++) {
                 if (normalize(masterData[i][titleIdx]) === targetTitle && normalize(masterData[i][diffIdx]) === targetDiff) {
                     // 💡 C列（インデックス2）から最新の定数を取得
-                    songConst = parseFloat(masterData[i][2] || 0);
+                    songConst = parseFloat(masterData[i][2] || 0); 
                     songMainTrend = String(masterData[i][mainIdx] || "").toUpperCase().trim();
                     break;
                 }
@@ -232,7 +232,7 @@ function getSongPropsFromMaster(ss, title, diff) {
         if (normalize(data[i][0]) === targetTitle && normalize(data[i][1]) === targetDiff) {
             return {
                 // 💡 C列（インデックス2）から最新の譜面定数を取得して追加
-                constant: parseFloat(data[i][2]) || 0,
+                constant: parseFloat(data[i][2]) || 0,  
                 tairyoku: parseFloat(data[i][4]) || 0, // E列
                 kenban: parseFloat(data[i][5]) || 0,   // F列
                 chuni: parseFloat(data[i][6]) || 0,    // G列
@@ -272,7 +272,7 @@ function getStatsFromSheets(ss, params) {
 
     const masterSheet = ss.getSheetByName("MasterData");
     // 💡 トレンドと最新定数を一括で保持するためのキャッシュオブジェクト
-    const masterDataCache = {};
+    const masterDataCache = {}; 
     let totalMatchingSongs = 0;
 
     // 💡 定数はC列（インデックス2）、isNewはD列（インデックス3）で固定
@@ -283,7 +283,7 @@ function getStatsFromSheets(ss, params) {
         const masterData = masterSheet.getDataRange().getValues();
         if (masterData.length > 1) {
             const headerRow = masterData[0].map(h => String(h).toLowerCase().trim());
-
+            
             let mainIdx = headerRow.findIndex(h => h.includes("maintrend") || h === "main");
             if (mainIdx === -1) mainIdx = 9;
 
@@ -343,7 +343,7 @@ function getStatsFromSheets(ss, params) {
         let playerCountFiltered = 0;
         let playerTotalScoreFiltered = 0;
         let playerTotalCountFiltered = 0;
-
+        
         // 💡 個人用の「99万以上の合計スコア」と「その曲数」の受け皿を追加
         let playerValidScoreSum = 0;
         let playerValidScoreCount = 0;
@@ -358,14 +358,14 @@ function getStatsFromSheets(ss, params) {
 
             // 💡 プレイヤーシートの値ではなく、MasterDataのキャッシュから定数とトレンドをリアルタイムに引き出す
             const masterInfo = masterDataCache[fullTitleKey] || { constant: parseFloat(row[2] || 0), mainTrend: "None" };
-            const cConst = masterInfo.constant;
+            const cConst = masterInfo.constant; 
 
             if (cConst < minC || cConst > maxC) continue;
 
             if (isTrendEnabled && activeTrends.length > 0) {
                 const songMainTrend = masterInfo.mainTrend;
-                if (!songMainTrend) continue;
-                if (!activeTrends.includes(songMainTrend)) continue;
+                if (!songMainTrend) continue; 
+                if (!activeTrends.includes(songMainTrend)) continue; 
             }
 
             const cScore = parseFloat(row[3] || 0);
@@ -380,8 +380,8 @@ function getStatsFromSheets(ss, params) {
                 songAggregation[fullTitleDisplay] = {
                     count: 0, constant: cConst, players: [],
                     totalScoreAll: 0, totalCountAll: 0,
-                    validScoreSum: 0,
-                    validScoreCount: 0
+                    validScoreSum: 0,  
+                    validScoreCount: 0 
                 };
             }
             songAggregation[fullTitleDisplay].totalScoreAll += cScore;
@@ -395,7 +395,7 @@ function getStatsFromSheets(ss, params) {
 
             let isAchieved = true;
             if (cRating < minRating || cRating > maxRating) isAchieved = false;
-
+            
             function getUpperLimitGASFallback(val) { return val; }
             let limitMax = (filterMode === "score") ? rMax : (typeof getUpperLimitGAS === 'function' ? getUpperLimitGAS(rMax) : getUpperLimitGASFallback(rMax));
             if (cScore < rMin || cScore > limitMax) isAchieved = false;
@@ -421,7 +421,7 @@ function getStatsFromSheets(ss, params) {
             if (passTypeFilter) {
                 playerTotalCountFiltered++;
                 playerTotalScoreFiltered += cScore;
-
+                
                 // 💡 個人別で990,000点以上の場合のみ、平均スコア用カウンターに加算
                 if (cScore >= 990000) {
                     playerValidScoreSum += cScore;
@@ -488,8 +488,8 @@ function getPlayerDetailFromSheet(ss, playerName, params) {
 
     const masterSheet = ss.getSheetByName("MasterData");
     // 💡 トレンドと最新定数を一括で保持するためのキャッシュオブジェクト
-    const masterDataCache = {};
-
+    const masterDataCache = {}; 
+    
     // 💡 定数はC列（インデックス2）で固定
     const targetConstIdx = 2;
 
@@ -497,7 +497,7 @@ function getPlayerDetailFromSheet(ss, playerName, params) {
         const masterData = masterSheet.getDataRange().getValues();
         if (masterData.length > 1) {
             const headerRow = masterData[0].map(h => String(h).toLowerCase().trim());
-
+            
             let mainIdx = headerRow.findIndex(h => h.includes("maintrend") || h === "main");
             if (mainIdx === -1) mainIdx = 9;
 
@@ -537,14 +537,14 @@ function getPlayerDetailFromSheet(ss, playerName, params) {
 
         if (isTrendEnabled && activeTrends.length > 0) {
             const songMainTrend = masterInfo.mainTrend; // ★キャッシュから取得
-            if (!songMainTrend) continue;
-            if (!activeTrends.includes(songMainTrend)) continue;
+            if (!songMainTrend) continue; 
+            if (!activeTrends.includes(songMainTrend)) continue; 
         }
 
         const isNewSongStr = String(row[6] || "").toLowerCase().trim();
-        let passType = (typeFilter === 'all') ||
-            (typeFilter === 'new' && isNewSongStr === 'true') ||
-            (typeFilter === 'old' && isNewSongStr !== 'true');
+        let passType = (typeFilter === 'all') || 
+                       (typeFilter === 'new' && isNewSongStr === 'true') || 
+                       (typeFilter === 'old' && isNewSongStr !== 'true');
         if (!passType) continue;
 
         const cScore = parseFloat(row[3] || 0);
@@ -553,7 +553,7 @@ function getPlayerDetailFromSheet(ss, playerName, params) {
 
         let isAchieved = true;
         if (cRating < minRating || cRating > maxRating) isAchieved = false;
-
+        
         function getUpperLimitGASFallback(val) { return val; }
         let limitMax = (filterMode === "score") ? rMax : (typeof getUpperLimitGAS === 'function' ? getUpperLimitGAS(rMax) : getUpperLimitGASFallback(rMax));
         if (cScore < rMin || cScore > limitMax) isAchieved = false;
@@ -579,15 +579,15 @@ function getPlayerDetailFromSheet(ss, playerName, params) {
  * 補助関数：基準スコアのランク区分の「上限」を返す（GAS用）
  */
 function getUpperLimitGAS(score) {
-    if (score >= 1010000) return 1010001;
-    if (score >= 1009900) return 1010000;
-    if (score >= 1009000) return 1009899;
-    if (score >= 1007500) return 1008999;
-    if (score >= 1007000) return 1007499;
-    if (score >= 1005000) return 1006999;
-    if (score >= 1000000) return 1004999;
-    if (score >= 990000) return 999999;
-    if (score >= 970000) return 989999;
+    if (score >= 1010000) return 1010001; 
+    if (score >= 1009900) return 1010000; 
+    if (score >= 1009000) return 1009899; 
+    if (score >= 1007500) return 1008999; 
+    if (score >= 1007000) return 1007499; 
+    if (score >= 1005000) return 1006999; 
+    if (score >= 1000000) return 1004999; 
+    if (score >= 990000) return 999999;  
+    if (score >= 970000) return 989999;  
     return 969999;
 }
 
@@ -597,7 +597,7 @@ function getUpperLimitGAS(score) {
  */
 function getVsDataFromSheets(ss, params) {
     const myName = String(params.myName || "").trim();
-    const opponents = params.opponents || [];
+    const opponents = params.opponents || []; 
     const minC = parseFloat(params.minConst || 13.5);
     const maxC = parseFloat(params.maxConst || 16.0);
 
@@ -606,8 +606,8 @@ function getVsDataFromSheets(ss, params) {
     const activeTrends = rawTrends.map(t => String(t).toUpperCase().trim());
 
     // 💡 トレンドと最新定数を一括で保持するためのキャッシュオブジェクト
-    const masterDataCache = {};
-
+    const masterDataCache = {}; 
+    
     // 💡 定数はC列（インデックス2）で固定
     const targetConstIdx = 2;
 
@@ -617,7 +617,7 @@ function getVsDataFromSheets(ss, params) {
             const masterData = masterSheet.getDataRange().getValues();
             if (masterData.length > 1) {
                 const headerRow = masterData[0].map(h => String(h).toLowerCase().trim());
-
+                
                 // J列の見出し（maintrend）のインデックスを探す（なければデフォルトJ=9）
                 let mainIdx = headerRow.findIndex(h => h.includes("maintrend") || h === "main");
                 if (mainIdx === -1) mainIdx = 9;
@@ -628,15 +628,15 @@ function getVsDataFromSheets(ss, params) {
                 for (let m = 1; m < masterData.length; m++) {
                     const mRow = masterData[m];
                     if (!mRow) continue;
-
+                    
                     const mSongName = String(mRow[titleIdx] || "").trim();
                     const mDiff = String(mRow[diffIdx] || "").trim();
                     // この関数内で使用されるキー「曲名 [難易度]」の形式に統一
                     const mFullTitle = mDiff ? `${mSongName} [${mDiff}]` : mSongName;
-
+                    
                     const cConst = parseFloat(mRow[targetConstIdx] || 0);
                     const mTrend = String(mRow[mainIdx] || "").toUpperCase().trim();
-
+                    
                     if (mFullTitle) {
                         masterDataCache[mFullTitle] = {
                             constant: cConst,
@@ -651,7 +651,7 @@ function getVsDataFromSheets(ss, params) {
     }
 
     const targetPlayers = [myName, ...opponents].filter(p => p !== "");
-
+    
     const allSheets = ss.getSheets();
     const sheetDataMap = {};
     allSheets.forEach(sheet => {
@@ -686,7 +686,7 @@ function getVsDataFromSheets(ss, params) {
             if (isTrendEnabled && activeTrends.length > 0) {
                 const songTrend = masterInfo.mainTrend;
                 if (!songTrend || !activeTrends.includes(songTrend)) {
-                    continue;
+                    continue; 
                 }
             }
 
@@ -696,7 +696,7 @@ function getVsDataFromSheets(ss, params) {
                 songMap[fullTitle] = {
                     title: fullTitle,
                     constant: cConst, // 💡 最新の定数をVS行データに格納
-                    scores: {}
+                    scores: {} 
                 };
             }
             songMap[fullTitle].scores[pName] = cScore;
@@ -717,7 +717,7 @@ function getVsDataFromSheets(ss, params) {
         const scoreRankList = targetPlayers.map(p => {
             return { name: p, score: song.scores[p] || 0 };
         });
-
+        
         scoreRankList.sort((a, b) => b.score - a.score);
 
         let myRank = 1;
@@ -725,11 +725,11 @@ function getVsDataFromSheets(ss, params) {
             if (scoreRankList[i].score > myScore) { myRank++; }
         }
 
-        let matchResult = "";
+        let matchResult = ""; 
         if (opponents.length === 1) {
             const oppScore = song.scores[opponents[0]] || 0;
-            if (myScore > oppScore) { matchResult = "WIN"; winCount++; }
-            else if (myScore === oppScore) { matchResult = "DRAW"; drawCount++; }
+            if (myScore > oppScore) { matchResult = "WIN"; winCount++; } 
+            else if (myScore === oppScore) { matchResult = "DRAW"; drawCount++; } 
             else { matchResult = "LOSE"; loseCount++; }
         } else {
             if (myRank === 1) rank1++;
@@ -744,7 +744,7 @@ function getVsDataFromSheets(ss, params) {
             myScore: myScore,
             myRank: myRank,
             matchResult: matchResult,
-            rankList: scoreRankList
+            rankList: scoreRankList 
         });
     });
 
@@ -762,12 +762,12 @@ function getVsDataFromSheets(ss, params) {
 }
 
 /**
- * 💡 修正版：ユーザーごとのシートを更新する（二重処理を撤廃し超高速・安全化）
+ * 💡 トレンド復活版：ユーザーごとのシートを更新する
+ * （フロントエンドへ返す records にもトレンド情報を正しく引き渡す）
  */
 function updateUserSheet(ss, name, records) {
     let sheet = ss.getSheetByName(name) || ss.insertSheet(name);
-
-    // 💡 安全対策: データ書き込み用の配列を先に用意し、準備万端になってから clear() する
+    
     const header = ["title", "diff", "const", "score", "rating", "lamp", "isNew", "体力", "鍵盤力", "チュウニズム力", "癖力", "mainTrend"];
     let rows = [];
 
@@ -781,37 +781,40 @@ function updateUserSheet(ss, name, records) {
                 cleanTitle = "'" + cleanTitle;
             }
 
-            // 💡【重要】定数、コスト能力値、MainTrendの計算・取得は、
-            // すべて手前の「fetchAndProcessFromApi」側でMasterData基準で計算し尽くされて
-            // オブジェクト(r)内に格納されているため、ここではそのまま配列に入れるだけで100%正確に動きます！
-
-            // 念のため、手前で追加されたコスト能力値（r.tairyoku等）があれば流用、なければ0
+            // 💡【復活のポイント】
+            // fetchAndProcessFromApi 側で計算・付与された各コスト能力値や、
+            // 保存されているトレンド情報をここでしっかりと確保します。
             const pTairyoku = r.tairyoku || 0;
-            const pKenban = r.kenban || 0;
-            const pChuni = r.chuni || 0;
-            const pKuse = r.kuse || 0;
+            const pKenban   = r.kenban   || 0;
+            const pChuni    = r.chuni    || 0;
+            const pKuse     = r.kuse     || 0;
+            const mTrend    = String(r.mainTrend || "None"); // 💡MasterDataから引き継いだメインの属性トレンド
+
+            // ⚠️【超重要】HTML側（displayScores）がこのプロパティを読み込むため、
+            // 念のためオブジェクト r にもしっかりとセットし直します
+            r.mainTrend = mTrend;
 
             return [
-                cleanTitle,
+                cleanTitle, 
                 String(r.diff || ""),
-                r.const || 0,        // MasterDataの最新定数（fetchAndProcessFromApiで上書き済）
+                r.const || 0,        
                 r.score || 0,
-                r.rating || 0,       // 最新定数で再計算された正しいRating
+                r.rating || 0,       
                 String(r.lamp || ""),
                 String(r.isNew || ""),
                 pTairyoku,           // H列
                 pKenban,             // I列
                 pChuni,              // J列
                 pKuse,               // K列
-                String(r.mainTrend || "None") // L列（fetchAndProcessFromApiで上書き済）
+                mTrend               // L列
             ];
         });
     }
 
-    // 💡 ここで初めてシートをクリアして、一気に書き込む（データ消失バグを完全に回避）
+    // シートをクリアして一気に書き込む
     sheet.clear();
     sheet.appendRow(header);
-
+    
     if (rows.length > 0) {
         sheet.getRange(2, 1, rows.length, header.length).setValues(rows);
     }
@@ -823,9 +826,9 @@ function updateUserSheet(ss, name, records) {
 function calculateScoreModifier(score, lamp) {
     // 1,000,000点（S）未満は一律 0.4
     if (score < 1000000) return 0.4;
-
+    
     let modifier = 0.0;
-
+    
     // ① 1,000,000 〜 1,005,000点（倍率：0.4 から 0.55 までゆるやかに上昇）
     if (score >= 1000000 && score < 1005000) {
         modifier = 0.4 + (score - 1000000) * (0.15 / 5000);
@@ -843,28 +846,33 @@ function calculateScoreModifier(score, lamp) {
     else {
         modifier = 2.39 + (score - 1009000) * (0.26 / 1000) + 0.25;
     }
-
+    
     // ⑤ ＋AJ（All Justice / AJC含む）の時にボーナス（+0.10倍）を与える
     // 理論値（1,010,000点）の時は、2.65 + 0.25(上記) + 0.10 = ぴったり3.0倍になります
     const currentLamp = String(lamp || "");
     if (currentLamp.includes("AJ") || currentLamp.includes("AJC")) {
         modifier += 0.10;
     }
-
+    
     return modifier;
 }
 
 /**
- * 💡 改良版：APIからレコードを取得し、MasterDataの最新定数を適用して処理する
- * （chunirec API停止時でも、個人シートの既存スコアをベースに最新定数での再計算を実行可能）
+ * 💡 完全版：APIからレコードを取得し、MasterDataの最新定数・コスト・トレンドを完全内包して返す
  */
 function fetchAndProcessFromApi(token, ss, playerName) {
-    // 1. MasterDataから最新の定数と新曲フラグ(isNew)をキャッシュする
+    // 1. MasterDataから最新の定数、新曲フラグ、コスト、MainTrendをすべてキャッシュする
     const masterSheet = ss.getSheetByName("MasterData");
     const masterDataCache = {};
-
-    const targetConstIdx = 2; // C列：定数
-    const targetIsNewIdx = 3;  // D列：isNew
+    
+    // 各項目の列インデックス（A列=0, B列=1, C列=2...）
+    const targetConstIdx = 2;   // C列：定数
+    const targetIsNewIdx = 3;   // D列：isNew
+    const targetTairyokuIdx = 4; // E列：体力コスト
+    const targetKenbanIdx = 5;   // F列：鍵盤コスト
+    const targetChuniIdx = 6;    // G列：チュウニズム力コスト
+    const targetKuseIdx = 7;     // H列：癖コスト
+    const targetTrendIdx = 9;    // J列：Main Trend (10列目)
 
     if (masterSheet) {
         const masterData = masterSheet.getDataRange().getValues();
@@ -879,18 +887,20 @@ function fetchAndProcessFromApi(token, ss, playerName) {
                 const mDiff = String(mRow[diffIdx] || "");
                 const mFullKey = mDiff ? `${mTitle.trim()}_${mDiff.trim()}` : mTitle.trim();
 
-                const cConst = parseFloat(mRow[targetConstIdx] || 0);
-                const isNewStr = String(mRow[targetIsNewIdx] || "").toLowerCase().trim();
-
                 masterDataCache[mFullKey] = {
-                    constant: cConst,
-                    isNew: (isNewStr === "true")
+                    constant: parseFloat(mRow[targetConstIdx] || 0),
+                    isNew: (String(mRow[targetIsNewIdx] || "").toLowerCase().trim() === "true"),
+                    tairyoku: parseFloat(mRow[targetTairyokuIdx] || 0),
+                    kenban: parseFloat(mRow[targetKenbanIdx] || 0),
+                    chuni: parseFloat(mRow[targetChuniIdx] || 0),
+                    kuse: parseFloat(mRow[targetKuseIdx] || 0),
+                    mainTrend: String(mRow[targetTrendIdx] || "None").trim() // 💡ここが抜けていました！
                 };
             }
         }
     }
 
-    // --- 💡 ここからAPI通信とエラーハンドリングの改良 ---
+    // 2. API通信とエラーハンドリング
     const apiUrl = `https://api.chunirec.net/2.0/records/showall.json?token=${token}&region=jp2`;
     let apiRecords = null;
     let isApiAvailable = true;
@@ -906,24 +916,22 @@ function fetchAndProcessFromApi(token, ss, playerName) {
             }
         }
     } catch (e) {
-        console.warn("API取得中に例外が発生しました（停止中の可能性あり）: " + e.toString());
+        console.warn("API取得中に例外が発生しました: " + e.toString());
     }
 
-    // 💡【重要】APIからデータが取れなかった場合、個人シートの既存データをベースにする（フォールバック）
+    // API停止時の個人シートからのフォールバックモード
     if (!apiRecords || apiRecords.length === 0) {
-        console.log("⚠️ chunirec APIが利用できないか停止しています。個人シートの既存データから再計算モードに移行します。");
+        console.log("⚠️ chunirec API停止中。個人シートの既存データから再計算します。");
         isApiAvailable = false;
-
+        
         const userSheet = ss.getSheetByName(playerName);
         if (!userSheet) {
             throw new Error("API接続に失敗し、かつ個人シートも見つからないため処理を中断しました。");
         }
-
-        // 個人シートのデータを読み込んで、APIから降ってきたデータと同じ構造（疑似レコード）に変換する
+        
         const userValues = userSheet.getDataRange().getValues();
         if (userValues.length > 1) {
             apiRecords = [];
-            // 個人シートのヘッダー（曲名、難易度、スコア、ランプ等）のインデックスを自動検出
             const uHeader = userValues[0].map(h => String(h).toLowerCase().trim());
             const uTitleIdx = uHeader.findIndex(h => h.includes("title") || h.includes("曲名"));
             const uDiffIdx = uHeader.findIndex(h => h.includes("diff") || h.includes("難易度"));
@@ -933,8 +941,7 @@ function fetchAndProcessFromApi(token, ss, playerName) {
             for (let i = 1; i < userValues.length; i++) {
                 const uRow = userValues[i];
                 if (!uRow[uTitleIdx]) continue;
-
-                // 疑似的なAPIレコード構造を作成
+                
                 apiRecords.push({
                     title: String(uRow[uTitleIdx]),
                     diff: String(uRow[uDiffIdx] || "MAS"),
@@ -943,39 +950,64 @@ function fetchAndProcessFromApi(token, ss, playerName) {
                 });
             }
         } else {
-            throw new Error("APIが停止しており、個人シートにもデータが存在しないため再計算できません。");
+            throw new Error("APIが停止しており、個人シートにもデータが存在しません。");
         }
     }
 
-    // 3. データのマッピングと、MasterDataの最新定数によるRating再計算
+    // 3. データのマッピング、コスト計算、Rating再計算
     const processedRecords = apiRecords.map(r => {
         const key = r.title + "_" + r.diff;
+        
+        // MasterDataのキャッシュから最新情報を取得。なければ初期値
+        const masterInfo = masterDataCache[key] || { 
+            constant: parseFloat(r.const || 0), 
+            isNew: false, 
+            tairyoku: 0, 
+            kenban: 0, 
+            chuni: 0, 
+            kuse: 0, 
+            mainTrend: "None" 
+        };
 
-        // MasterDataCacheから最新情報を引き出す（なければ0）
-        const masterInfo = masterDataCache[key] || { constant: parseFloat(r.const || 0), isNew: false };
         const c = masterInfo.constant;
         const isNewSong = masterInfo.isNew;
 
-        // APIから取ってきたデータならランプを自動算出、個人シートから復元したデータなら既存のランプを流用
-        let lamp = "";
-        if (isApiAvailable) {
-            lamp = r.score >= 1010000 ? "AJC" : r.is_alljustice ? "AJ" : r.is_fullcombo ? "FC" : "";
-        } else {
-            lamp = r.lamp || ""; // 個人シートのランプをそのまま保持
-        }
+        let lamp = isApiAvailable ? (r.score >= 1010000 ? "AJC" : r.is_alljustice ? "AJ" : r.is_fullcombo ? "FC" : "") : (r.lamp || "");
+        
+        // スコア補正値を計算
+        const scoreMod = calculateScoreModifier(r.score, lamp);
 
+        // 💡【重要】ここでコスト計算を完了させ、オブジェクトの中にプロパティとしてガッチリ保存する！
         return {
             title: r.title,
             diff: r.diff,
-            const: c,                                    // 💡 MasterDataの最新定数
-            score: r.score,                              // 💡 スコアは維持
-            rating: calculateChuniRating(r.score, c),    // 💡 最新定数ベースで内部レーティングを再計算！
+            const: c,
+            score: r.score,
+            rating: calculateChuniRating(r.score, c),
             lamp: lamp,
-            isNew: isNewSong                             // 💡 MasterData基準の新曲フラグ
+            isNew: isNewSong,
+            tairyoku: Math.round(masterInfo.tairyoku * scoreMod * 100) / 100,
+            kenban: Math.round(masterInfo.kenban * scoreMod * 100) / 100,
+            chuni: Math.round(masterInfo.chuni * scoreMod * 100) / 100,
+            kuse: Math.round(masterInfo.kuse * scoreMod * 100) / 100,
+            mainTrend: masterInfo.mainTrend // 💡これでフロントエンドまで100%トレンドが届きます！
         };
     }).filter(r => r.const >= 13.5 || r.const === 0);
 
     return processedRecords;
+}
+
+/**
+ * 💡 スコア補正値計算用のヘルパー関数（もしGAS内にまだ無ければ、fetchAndProcessFromApiの下辺りに貼り付けてください）
+ */
+function calculateScoreModifier(score, lamp) {
+    if (score >= 1010000 || lamp === "AJC") return 1.0;
+    if (score >= 1007500) return 0.95;
+    if (score >= 1005000) return 0.9;
+    if (score >= 1000000) return 0.8;
+    if (score >= 990000) return 0.7;
+    if (score >= 975000) return 0.5;
+    return 0.0;
 }
 
 function calculateChuniRating(score, constant) {
@@ -989,7 +1021,7 @@ function calculateChuniRating(score, constant) {
     if (score >= 950000) return constant - 1.67 + (score - 950000) * 0.01 / 150;
     if (score >= 925000) return constant - 3.34 + (score - 925000) * 1.67 / 25000;
     if (score >= 900000) return constant - 5.0 + (score - 900000) * 1.66 / 25000;
-    return 0;
+    return 0; 
 }
 
 function createJsonResponse(obj) {
@@ -1004,51 +1036,51 @@ function createJsonResponse(obj) {
  */
 
 function syncMasterData() {
-    // 💡 【重要】アンケートツールのスプレッドシートIDをここに貼り付けてください
-    // URLの「https://docs.google.com/spreadsheets/d/ ○○○○ /edit」の○○○○の部分です
-    const SOURCE_SPREADSHEET_ID = "1q-3deFNdWKTvscb8aKTGygXQt_PlvnpVLE3Iz40xZwo";
-
-    const SOURCE_SHEET_NAME = "MasterData"; // アンケートツール側のシート名（もし違う場合は変更してください）
-    const TARGET_SHEET_NAME = "MasterData"; // スコア管理ツール側のシート名
-
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    let logSheet = ss.getSheetByName("DebugLog") || ss.insertSheet("DebugLog");
-
-    try {
-        // 1. アンケートツール側のスプレッドシートを開く
-        const sourceSs = SpreadsheetApp.openById(SOURCE_SPREADSHEET_ID);
-        const sourceSheet = sourceSs.getSheetByName(SOURCE_SHEET_NAME);
-        if (!sourceSheet) {
-            throw new Error("コピー元のシート「" + SOURCE_SHEET_NAME + "」が見つかりません。");
-        }
-
-        // 2. データの取得
-        const sourceData = sourceSheet.getDataRange().getValues();
-        if (sourceData.length <= 1) {
-            throw new Error("コピー元のデータが空、またはヘッダーしかありません。");
-        }
-
-        // 3. スコア管理ツール側のMasterDataシートを取得
-        let targetSheet = ss.getSheetByName(TARGET_SHEET_NAME) || ss.insertSheet(TARGET_SHEET_NAME);
-
-        // 4. 古いマスタをクリアして、新しいマスタを一括書き込み
-        targetSheet.clear();
-        targetSheet.getRange(1, 1, sourceData.length, sourceData[0].length).setValues(sourceData);
-
-        logSheet.appendRow([new Date(), "INFO", "MasterDataの同期に成功しました。総行数: " + sourceData.length]);
-
-    } catch (error) {
-        logSheet.appendRow([new Date(), "ERROR", "MasterData同期失敗: " + String(error.message || error)]);
-        throw error; // トリガー実行時にもエラーが通知されるように再スロー
+  // 💡 【重要】アンケートツールのスプレッドシートIDをここに貼り付けてください
+  // URLの「https://docs.google.com/spreadsheets/d/ ○○○○ /edit」の○○○○の部分です
+  const SOURCE_SPREADSHEET_ID = "1q-3deFNdWKTvscb8aKTGygXQt_PlvnpVLE3Iz40xZwo";
+  
+  const SOURCE_SHEET_NAME = "MasterData"; // アンケートツール側のシート名（もし違う場合は変更してください）
+  const TARGET_SHEET_NAME = "MasterData"; // スコア管理ツール側のシート名
+  
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let logSheet = ss.getSheetByName("DebugLog") || ss.insertSheet("DebugLog");
+  
+  try {
+    // 1. アンケートツール側のスプレッドシートを開く
+    const sourceSs = SpreadsheetApp.openById(SOURCE_SPREADSHEET_ID);
+    const sourceSheet = sourceSs.getSheetByName(SOURCE_SHEET_NAME);
+    if (!sourceSheet) {
+      throw new Error("コピー元のシート「" + SOURCE_SHEET_NAME + "」が見つかりません。");
     }
+    
+    // 2. データの取得
+    const sourceData = sourceSheet.getDataRange().getValues();
+    if (sourceData.length <= 1) {
+      throw new Error("コピー元のデータが空、またはヘッダーしかありません。");
+    }
+    
+    // 3. スコア管理ツール側のMasterDataシートを取得
+    let targetSheet = ss.getSheetByName(TARGET_SHEET_NAME) || ss.insertSheet(TARGET_SHEET_NAME);
+    
+    // 4. 古いマスタをクリアして、新しいマスタを一括書き込み
+    targetSheet.clear();
+    targetSheet.getRange(1, 1, sourceData.length, sourceData[0].length).setValues(sourceData);
+    
+    logSheet.appendRow([new Date(), "INFO", "MasterDataの同期に成功しました。総行数: " + sourceData.length]);
+    
+  } catch (error) {
+    logSheet.appendRow([new Date(), "ERROR", "MasterData同期失敗: " + String(error.message || error)]);
+    throw error; // トリガー実行時にもエラーが通知されるように再スロー
+  }
 }
 
 /**
  * スプレッドシートを開いたときに、手動実行用のカスタムメニューを追加する
  */
 function onOpen() {
-    const ui = SpreadsheetApp.getUi();
-    ui.createMenu('🛠️ 管理者メニュー')
-        .addItem('最新のMasterDataを同期（アンケートツールから）', 'syncMasterData')
-        .addToUi();
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('🛠️ 管理者メニュー')
+    .addItem('最新のMasterDataを同期（アンケートツールから）', 'syncMasterData')
+    .addToUi();
 }
