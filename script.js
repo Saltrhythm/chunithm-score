@@ -210,496 +210,823 @@ function handleSuccess(result) {
  * フィルター（検索窓 + セレクトボックス + トレンド + 難易度）の値を読み取って表示を更新する
  */
 function updateFilters() {
+
     const searchInput = document.getElementById('search-input');
+
     const minConstSelect = document.getElementById('min-constant');
+
     const maxConstSelect = document.getElementById('max-constant');
+
     const minRateInput = document.getElementById('min-rating');
+
     const maxRateInput = document.getElementById('max-rating');
+
     const lampSelect = document.getElementById('lamp-filter');
 
+
+
     // Rank / スコア切り替え用
+
     const filterModeSelect = document.getElementById('filter-mode');
+
     const rankMinSelect = document.getElementById('rank-min');
+
     const rankMaxSelect = document.getElementById('rank-max');
+
     const minScoreInput = document.getElementById('min-score');
+
     const maxScoreInput = document.getElementById('max-score');
+
+
 
     if (!searchInput || !minConstSelect || !maxConstSelect || !rankMinSelect || !rankMaxSelect || !lampSelect) return;
 
+
+
     const searchText = searchInput.value.toLowerCase().trim();
+
     const minConst = parseFloat(minConstSelect.value);
+
     const maxConst = parseFloat(maxConstSelect.value);
 
+
+
     // 切り替えモード（"rank" または "score"）を取得
+
     const filterMode = filterModeSelect ? filterModeSelect.value : 'rank';
+
     const rankMin = parseFloat(rankMinSelect.value);
+
     const rankMax = parseFloat(rankMaxSelect.value);
 
+
+
     // スコア入力の値を取得し、空文字なら初期値（0〜1010000）を割り振る
+
     const minScoreVal = minScoreInput ? minScoreInput.value : "";
+
     const maxScoreVal = maxScoreInput ? maxScoreInput.value : "";
+
     const minScore = minScoreVal !== "" ? parseFloat(minScoreVal) : 0;
+
     const maxScore = maxScoreVal !== "" ? parseFloat(maxScoreVal) : 1010000;
 
+
+
     // .value を付けて値を取得し、空文字判定を行います
+
     const minRateVal = minRateInput ? minRateInput.value : "";
+
     const maxRateVal = maxRateInput ? maxRateInput.value : "";
 
+
+
     const minRate = minRateVal !== "" ? parseFloat(minRateVal) : 0;
+
     const maxRate = maxRateVal !== "" ? parseFloat(maxRateVal) : 99.99;
+
+
 
     const lampValue = lampSelect.value;
 
+
+
     // 💡 トレンド有効化スイッチの状態を取得
+
     const trendSwitch = document.getElementById('trend-enable-switch');
+
     const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
+
     const activeTrends = Array.from(document.querySelectorAll('.btn-trend-filter.active')).map(btn => btn.getAttribute('data-trend'));
 
-    // 💡 アクティブな難易度（diff）を取得
+
+
+    // 💡【新設】アクティブな難易度（diff）を取得
+
     const activeDiffs = Array.from(document.querySelectorAll('.btn-diff-filter.active')).map(btn => btn.getAttribute('data-diff'));
 
-    // 💡【追加】WE単体、またはWEを含むマルチ選択かをチェック
-    const hasWE = activeDiffs.includes("WE");
-    const isOnlyWE = activeDiffs.length === 1 && hasWE;
+
 
     // フィルタリング実行
+
     const filteredData = myCurrentRecords.filter(item => {
+
         // 1. 曲名で絞り込み
+
         const title = String(item.title || "").toLowerCase();
+
         const matchesTitle = title.includes(searchText);
 
-        // 💡 難易度（diff）で絞り込み
+
+
+        // 2. Ratingで絞り込み
+
+        const currentRate = parseFloat(item.rating) || 0;
+
+        const matchesRating = (currentRate >= minRate && currentRate <= maxRate);
+
+
+
+        // 💡 難易度（diff）で絞り込み（★新設）
+
         const itemDiff = String(item.diff || "").toUpperCase();
+
         const matchesDiff = activeDiffs.includes(itemDiff);
 
-        // 2. Ratingで絞り込み（★WE選択時は単曲レートフィルターを無視・免除）
-        const currentRate = parseFloat(item.rating) || 0;
-        const isRateExempt = (itemDiff === "WE" && hasWE); 
-        const matchesRating = isRateExempt || (currentRate >= minRate && currentRate <= maxRate);
+
 
         // 3. 定数で絞り込み（★WE用のエスケープ安全弁付きに強化）
+
         const constant = parseFloat(item.const) || 0;
+
         // 現在の曲がWE、かつ難易度WEが選択されている場合は、定数フィルター(13.5〜16.0)をパスさせる
-        const isWeExempt = (itemDiff === "WE" && hasWE);
+
+        const isWeExempt = (itemDiff === "WE" && activeDiffs.includes("WE"));
+
         const matchesConstant = isWeExempt || (constant >= minConst && constant <= maxConst);
 
+
+
         // 4. Rank または スコア で絞り込み
+
         const tScore = parseFloat(item.score) || 0;
+
         let matchesRankOrScore = true;
 
+
+
         if (filterMode === 'rank') {
+
             matchesRankOrScore = (tScore >= rankMin && tScore <= getUpperLimit(rankMax));
+
         } else {
+
             matchesRankOrScore = (tScore >= minScore && tScore <= maxScore);
+
         }
+
+
 
         // 5. ランプで絞り込み
+
         const itemLamp = item.lamp || "None";
+
         let matchesLamp = true;
 
+
+
         if (lampValue !== 'all') {
+
             if (lampValue === 'ajc') {
+
                 matchesLamp = itemLamp.includes('AJC') || itemLamp.includes('JUSTICE CRITICAL');
+
             } else if (lampValue === 'aj') {
+
                 matchesLamp = itemLamp.includes('AJ') || itemLamp.includes('JUSTICE');
+
             } else if (lampValue === 'None') {
+
                 const hasAJ = itemLamp.includes('AJ') || itemLamp.includes('JUSTICE');
+
                 matchesLamp = !hasAJ;
+
             }
+
         }
 
-        // 7. 表示対象（全曲/旧曲/新曲）判定（★WE選択時は強制的に「全曲(all)」として扱いパスさせる）
+
+
+        // 7. 表示対象（全曲/旧曲/新曲）判定
+
         let matchesType = true;
-        const effectiveTypeFilter = hasWE ? 'all' : currentTypeFilter;
-        if (effectiveTypeFilter === 'old') matchesType = !item.isNew;
-        if (effectiveTypeFilter === 'new') matchesType = item.isNew;
+
+        if (currentTypeFilter === 'old') matchesType = !item.isNew;
+
+        if (currentTypeFilter === 'new') matchesType = item.isNew;
+
+
 
         // トレンドフィルター判定
+
         let matchesTrend = true;
+
         if (isTrendEnabled) {
+
             const songTrend = item.mainTrend || "None";
+
             matchesTrend = activeTrends.includes(songTrend);
+
         } else {
+
             matchesTrend = true;
+
         }
 
+
+
         return matchesTitle && matchesRating && matchesDiff && matchesConstant && matchesRankOrScore && matchesLamp && matchesType && matchesTrend;
+
     });
 
+
+
     // 6. ソートの実行
+
     sortData(filteredData);
 
+
+
     // 描画
+
     displayScores(filteredData);
 
 
+
+
+
     // =================================================================
+
     // ★適用中のフィルター条件をバッジでリアルタイム表示
+
     // =================================================================
+
     const activeContainer = document.getElementById('active-filters-container');
+
     const activeList = document.getElementById('active-filters-list');
 
+
+
     if (activeContainer && activeList) {
+
         activeList.innerHTML = '';
+
         let hasActiveFilter = false;
 
+
+
         const addBadge = (text) => {
+
             const badge = document.createElement('span');
+
             badge.className = 'filter-badge';
+
             badge.textContent = text;
+
             activeList.appendChild(badge);
+
             hasActiveFilter = true;
+
         };
 
-        // 難易度バッジ表示（デフォルト[EXP, MAS, ULT]以外になっている時だけバッジ表示）
+
+
+        // 💡【新設】難易度バッジ表示（デフォルト[EXP, MAS, ULT]以外になっている時だけバッジ表示）
+
         const isDefaultDiff = activeDiffs.length === 3 && activeDiffs.includes("EXP") && activeDiffs.includes("MAS") && activeDiffs.includes("ULT") && !activeDiffs.includes("WE");
+
         if (!isDefaultDiff) {
+
             if (activeDiffs.length === 0) {
+
                 addBadge("難易度: 表示なし");
+
             } else if (activeDiffs.length === 4) {
+
                 addBadge("難易度: すべて");
+
             } else {
+
                 addBadge(`難易度: ${activeDiffs.join(', ')}`);
+
             }
+
         }
 
-        // 💡【追加条件】WE選択時は「単レバッジ」を表示しない
-        if (!hasWE && (minRateVal !== "" || maxRateVal !== "")) {
+
+
+        if (minRateVal !== "" || maxRateVal !== "") {
+
             addBadge(`単レ: ${minRateVal || '0'}〜${maxRateVal || '99.99'}`);
+
         }
+
+
 
         if (lampValue !== 'all') {
+
             const lampText = lampSelect.options[lampSelect.selectedIndex]?.text || lampValue;
+
             addBadge(`ランプ: ${lampText}`);
+
         }
+
+
 
         if (filterMode === 'rank') {
+
             if (rankMinSelect.value !== '0' || rankMaxSelect.value !== '1010000') {
+
                 const minText = rankMinSelect.options[rankMinSelect.selectedIndex]?.text || rankMin;
+
                 const maxText = rankMaxSelect.options[rankMaxSelect.selectedIndex]?.text || rankMax;
+
                 addBadge(`Rank: ${minText}〜${maxText}`);
+
             }
+
         } else {
+
             if (minScoreVal !== "" || maxScoreVal !== "") {
+
                 const displayMin = minScoreVal !== "" ? Number(minScoreVal).toLocaleString() : '0';
+
                 const displayMax = maxScoreVal !== "" ? Number(maxScoreVal).toLocaleString() : '1,010,000';
+
                 addBadge(`スコア: ${displayMin}〜${displayMax}`);
+
             }
+
         }
 
-        // 定数フィルターが有効なバッジ表示条件（WE選択時は定数が意味を持たないため非表示）
-        if ((minConstSelect.value !== '13.5' || maxConstSelect.value !== '16.0') && !hasWE) {
+
+
+        // 💡 定数フィルターが有効なバッジ表示条件（WE単体選択時は定数が意味を持たないため調整）
+
+        if ((minConstSelect.value !== '13.5' || maxConstSelect.value !== '16.0') && !activeDiffs.every(d => d === "WE")) {
+
             addBadge(`定数: ${minConstSelect.value}〜${maxConstSelect.value}`);
+
         }
 
-        // 💡【条件変更】WE選択時は強制的に「対象: 全曲」のバッジを出すか、不要なら出さないように制御
-        if (hasWE) {
-            // WE選択時は「対象: 全曲」に固定されることをユーザーに明示
-            addBadge(`対象: 全曲 (WE固定)`);
-        } else if (typeof currentTypeFilter !== 'undefined' && currentTypeFilter !== 'all') {
+
+
+        if (typeof currentTypeFilter !== 'undefined' && currentTypeFilter !== 'all') {
+
             const targetBtn = document.getElementById(`filter-${currentTypeFilter}`);
+
             const targetText = targetBtn ? targetBtn.textContent.trim() : currentTypeFilter;
+
             addBadge(`対象: ${targetText}`);
+
         }
+
+
 
         if (isTrendEnabled) {
+
             const inactiveTrends = Array.from(document.querySelectorAll('.btn-trend-filter:not(.active)')).map(btn => btn.getAttribute('data-trend'));
+
             if (inactiveTrends.length > 0 && inactiveTrends.length < 4) {
+
                 addBadge(`除外傾向: ${inactiveTrends.join(', ')}`);
+
             } else if (inactiveTrends.length === 4) {
+
                 addBadge(`傾向: 表示なし`);
+
             } else {
+
                 addBadge(`傾向フィルター適用中`);
+
             }
+
         }
+
+
 
         if (hasActiveFilter) {
+
             activeContainer.style.display = 'flex';
+
         } else {
+
             activeContainer.style.display = 'none';
+
         }
+
     }
+
 }
 
+
+
 /**
- * フィルター初期化
+ * 💡【修正統合版】フィルター初期化（難易度ボタンのWE相互排他トグル対応）
  */
+
 function initFilters() {
+
     const minConstSelect = document.getElementById('min-constant');
+
     const maxConstSelect = document.getElementById('max-constant');
+
     const minRateInput = document.getElementById('min-rating');
+
     const maxRateInput = document.getElementById('max-rating');
+
     const searchInput = document.getElementById('search-input');
+
     const lampSelect = document.getElementById('lamp-filter');
+
     const filterModeSelect = document.getElementById('filter-mode');
+
     const rankMinSelect = document.getElementById('rank-min');
+
     const rankMaxSelect = document.getElementById('rank-max');
+
     const minScoreInput = document.getElementById('min-score');
+
     const maxScoreInput = document.getElementById('max-score');
+
     const trendSwitch = document.getElementById('trend-enable-switch');
+
+
 
     if (!minConstSelect || !maxConstSelect) return;
 
+
+
     // 定数セレクトボックスの中身生成
+
     minConstSelect.innerHTML = "";
+
     maxConstSelect.innerHTML = "";
+
     for (let i = 135; i <= 160; i++) {
+
         const val = (i / 10).toFixed(1);
+
         minConstSelect.insertAdjacentHTML('beforeend', `<option value="${val}">${val}</option>`);
+
     }
+
     for (let i = 160; i >= 135; i--) {
+
         const val = (i / 10).toFixed(1);
+
         maxConstSelect.insertAdjacentHTML('beforeend', `<option value="${val}">${val}</option>`);
+
     }
+
+
 
     minConstSelect.value = "13.5";
+
     maxConstSelect.value = "16.0";
 
+
+
     [minConstSelect, maxConstSelect, lampSelect, rankMinSelect, rankMaxSelect].forEach(el => {
+
         if (el) el.addEventListener('change', updateFilters);
+
     });
+
     [searchInput, minRateInput, maxRateInput, minScoreInput, maxScoreInput].forEach(el => {
+
         if (el) el.addEventListener('input', updateFilters);
+
     });
+
+
 
     if (filterModeSelect) {
+
         filterModeSelect.addEventListener('change', (e) => {
+
             const currentMode = e.target.value;
+
             const rankContainer = document.getElementById('rank-filter-container');
+
             const scoreContainer = document.getElementById('score-filter-container');
+
+
 
             if (currentMode === 'rank') {
+
                 filterModeSelect.classList.add('mode-rank');
+
                 filterModeSelect.classList.remove('mode-score');
+
                 if (rankContainer) rankContainer.style.display = 'flex';
+
                 if (scoreContainer) scoreContainer.style.display = 'none';
+
             } else {
+
                 filterModeSelect.classList.add('mode-score');
+
                 filterModeSelect.classList.remove('mode-rank');
+
                 if (rankContainer) rankContainer.style.display = 'none';
+
                 if (scoreContainer) scoreContainer.style.display = 'flex';
+
             }
+
             updateFilters();
+
         });
+
     }
 
-    // 表示対象ボタン（ここは元のコードのまま）
+
+
+    // 表示対象ボタン
+
     document.querySelectorAll('.btn-filter').forEach(btn => {
+
         btn.addEventListener('click', (e) => {
-            const activeDiffs = Array.from(document.querySelectorAll('.btn-diff-filter.active')).map(btn => btn.getAttribute('data-diff'));
-            if (activeDiffs.includes("WE")) {
-                alert("WORLD'S END選択時は、表示対象を「全曲」から変更できません。");
-                return;
-            }
 
             document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
+
             e.target.classList.add('active');
+
             if (e.target.id === 'filter-all') currentTypeFilter = 'all';
+
             else if (e.target.id === 'filter-old') currentTypeFilter = 'old';
+
             else if (e.target.id === 'filter-new') currentTypeFilter = 'new';
+
             updateFilters();
+
         });
+
     });
 
 
-    // =================================================================
-    // 🎨 【ここから差し替え】難易度ボタンのカラー定義と強制スタイル適用
-    // =================================================================
-    const diffStyles = {
-        'EXP': { bg: '#ff4c4c', text: '#ffffff' },
-        'MAS': { bg: '#aa33ff', text: '#ffffff' },
-        'ULT': { bg: '#222222', text: '#ffcc00' },
-        'WE':  { bg: 'linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3)', text: '#ffffff' }
-    };
-    const inactiveStyle = { bg: '#e2e8f0', text: '#64748b' }; // OFF時のグレー
 
-    // 💡 端末やOS、ブラウザのお節介デザインを完全破壊してスタイルを強制同期する関数
-    function syncDiffButtonStyles() {
-        document.querySelectorAll('.btn-diff-filter').forEach(btn => {
-            const diff = btn.getAttribute('data-diff');
-            
-            // 🔥【最重要】Safariや各アプリ内ブラウザ固有のデフォルト装飾をすべて剥奪
-            btn.style.webkitAppearance = 'none';
-            btn.style.mozAppearance = 'none';
-            btn.style.appearance = 'none';
-            btn.style.border = 'none';
-            btn.style.outline = 'none';
-            btn.style.boxShadow = 'none';
-            btn.style.borderRadius = '6px'; // 必要に応じて角丸を設定（お好みのサイズに）
-            btn.style.padding = '6px 12px';  // 必要に応じてパディングを設定
-            
-            // 🔥 iOSのダークモードによる「自動色反転」や「コントラスト調整」を無効化
-            btn.style.colorScheme = 'light'; 
+    // 💡【修正ポイント】メイン画面 難易度ボタンの相互排他クリックイベント
 
-            if (btn.classList.contains('active')) {
-                const conf = diffStyles[diff] || { bg: '#718093', text: '#ffffff' };
-                btn.style.background = conf.bg;
-                btn.style.color = conf.text;
-                btn.style.fontWeight = 'bold';
-                if (diff === 'WE') {
-                    btn.style.textShadow = '1px 1px 2px rgba(0,0,0,0.8)';
-                } else {
-                    btn.style.textShadow = 'none';
-                }
-            } else {
-                btn.style.background = inactiveStyle.bg;
-                btn.style.color = inactiveStyle.text;
-                btn.style.fontWeight = 'normal';
-                btn.style.textShadow = 'none';
-            }
-        });
-    }
-
-    // 💡 メイン画面 難易度ボタンの相互排他クリックイベント（スタイル適用連動）
     document.querySelectorAll('.btn-diff-filter').forEach(btn => {
+
         btn.addEventListener('click', (e) => {
+
             const clickedBtn = e.target;
+
             const clickedDiff = clickedBtn.getAttribute('data-diff');
 
+
+
             // まずクリックされたボタン自身をトグル（ON/OFF反転）
+
             clickedBtn.classList.toggle('active');
 
-            // 排他判定を実行
-            if (clickedBtn.classList.contains('active')) {
-                if (clickedDiff === "WE") {
-                    // WEがONになったら、新曲・旧曲ボタンのactiveを「全曲」に強制リセット
-                    document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
-                    const allBtn = document.getElementById('filter-all');
-                    if (allBtn) allBtn.classList.add('active');
-                    currentTypeFilter = 'all';
 
-                    // 通常難易度（EXP, MAS, ULT）をすべてOFFにする
+
+            // 💡 排他判定を実行
+
+            if (clickedBtn.classList.contains('active')) {
+
+                if (clickedDiff === "WE") {
+
+                    // WEがアクティブになったら、通常難易度（EXP, MAS, ULT）をすべてOFFにする
+
                     document.querySelectorAll('.btn-diff-filter:not([data-diff="WE"])').forEach(b => {
+
                         b.classList.remove('active');
+
                     });
+
                 } else {
+
                     // 通常難易度のいずれかがアクティブになったら、WEをOFFにする
+
                     document.querySelectorAll('.btn-diff-filter[data-diff="WE"]').forEach(b => {
+
                         b.classList.remove('active');
+
                     });
+
                 }
+
             }
 
-            // 🎨 スタイルをその場で強制適用
-            syncDiffButtonStyles();
+
 
             // 最後に表示を更新
+
             updateFilters();
+
         });
+
     });
 
-    // トレンド初期設定（ここは元のコードのまま）
+
+
+    // トレンド初期設定
+
     if (trendSwitch) {
+
         trendSwitch.checked = false;
+
     }
+
     document.querySelectorAll('.btn-trend-filter').forEach(btn => {
+
         btn.classList.remove('active');
+
         btn.classList.add('trend-disabled');
+
     });
+
+
 
     if (trendSwitch) {
+
         trendSwitch.addEventListener('change', (e) => {
+
             const isEnabled = e.target.checked;
+
             document.querySelectorAll('.btn-trend-filter').forEach(btn => {
+
                 if (isEnabled) {
+
                     btn.classList.add('active');
+
                     btn.classList.remove('trend-disabled');
+
                 } else {
+
                     btn.classList.remove('active');
+
                     btn.classList.add('trend-disabled');
+
                 }
+
             });
+
             updateFilters();
+
         });
+
     }
 
+
+
     document.querySelectorAll('.btn-trend-filter').forEach(btn => {
+
         btn.addEventListener('click', (e) => {
+
             if (trendSwitch && !trendSwitch.checked) return;
+
             e.target.classList.toggle('active');
+
             updateFilters();
+
         });
+
     });
 
-    // 💡 リセットボタン（難易度リセット時のスタイル適用連動）
+
+
+    // リセットボタン
+
     const clearBtn = document.getElementById('clear-filter');
+
     if (clearBtn) {
+
         clearBtn.addEventListener('click', () => {
+
             if (searchInput) searchInput.value = "";
+
             if (minConstSelect) minConstSelect.value = "13.5";
+
             if (maxConstSelect) maxConstSelect.value = "16.0";
+
             if (minRateInput) minRateInput.value = "";
+
             if (maxRateInput) maxRateInput.value = "";
+
             if (lampSelect) lampSelect.value = "all";
 
+
+
             if (rankMinSelect) rankMinSelect.value = "0";
+
             if (rankMaxSelect) rankMaxSelect.value = "1010000";
+
             if (minScoreInput) minScoreInput.value = "";
+
             if (maxScoreInput) maxScoreInput.value = "";
 
+
+
             if (filterModeSelect) {
+
                 filterModeSelect.value = "rank";
+
                 filterModeSelect.classList.add('mode-rank');
+
                 filterModeSelect.classList.remove('mode-score');
+
             }
+
             const rankContainer = document.getElementById('rank-filter-container');
+
             const scoreContainer = document.getElementById('score-filter-container');
+
             if (rankContainer) rankContainer.style.display = 'flex';
+
             if (scoreContainer) scoreContainer.style.display = 'none';
 
+
+
             document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
+
             document.getElementById('filter-all').classList.add('active');
+
             currentTypeFilter = 'all';
 
+
+
             if (trendSwitch) trendSwitch.checked = false;
+
             document.querySelectorAll('.btn-trend-filter').forEach(b => {
+
                 b.classList.remove('active');
+
                 b.classList.add('trend-disabled');
+
             });
 
-            // リセット時に難易度ボタンをデフォルト（EXP, MAS, ULTがON、WEがOFF）に戻す
+
+
+            // 💡【新設】リセット時に難易度ボタンをデフォルト（EXP, MAS, ULTがON、WEがOFF）に戻す
+
             document.querySelectorAll('.btn-diff-filter').forEach(b => {
+
                 const diff = b.getAttribute('data-diff');
+
                 if (diff === 'WE') {
+
                     b.classList.remove('active');
+
                 } else {
+
                     b.classList.add('active');
+
                 }
+
             });
 
-            // 🎨 リセットした見た目を即座に強制上書き適用
-            syncDiffButtonStyles();
+
 
             currentSortKey = 'rating';
+
             document.getElementById('sort-Rating')?.classList.add('active');
+
             document.getElementById('sort-score')?.classList.remove('active');
 
+
+
             updateFilters();
+
         });
+
     }
 
-    // ソート切り替えボタン（ここは元のコードのまま）
+
+
+    // ソート切り替えボタン
+
     const sortRatingBtn = document.getElementById('sort-Rating');
+
     const sortScoreBtn = document.getElementById('sort-score');
+
     if (sortRatingBtn) {
+
         sortRatingBtn.addEventListener('click', () => {
+
             currentSortKey = 'rating';
+
             sortRatingBtn.classList.add('active');
+
             sortScoreBtn.classList.remove('active');
+
             updateFilters();
+
         });
-    }
-    if (sortScoreBtn) {
-        sortScoreBtn.addEventListener('click', () => {
-            currentSortKey = 'techScore';
-            sortScoreBtn.classList.add('active');
-            sortRatingBtn.classList.remove('active');
-            updateFilters();
-        });
+
     }
 
-    // 💡【初回実行】初期化の最後に、現在のON/OFF（デフォルト状態）のカラーを強制注入
-    syncDiffButtonStyles();
+    if (sortScoreBtn) {
+
+        sortScoreBtn.addEventListener('click', () => {
+
+            currentSortKey = 'techScore';
+
+            sortScoreBtn.classList.add('active');
+
+            sortRatingBtn.classList.remove('active');
+
+            updateFilters();
+
+        });
+
+    }
+
 }
 
 /**
@@ -2033,7 +2360,7 @@ function displayStatsRanking() {
         if (currentStatsMode === 'song' && row.diff) {
             const rawDiff = String(row.diff).toUpperCase();
             const isWE = (rawDiff === "WE" || rawDiff.includes("WORLD") || rawDiff.includes("END"));
-            
+
             if (!isWE) {
                 const colors = diffColors[rawDiff] || { bg: '#718093', text: '#ffffff' };
                 diffBadgeHtml = `<span style="background: ${colors.bg}; color: ${colors.text}; font-size: 10px; padding: 2px 5px; border-radius: 3px; margin-left: 6px; font-weight: bold; display: inline-block; vertical-align: middle; box-shadow: 0 1px 2px rgba(0,0,0,0.2);">${rawDiff}</span>`;
