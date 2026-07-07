@@ -483,10 +483,9 @@ function initFilters() {
         });
     }
 
-    // 表示対象ボタン
+    // 表示対象ボタン（ここは元のコードのまま）
     document.querySelectorAll('.btn-filter').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            // 💡【追加】難易度でWEが選ばれている時は、ボタンの見た目のアクティブ切り替えや変数更新を制限する
             const activeDiffs = Array.from(document.querySelectorAll('.btn-diff-filter.active')).map(btn => btn.getAttribute('data-diff'));
             if (activeDiffs.includes("WE")) {
                 alert("WORLD'S END選択時は、表示対象を「全曲」から変更できません。");
@@ -502,7 +501,56 @@ function initFilters() {
         });
     });
 
-    // メイン画面 難易度ボタンの相互排他クリックイベント
+
+    // =================================================================
+    // 🎨 【ここから差し替え】難易度ボタンのカラー定義と強制スタイル適用
+    // =================================================================
+    const diffStyles = {
+        'EXP': { bg: '#ff4c4c', text: '#ffffff' },
+        'MAS': { bg: '#aa33ff', text: '#ffffff' },
+        'ULT': { bg: '#222222', text: '#ffcc00' },
+        'WE':  { bg: 'linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3)', text: '#ffffff' }
+    };
+    const inactiveStyle = { bg: '#e2e8f0', text: '#64748b' }; // OFF時のグレー
+
+    // 💡 端末やOS、ブラウザのお節介デザインを完全破壊してスタイルを強制同期する関数
+    function syncDiffButtonStyles() {
+        document.querySelectorAll('.btn-diff-filter').forEach(btn => {
+            const diff = btn.getAttribute('data-diff');
+            
+            // 🔥【最重要】Safariや各アプリ内ブラウザ固有のデフォルト装飾をすべて剥奪
+            btn.style.webkitAppearance = 'none';
+            btn.style.mozAppearance = 'none';
+            btn.style.appearance = 'none';
+            btn.style.border = 'none';
+            btn.style.outline = 'none';
+            btn.style.boxShadow = 'none';
+            btn.style.borderRadius = '6px'; // 必要に応じて角丸を設定（お好みのサイズに）
+            btn.style.padding = '6px 12px';  // 必要に応じてパディングを設定
+            
+            // 🔥 iOSのダークモードによる「自動色反転」や「コントラスト調整」を無効化
+            btn.style.colorScheme = 'light'; 
+
+            if (btn.classList.contains('active')) {
+                const conf = diffStyles[diff] || { bg: '#718093', text: '#ffffff' };
+                btn.style.background = conf.bg;
+                btn.style.color = conf.text;
+                btn.style.fontWeight = 'bold';
+                if (diff === 'WE') {
+                    btn.style.textShadow = '1px 1px 2px rgba(0,0,0,0.8)';
+                } else {
+                    btn.style.textShadow = 'none';
+                }
+            } else {
+                btn.style.background = inactiveStyle.bg;
+                btn.style.color = inactiveStyle.text;
+                btn.style.fontWeight = 'normal';
+                btn.style.textShadow = 'none';
+            }
+        });
+    }
+
+    // 💡 メイン画面 難易度ボタンの相互排他クリックイベント（スタイル適用連動）
     document.querySelectorAll('.btn-diff-filter').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const clickedBtn = e.target;
@@ -514,7 +562,7 @@ function initFilters() {
             // 排他判定を実行
             if (clickedBtn.classList.contains('active')) {
                 if (clickedDiff === "WE") {
-                    // 💡 WEがONになったら、新曲・旧曲ボタンのactiveを「全曲」に強制リセット
+                    // WEがONになったら、新曲・旧曲ボタンのactiveを「全曲」に強制リセット
                     document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
                     const allBtn = document.getElementById('filter-all');
                     if (allBtn) allBtn.classList.add('active');
@@ -532,12 +580,15 @@ function initFilters() {
                 }
             }
 
+            // 🎨 スタイルをその場で強制適用
+            syncDiffButtonStyles();
+
             // 最後に表示を更新
             updateFilters();
         });
     });
 
-    // トレンド初期設定
+    // トレンド初期設定（ここは元のコードのまま）
     if (trendSwitch) {
         trendSwitch.checked = false;
     }
@@ -570,7 +621,7 @@ function initFilters() {
         });
     });
 
-    // リセットボタン
+    // 💡 リセットボタン（難易度リセット時のスタイル適用連動）
     const clearBtn = document.getElementById('clear-filter');
     if (clearBtn) {
         clearBtn.addEventListener('click', () => {
@@ -578,8 +629,7 @@ function initFilters() {
             if (minConstSelect) minConstSelect.value = "13.5";
             if (maxConstSelect) maxConstSelect.value = "16.0";
             if (minRateInput) minRateInput.value = "";
-            if (maxRateInput) maxRateInput.value = "16.0"; // 元コードのロジック維持
-            if (maxRateInput && maxRateInput.id === 'max-rating') maxRateInput.value = ""; // 安全クリア
+            if (maxRateInput) maxRateInput.value = "";
             if (lampSelect) lampSelect.value = "all";
 
             if (rankMinSelect) rankMinSelect.value = "0";
@@ -617,6 +667,9 @@ function initFilters() {
                 }
             });
 
+            // 🎨 リセットした見た目を即座に強制上書き適用
+            syncDiffButtonStyles();
+
             currentSortKey = 'rating';
             document.getElementById('sort-Rating')?.classList.add('active');
             document.getElementById('sort-score')?.classList.remove('active');
@@ -625,7 +678,7 @@ function initFilters() {
         });
     }
 
-    // ソート切り替えボタン
+    // ソート切り替えボタン（ここは元のコードのまま）
     const sortRatingBtn = document.getElementById('sort-Rating');
     const sortScoreBtn = document.getElementById('sort-score');
     if (sortRatingBtn) {
@@ -644,6 +697,9 @@ function initFilters() {
             updateFilters();
         });
     }
+
+    // 💡【初回実行】初期化の最後に、現在のON/OFF（デフォルト状態）のカラーを強制注入
+    syncDiffButtonStyles();
 }
 
 /**
