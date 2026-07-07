@@ -42,6 +42,12 @@
             <button class="logout-btn" onclick="logout()">ログアウト</button>
         </div>
 
+        <div class="video-hub-trigger-area" style="margin: 10px 0 15px 0; text-align: center;">
+            <button id="open-video-hub-btn" class="btn-video-hub" onclick="openVideoHubModal()">
+                手元動画等のリクエスト / アップロード
+            </button>
+        </div>
+
         <div class="rating-wrapper">
             <div id="rating-average" class="rating-display-box">
             </div>
@@ -149,6 +155,16 @@
 
                         <div class="filter-row">
                             <div class="filter-group-target">
+                                <span class="filter-label-inline">難易度:</span>
+                                <button class="btn-diff-filter active" data-diff="EXP">EXP</button>
+                                <button class="btn-diff-filter active" data-diff="MAS">MAS</button>
+                                <button class="btn-diff-filter active" data-diff="ULT">ULT</button>
+                                <button class="btn-diff-filter" data-diff="WE">WE</button>
+                            </div>
+                        </div>
+
+                        <div class="filter-row">
+                            <div class="filter-group-target">
                                 <span class="filter-label-inline">対象:</span>
                                 <button id="filter-all" class="btn-filter filter-btn-unit active"
                                     data-value="all">全曲</button>
@@ -163,7 +179,7 @@
                                     style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: bold; color: #555; cursor: pointer; user-select: none;">
                                     <input type="checkbox" id="trend-enable-switch"
                                         style="transform: scale(1.1); cursor: pointer;">
-                                    傾向フィルターを有効化
+                                    有効化
                                 </label>
 
                                 <button class="btn-trend-filter" data-trend="POWER">POWER</button>
@@ -219,10 +235,6 @@
                 <div id="stats-control-area" style="text-align: center; margin-bottom: 5px;"></div>
 
                 <div id="ranking-controls">
-                    <div style="text-align: left; margin-bottom: 2px;">
-                        <button id="reset-visibility-btn" onclick="resetTableVisibility()"
-                            class="reset-btn">全て再表示（行をクリックすると非表示になります）</button>
-                    </div>
 
                     <div class="range-selector">
                         <button class="range-btn active" data-min="1000000"
@@ -248,6 +260,15 @@
                         </thead>
                         <tbody id="ranking-body"></tbody>
                     </table>
+                </div>
+
+                <div id="ranking-video-section" class="ranking-video-box"
+                    style="margin-top: 20px; border-top: 2px dashed #ccc; padding-top: 15px; display: none;">
+                    <h4 style="margin: 0 0 10px 0; color: #333;">
+                        この譜面の手元動画リンク
+                    </h4>
+                    <div id="ranking-video-list" class="ranking-video-list">
+                    </div>
                 </div>
 
                 <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
@@ -279,7 +300,7 @@
         </div>
     </div>
 
-<div id="vs-setup-modal" class="vs-modal">
+    <div id="vs-setup-modal" class="vs-modal">
         <div class="vs-modal-content">
             <h3 class="vs-modal-title">VS機能 (スコア比較)</h3>
 
@@ -307,6 +328,22 @@
                 </div>
             </div>
 
+            <div class="vs-filter-section" style="margin-top: 15px; text-align: left;">
+                <label
+                    style="font-weight: bold; font-size: 14px; color: #333; display: block; margin-bottom: 8px;">難易度
+                    (複数選択可)</label>
+                <div id="vs-diff-buttons-container" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button type="button" class="vs-btn-diff-filter" data-diff="EXP"
+                        onclick="toggleVsDiffButton(this)">EXP</button>
+                    <button type="button" class="vs-btn-diff-filter" data-diff="MAS"
+                        onclick="toggleVsDiffButton(this)">MAS</button>
+                    <button type="button" class="vs-btn-diff-filter" data-diff="ULT"
+                        onclick="toggleVsDiffButton(this)">ULT</button>
+                    <button type="button" class="vs-btn-diff-filter" data-diff="WE"
+                        onclick="toggleVsDiffButton(this)">WE</button>
+                </div>
+            </div>
+
             <div class="vs-form-group" style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 15px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                     <label style="font-weight: bold; margin: 0;">傾向フィルター (VS専用)</label>
@@ -315,15 +352,19 @@
                         <span class="vs-slider"></span>
                     </label>
                 </div>
-                
+
                 <div id="vs-trend-buttons-container" class="vs-trend-container vs-disabled">
-                    <button type="button" class="vs-btn-trend-filter" data-trend="POWER" onclick="toggleVsTrendButton(this)">POWER</button>
-                    <button type="button" class="vs-btn-trend-filter" data-trend="NOTES" onclick="toggleVsTrendButton(this)">NOTES</button>
-                    <button type="button" class="vs-btn-trend-filter" data-trend="CHUNI" onclick="toggleVsTrendButton(this)">CHUNI</button>
-                    <button type="button" class="vs-btn-trend-filter" data-trend="TRICKY" onclick="toggleVsTrendButton(this)">TRICKY</button>
+                    <button type="button" class="vs-btn-trend-filter" data-trend="POWER"
+                        onclick="toggleVsTrendButton(this)">POWER</button>
+                    <button type="button" class="vs-btn-trend-filter" data-trend="NOTES"
+                        onclick="toggleVsTrendButton(this)">NOTES</button>
+                    <button type="button" class="vs-btn-trend-filter" data-trend="CHUNI"
+                        onclick="toggleVsTrendButton(this)">CHUNI</button>
+                    <button type="button" class="vs-btn-trend-filter" data-trend="TRICKY"
+                        onclick="toggleVsTrendButton(this)">TRICKY</button>
                 </div>
             </div>
-            
+
             <div class="vs-btn-container" style="margin-top: 20px;">
                 <button id="vs-start-btn" class="btn-stats"
                     style="background:#2e7df0; color:#fff; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; font-weight:bold;"
@@ -343,6 +384,138 @@
 
         </div>
     </div>
+
+    <div id="video-hub-modal" class="modal" style="display: none; z-index: 1500;">
+        <div class="modal-content video-hub-content">
+            <h3>運指提供プラットフォーム</h3>
+
+            <div class="video-tab-container">
+                <button id="tab-request-btn" class="video-tab active"
+                    onclick="switchVideoTab('request')">リクエスト履歴</button>
+                <button id="tab-supply-btn" class="video-tab" onclick="switchVideoTab('supply')">アップロード履歴</button>
+            </div>
+
+            <div id="video-request-panel" class="video-panel" style="display: flex; flex-direction: column; gap: 20px;">
+
+                <div
+                    style="background: #fdfdfd; border: 1px solid #e3e3e3; padding: 16px; border-radius: 6px; display: flex; flex-direction: column; gap: 16px;">
+                    <h3 id="req-form-title"
+                        style="margin: 0; font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
+                        手元動画等をリクエストする</h3>
+                    <input type="hidden" id="req-edit-index" value="-1">
+
+                    <div class="video-form-row-basic" style="display: flex; gap: 12px; align-items: flex-end;">
+                        <div class="video-form-group" style="flex: 1;">
+                            <label
+                                style="display: block; font-size: 12px; font-weight: bold; margin-bottom: 4px; color: #555;">曲名</label>
+                            <input type="text" id="req-title-input" list="song-suggestions" placeholder="（サジェスト、履歴も連動）"
+                                style="width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
+                        </div>
+
+                        <div class="video-form-group" style="width: 110px;">
+                            <label
+                                style="display: block; font-size: 12px; font-weight: bold; margin-bottom: 4px; color: #555;">難易度</label>
+                            <select id="req-diff-input"
+                                style="width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; height: 38px; background: white;">
+                                <option value="EXP">EXPERT</option>
+                                <option value="MAS" selected>MASTER</option>
+                                <option value="ULT">ULTIMA</option>
+                                <option value="WE">WORLD'S END</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="video-form-row-comment" style="border-top: 1px dashed #ddd; padding-top: 12px;">
+                        <div class="video-form-group">
+                            <label
+                                style="display: block; font-size: 12px; font-weight: bold; margin-bottom: 6px; color: #555;">💬
+                                備考・リクエスト内容（任意）</label>
+                            <textarea id="req-comment-input" rows="3"
+                                placeholder="例：〇〇地帯の運指が知りたい、〇〇小節付近の餡蜜運指の動画が欲しい、など詳細なリクエストがあれば記入してください"
+                                style="width: 100%; box-sizing: border-box; resize: vertical; padding: 10px; border-radius: 4px; border: 1px solid #ccc; font-size: 13px; line-height: 1.5; background-color: #fafafa;"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="video-form-actions"
+                        style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px;">
+                        <button id="btn-req-cancel" class="btn-video-cancel" onclick="cancelRequestEdit()"
+                            style="display:none; background: #95a5a6; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px;">キャンセル</button>
+                        <button id="btn-req-submit" class="btn-video-submit" onclick="submitVideoRequest()"
+                            style="background: #e67e22; color: white; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">リクエストを投稿</button>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 style="margin: 0 0 10px 0; font-size: 15px; color: #333;"> 募集中のリクエスト（最新30件 /
+                        クリックで楽曲のランキングに移動）</h4>
+                    <div class="video-table-wrapper">
+                        <table class="video-hub-table">
+                            <thead>
+                                <tr>
+                                    <th>曲名</th>
+                                    <th style="width: 80px;">投稿者</th>
+                                    <th style="width: 110px;">日時</th>
+                                    <th style="width: 90px; text-align: center;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="video-request-tbody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+            <div id="video-supply-panel" class="video-panel" style="display: none;">
+                <div class="video-form-box">
+                    <h4 id="sup-form-title">手元動画等のリンクを共有する</h4>
+                    <input type="hidden" id="sup-edit-index" value="-1">
+                    <div class="video-vertical-form">
+                        <div class="form-row-flex">
+                            <input type="text" id="sup-title-input" placeholder="曲名（サジェスト、履歴も連動）"
+                                list="song-suggestions">
+                            <select id="sup-diff-input">
+                                <option value="EXP">EXPERT</option>
+                                <option value="MAS" selected>MASTER</option>
+                                <option value="ULT">ULTIMA</option>
+                                <option value="WE">WORLD'S END</option>
+                            </select>
+                        </div>
+                        <div class="form-row-flex" style="margin-top: 8px;">
+                            <input type="url" id="sup-url-input" placeholder="URL (YouTube, Xなど)..." required>
+                            <input type="text" id="sup-name-input" placeholder="タイトル (任意、空欄時は「手元動画」)">
+                        </div>
+                        <div style="display:flex; gap:8px; margin-top:10px;">
+                            <button type="button" id="btn-sup-submit" class="btn-submit-video" style="flex:1;"
+                                onclick="submitVideoSupply()">リンクを登録</button>
+                            <button type="button" id="btn-sup-cancel" class="btn-submit-video"
+                                style="background:#666; display:none;" onclick="cancelSupplyEdit()">キャンセル</button>
+                        </div>
+                    </div>
+                </div>
+
+                <h4>共有されたリンク（最新30件 / クリックで楽曲のランキングに移動）</h4>
+                <div class="video-table-wrapper">
+                    <table class="video-hub-table">
+                        <thead>
+                            <tr>
+                                <th>曲名</th>
+                                <th>タイトル (リンク)</th>
+                                <th style="width: 80px;">提供者</th>
+                                <th style="width: 90px;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="video-supply-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px; text-align: center;">
+                <button class="modal-close-btn" onclick="closeVideoHubModal()">閉じる</button>
+            </div>
+        </div>
+    </div>
+    <datalist id="song-suggestions"></datalist>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="script.js"></script>

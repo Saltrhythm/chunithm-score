@@ -16,13 +16,40 @@ function doPost(e) {
         const params = JSON.parse(e.postData.contents);
         const mode = String(params.mode || "checker");
 
+        // 💡【新設】手元動画リクエスト・アップロードの履歴取得（最新30件ずつ）
+        if (mode === "get_video_history") {
+            const history = getVideoHistory(ss);
+            return createJsonResponse({ status: "success", data: history });
+        }
+
+        // 💡【修正】新規リクエストの投稿（備考 params.comment を追加）
+        if (mode === "add_video_request") {
+            const res = addVideoRequestRow(ss, params.id, params.title, params.diff, params.requester, params.comment);
+            return createJsonResponse(res);
+        }
+
+        // 💡【新設】動画アップロード（供給）の投稿（新規 ＆ 編集上書き対応）
+        if (mode === "add_video_supply") {
+            // params.id があれば編集、なければ新規
+            const res = addVideoSupplyRow(ss, params.id, params.title, params.diff, params.contributor, params.videoUrl, params.videoTitle);
+            return createJsonResponse(res);
+        }
+
+        // 💡【新設】投稿の削除モード（リクエスト/アップロード共通）
+        if (mode === "delete_video_item") {
+            const res = deleteVideoItemRow(ss, params.id, params.playerName);
+            return createJsonResponse(res);
+        }
+
         // 1. ランキング取得モード
         if (mode === "get_ranking") {
             const t = String(params.title || "");
             const d = String(params.diff || "");
             const results = getRankingFromSheets(ss, t, d, params, logSheet);
             const songProps = getSongPropsFromMaster(ss, t, d); 
-            return createJsonResponse({ status: "success", data: results, songProps: songProps });
+            const videoList = getVideosForSong(ss, t, d);
+            
+            return createJsonResponse({ status: "success", data: results, songProps: songProps, videoList: videoList });
         }
 
         // 2. 統計取得モード
@@ -246,7 +273,7 @@ function getSongPropsFromMaster(ss, title, diff) {
 }
 
 /**
- * 統計情報を取得（MasterData定数リアルタイム参照 ＆ 99万未満除外平均スコア版）
+ * 💡 決定版：統計情報を取得（WEのみ平均スコア集計対象を90万点以上に緩和版）
  */
 function getStatsFromSheets(ss, params) {
     const userMapSheet = ss.getSheetByName("UserMap");
@@ -266,16 +293,19 @@ function getStatsFromSheets(ss, params) {
     const typeFilter = String(params.typeFilter || 'all');
     const filterMode = String(params.filterMode || "rank");
 
+    // フロントから渡された難易度フィルター（配列形式）を取得
+    const diffFilter = Array.isArray(params.diffFilter) ? params.diffFilter.map(d => String(d).toUpperCase().trim()) : [];
+
     const isTrendEnabled = !!(params.trendEnable !== undefined ? params.trendEnable : params.isTrendEnabled);
     const rawTrends = Array.isArray(params.trends) ? params.trends : (Array.isArray(params.activeTrends) ? params.activeTrends : []);
     const activeTrends = rawTrends.map(t => String(t).toUpperCase().trim());
 
     const masterSheet = ss.getSheetByName("MasterData");
-    // 💡 トレンドと最新定数を一括で保持するためのキャッシュオブジェクト
     const masterDataCache = {}; 
-    let totalMatchingSongs = 0;
+    
+    // 重複・空白を許さず、純粋な対象曲数だけを正確に数えるための名簿 (Set)
+    const uniqueMatchingSongs = new Set();
 
-    // 💡 定数はC列（インデックス2）、isNewはD列（インデックス3）で固定
     const targetConstIdx = 2;
     const targetIsNewIdx = 3;
 
@@ -292,21 +322,39 @@ function getStatsFromSheets(ss, params) {
 
             for (let i = 1; i < masterData.length; i++) {
                 const mRow = masterData[i];
-                const mTitle = String(mRow[titleIdx] || "");
-                const mDiff = String(mRow[diffIdx] || "");
-                const mFullKey = mDiff ? `${mTitle.trim()}_${mDiff.trim()}` : mTitle.trim();
+                
+                const mTitle = String(mRow[titleIdx] || "").trim();
+                let mDiff = String(mRow[diffIdx] || "").toUpperCase().trim();
+                
+                // 💡【WE表記の統一ガード】WORLD'S END 系の表記をすべて "WE" にマッピング
+                if (mDiff.includes("WORLD") || mDiff === "WE") {
+                    mDiff = "WE";
+                }
+                
+                if (!mTitle || !mDiff || mRow[targetConstIdx] === "") {
+                    continue; 
+                }
 
+                // MasterDataの難易度自体が、選択された難易度に無ければ除外
+                if (diffFilter.length > 0 && !diffFilter.includes(mDiff)) {
+                    continue;
+                }
+
+                const mFullKey = `${mTitle}_${mDiff}`;
                 const cConst = parseFloat(mRow[targetConstIdx] || 0);
                 const isNewStr = String(mRow[targetIsNewIdx] || "").toLowerCase().trim();
                 const mMain = String(mRow[mainIdx] || "").toUpperCase().trim();
 
-                // 💡 キャッシュに「最新定数」と「トレンド」を一緒に保存
                 masterDataCache[mFullKey] = {
                     constant: cConst,
-                    mainTrend: mMain
+                    mainTrend: mMain,
+                    diff: mDiff // フロントへのバッジ返却用
                 };
 
-                if (cConst >= minC && cConst <= maxC) {
+                // 💡 WE楽曲の場合は定数チェックをスキップして通過させる（定数がないため）
+                const isPassConstant = (mDiff === "WE") || (cConst >= minC && cConst <= maxC);
+
+                if (isPassConstant) {
                     let passType = false;
                     if (typeFilter === 'all') passType = true;
                     else if (typeFilter === 'new' && isNewStr === 'true') passType = true;
@@ -318,7 +366,7 @@ function getStatsFromSheets(ss, params) {
                             passTrend = activeTrends.includes(mMain);
                         }
                         if (passTrend) {
-                            totalMatchingSongs++;
+                            uniqueMatchingSongs.add(mFullKey);
                         }
                     }
                 }
@@ -335,6 +383,7 @@ function getStatsFromSheets(ss, params) {
         }
     });
 
+    // プレイヤーごとの集計処理
     for (let i = 1; i < userMap.length; i++) {
         const name = String(userMap[i][1] || "");
         const data = sheetDataMap[name];
@@ -344,7 +393,6 @@ function getStatsFromSheets(ss, params) {
         let playerTotalScoreFiltered = 0;
         let playerTotalCountFiltered = 0;
         
-        // 💡 個人用の「99万以上の合計スコア」と「その曲数」の受け皿を追加
         let playerValidScoreSum = 0;
         let playerValidScoreCount = 0;
 
@@ -353,14 +401,27 @@ function getStatsFromSheets(ss, params) {
             if (!row || row.length < 7) continue;
 
             const songName = String(row[0] || "不明な曲");
-            const diff = String(row[1] || "");
+            let diff = String(row[1] || "").toUpperCase().trim();
+            
+            // 【WE表記の統一ガード】ユーザー個別個人シート側の難易度も "WE" にマッピング
+            if (diff.includes("WORLD") || diff === "WE") {
+                diff = "WE";
+            }
+
+            // 個人のスコア行の難易度が、選択された難易度に無ければスキップ
+            if (diffFilter.length > 0 && !diffFilter.includes(diff)) {
+                continue;
+            }
+
             const fullTitleKey = diff ? `${songName.trim()}_${diff.trim()}` : songName.trim();
 
-            // 💡 プレイヤーシートの値ではなく、MasterDataのキャッシュから定数とトレンドをリアルタイムに引き出す
-            const masterInfo = masterDataCache[fullTitleKey] || { constant: parseFloat(row[2] || 0), mainTrend: "None" };
+            const masterInfo = masterDataCache[fullTitleKey] || { constant: parseFloat(row[2] || 0), mainTrend: "None", diff: diff };
             const cConst = masterInfo.constant; 
 
-            if (cConst < minC || cConst > maxC) continue;
+            // 💡 WE楽曲以外（通常曲）のときだけ定数フィルターを適用する
+            if (diff !== "WE" && (cConst < minC || cConst > maxC)) {
+                continue;
+            }
 
             if (isTrendEnabled && activeTrends.length > 0) {
                 const songMainTrend = masterInfo.mainTrend;
@@ -373,13 +434,16 @@ function getStatsFromSheets(ss, params) {
             const cLamp = String(row[5] || "");
             const isNewSongStr = String(row[6] || "").toLowerCase().trim();
 
-            const fullTitleDisplay = diff ? `${songName} [${diff}]` : songName;
+            const fullTitleDisplay = songName; 
 
-            // 💡 楽曲用オブジェクトに「99万以上の合計スコア」と「その人数」の受け皿を追加
             if (!songAggregation[fullTitleDisplay]) {
                 songAggregation[fullTitleDisplay] = {
-                    count: 0, constant: cConst, players: [],
-                    totalScoreAll: 0, totalCountAll: 0,
+                    count: 0, 
+                    constant: cConst, 
+                    diff: masterInfo.diff || diff, 
+                    players: [],
+                    totalScoreAll: 0, 
+                    totalCountAll: 0,
                     validScoreSum: 0,  
                     validScoreCount: 0 
                 };
@@ -387,8 +451,10 @@ function getStatsFromSheets(ss, params) {
             songAggregation[fullTitleDisplay].totalScoreAll += cScore;
             songAggregation[fullTitleDisplay].totalCountAll++;
 
-            // 💡 楽曲別で990,000点以上の場合のみ、平均スコア用カウンターに加算
-            if (cScore >= 990000) {
+            // 💡【重要修正】難易度に応じて平均スコア用の最低カットラインを動的に変更
+            // WEの場合は90万点、それ以外の通常曲の場合は99万点
+            const scoreCutoff = (diff === "WE") ? 900000 : 990000;
+            if (cScore >= scoreCutoff) {
                 songAggregation[fullTitleDisplay].validScoreSum += cScore;
                 songAggregation[fullTitleDisplay].validScoreCount++;
             }
@@ -422,8 +488,8 @@ function getStatsFromSheets(ss, params) {
                 playerTotalCountFiltered++;
                 playerTotalScoreFiltered += cScore;
                 
-                // 💡 個人別で990,000点以上の場合のみ、平均スコア用カウンターに加算
-                if (cScore >= 990000) {
+                // 💡 個人別統計（平均スコア）の算出時にも同様のカットライン条件を適用
+                if (cScore >= scoreCutoff) {
                     playerValidScoreSum += cScore;
                     playerValidScoreCount++;
                 }
@@ -437,32 +503,37 @@ function getStatsFromSheets(ss, params) {
         results.push({
             playerName: name,
             count: playerCountFiltered,
-            allPlayCount: playerTotalCountFiltered,
-            // 💡 個人別平均スコアを99万以上のデータのみで算出
+            // 💡 個人側の分母（全プレイ曲数）も、カットラインを満たした有効なプレイ数に同期させます
+            allPlayCount: playerValidScoreCount,
             avgScore: playerValidScoreCount > 0 ? Math.round(playerValidScoreSum / playerValidScoreCount) : 0
         });
     }
 
+    // 楽曲別ランキングの作成
     const songRanking = Object.keys(songAggregation).map(t => {
         const data = songAggregation[t];
         return {
-            title: t, count: data.count, constant: data.constant, players: data.players,
-            // 💡 楽曲別平均スコアを99万以上のデータのみで算出
+            title: t, 
+            count: data.count, 
+            constant: data.constant, 
+            diff: data.diff, 
+            players: data.players,
             avgScore: data.validScoreCount > 0 ? Math.round(data.validScoreSum / data.validScoreCount) : 0,
-            totalCountAll: data.totalCountAll || 0
+            // 💡 楽曲側の分母（全プレイ人数）も、カットラインを満たした有効な人数に同期させます
+            totalCountAll: data.validScoreCount || 0
         };
     });
 
     return {
         playerRanking: results,
         songRanking: songRanking,
-        theoryCount: totalMatchingSongs,
+        theoryCount: uniqueMatchingSongs.size, 
         totalUsers: userMap.length - 1
     };
 }
 
 /**
- * 💡 修正版：特定のプレイヤーの詳細データを取得する（MasterData定数リアルタイム参照版）
+ * 💡 修正版：特定のプレイヤーの詳細データを取得する（難易度マルチ・WE定数スルー対応版）
  */
 function getPlayerDetailFromSheet(ss, playerName, params) {
     playerName = playerName.replace(/[\*＼\/\\\[\]\?：:]/g, "").trim();
@@ -482,15 +553,15 @@ function getPlayerDetailFromSheet(ss, playerName, params) {
     const typeFilter = String(params.typeFilter || 'all');
     const filterMode = String(params.filterMode || "rank");
 
+    // 💡 フロントから渡された難易度フィルター（配列形式）を取得
+    const diffFilter = Array.isArray(params.diffFilter) ? params.diffFilter.map(d => String(d).toUpperCase().trim()) : [];
+
     const isTrendEnabled = !!(params.trendEnable !== undefined ? params.trendEnable : params.isTrendEnabled);
     const rawTrends = Array.isArray(params.trends) ? params.trends : (Array.isArray(params.activeTrends) ? params.activeTrends : []);
     const activeTrends = rawTrends.map(t => String(t).toUpperCase().trim());
 
     const masterSheet = ss.getSheetByName("MasterData");
-    // 💡 トレンドと最新定数を一括で保持するためのキャッシュオブジェクト
     const masterDataCache = {}; 
-    
-    // 💡 定数はC列（インデックス2）で固定
     const targetConstIdx = 2;
 
     if (masterSheet) {
@@ -506,11 +577,14 @@ function getPlayerDetailFromSheet(ss, playerName, params) {
 
             for (let i = 1; i < masterData.length; i++) {
                 const mRow = masterData[i];
-                const mTitle = String(mRow[titleIdx] || "");
-                const mDiff = String(mRow[diffIdx] || "");
-                const mFullKey = mDiff ? `${mTitle.trim()}_${mDiff.trim()}` : mTitle.trim();
+                const mTitle = String(mRow[titleIdx] || "").trim();
+                let mDiff = String(mRow[diffIdx] || "").toUpperCase().trim();
 
-                // 💡 キャッシュに「最新定数」と「トレンド」をセットで保存
+                // 💡【WE表記の統一ガード】
+                if (mDiff.includes("WORLD") || mDiff === "WE") mDiff = "WE";
+
+                const mFullKey = mDiff ? `${mTitle}_${mDiff}` : mTitle;
+
                 masterDataCache[mFullKey] = {
                     constant: parseFloat(mRow[targetConstIdx] || 0),
                     mainTrend: String(mRow[mainIdx] || "").toUpperCase().trim()
@@ -523,22 +597,29 @@ function getPlayerDetailFromSheet(ss, playerName, params) {
         const row = data[j];
         if (!row || row.length < 7) continue;
 
-        // 💡 順番変更：キャッシュを引くために、先に曲名と難易度を取得
-        const songName = String(row[0] || "");
-        const diff = String(row[1] || "");
-        const fullTitleKey = diff ? `${songName.trim()}_${diff.trim()}` : songName.trim();
+        const songName = String(row[0] || "").trim();
+        let diff = String(row[1] || "").toUpperCase().trim();
 
-        // 💡 プレイヤーシートの値ではなく、MasterDataのキャッシュから定数とトレンドをリアルタイムに引き出す
+        // 💡【WE表記の統一ガード】
+        if (diff.includes("WORLD") || diff === "WE") diff = "WE";
+
+        // 💡【追加】選択された難易度配列に含まれていない難易度ならスキップ
+        if (diffFilter.length > 0 && !diffFilter.includes(diff)) {
+            continue;
+        }
+
+        const fullTitleKey = diff ? `${songName}_${diff}` : songName;
         const masterInfo = masterDataCache[fullTitleKey] || { constant: parseFloat(row[2] || 0), mainTrend: "None" };
-        const cConst = masterInfo.constant; // ★常にMasterData基準の定数になる！
+        const cConst = masterInfo.constant; 
 
-        // 💡 最新化された定数（cConst）で範囲フィルターを通す
-        if (cConst < minC || cConst > maxC) continue;
+        // 💡 WE楽曲以外（通常曲）のときだけ定数フィルターを適用する
+        if (diff !== "WE" && (cConst < minC || cConst > maxC)) {
+            continue;
+        }
 
         if (isTrendEnabled && activeTrends.length > 0) {
-            const songMainTrend = masterInfo.mainTrend; // ★キャッシュから取得
-            if (!songMainTrend) continue; 
-            if (!activeTrends.includes(songMainTrend)) continue; 
+            const songMainTrend = masterInfo.mainTrend;
+            if (!songMainTrend || !activeTrends.includes(songMainTrend)) continue; 
         }
 
         const isNewSongStr = String(row[6] || "").toLowerCase().trim();
@@ -569,7 +650,7 @@ function getPlayerDetailFromSheet(ss, playerName, params) {
             title: fullTitleDisplay,
             score: cScore,
             isAchieved: isAchieved,
-            constant: cConst // 💡 フロント（JS）側でも最新定数を使えるように、念のためプロパティに含めて返却
+            constant: cConst 
         });
     }
     return details.sort((a, b) => b.score - a.score);
@@ -593,7 +674,7 @@ function getUpperLimitGAS(score) {
 
 
 /**
- * 💡 修正版：VS機能 スコア比較データ取得モード（MasterData定数＆トレンドリアルタイム参照版）
+ * 💡 修正統合版：VS機能 スコア比較データ取得モード（WE定数免除＆リアルタイム参照完全版）
  */
 function getVsDataFromSheets(ss, params) {
     const myName = String(params.myName || "").trim();
@@ -604,6 +685,10 @@ function getVsDataFromSheets(ss, params) {
     const isTrendEnabled = !!params.isTrendEnabled;
     const rawTrends = params.activeTrends || [];
     const activeTrends = rawTrends.map(t => String(t).toUpperCase().trim());
+
+    // 💡 フロントエンドから送られてきた難易度フィルター配列を取得して大文字・トリミング統一
+    const rawDiffs = params.diffFilter || [];
+    const activeDiffs = rawDiffs.map(d => String(d).toUpperCase().trim());
 
     // 💡 トレンドと最新定数を一括で保持するためのキャッシュオブジェクト
     const masterDataCache = {}; 
@@ -630,7 +715,7 @@ function getVsDataFromSheets(ss, params) {
                     if (!mRow) continue;
                     
                     const mSongName = String(mRow[titleIdx] || "").trim();
-                    const mDiff = String(mRow[diffIdx] || "").trim();
+                    const mDiff = String(mRow[diffIdx] || "").toUpperCase().trim(); // 大文字で統一
                     // この関数内で使用されるキー「曲名 [難易度]」の形式に統一
                     const mFullTitle = mDiff ? `${mSongName} [${mDiff}]` : mSongName;
                     
@@ -640,7 +725,8 @@ function getVsDataFromSheets(ss, params) {
                     if (mFullTitle) {
                         masterDataCache[mFullTitle] = {
                             constant: cConst,
-                            mainTrend: mTrend
+                            mainTrend: mTrend,
+                            difficulty: mDiff // 💡 キャッシュに元データの難易度を保持
                         };
                     }
                 }
@@ -672,17 +758,27 @@ function getVsDataFromSheets(ss, params) {
             if (!row || row.length < 4) continue;
 
             const songName = String(row[0] || "不明な曲");
-            const diff = String(row[1] || "");
+            const diff = String(row[1] || "").toUpperCase().trim(); // 大文字で統一
             const fullTitle = diff ? `${songName} [${diff}]` : songName;
 
-            // 💡 プレイヤーシートの値ではなく、MasterDataのキャッシュから定数とトレンドをリアルタイムに引き出す
-            const masterInfo = masterDataCache[fullTitle] || { constant: parseFloat(row[2] || 0), mainTrend: "None" };
-            const cConst = masterInfo.constant; // ★常にMasterData基準の定数になる！
+            // 💡 プレイヤーシートの値ではなく、MasterDataのキャッシュから諸情報をリアルタイムに引き出す
+            const masterInfo = masterDataCache[fullTitle] || { constant: parseFloat(row[2] || 0), mainTrend: "None", difficulty: diff };
+            const cConst = masterInfo.constant; 
+            const songDiff = masterInfo.difficulty;
 
-            // 💡 最新化された定数（cConst）で範囲フィルターを最優先で判定
-            if (cConst < minC || cConst > maxC) continue;
+            // 💡 【修正点1】難易度マルチ選択のフィルター判定を「最優先」に引き上げる
+            if (activeDiffs.length > 0) {
+                if (!songDiff || !activeDiffs.includes(songDiff)) {
+                    continue; 
+                }
+            }
 
-            // 💡 傾向フィルターも個人シートの列（row[11]）を見に行かず、MasterData基準で完全に判定
+            // 💡 【修正点2】難易度が「WE」以外の場合のみ、定数範囲フィルターを適用する（WE楽曲は定数チェックを免除して通過）
+            if (songDiff !== "WE") {
+                if (cConst < minC || cConst > maxC) continue;
+            }
+
+            // 💡 3. 傾向フィルターもMasterData基準で完全に判定
             if (isTrendEnabled && activeTrends.length > 0) {
                 const songTrend = masterInfo.mainTrend;
                 if (!songTrend || !activeTrends.includes(songTrend)) {
@@ -695,7 +791,7 @@ function getVsDataFromSheets(ss, params) {
             if (!songMap[fullTitle]) {
                 songMap[fullTitle] = {
                     title: fullTitle,
-                    constant: cConst, // 💡 最新の定数をVS行データに格納
+                    constant: cConst, 
                     scores: {} 
                 };
             }
@@ -761,6 +857,7 @@ function getVsDataFromSheets(ss, params) {
     };
 }
 
+
 /**
  * 💡 トレンド復活版：ユーザーごとのシートを更新する
  * （フロントエンドへ返す records にもトレンド情報を正しく引き渡す）
@@ -820,59 +917,24 @@ function updateUserSheet(ss, name, records) {
     }
 }
 
-/**
- * 💡 カスタム補正値計算（100万点未満0.4 / 最終3.0倍 / ②強化・④マイルド版）
- */
-function calculateScoreModifier(score, lamp) {
-    // 1,000,000点（S）未満は一律 0.4
-    if (score < 1000000) return 0.4;
-    
-    let modifier = 0.0;
-    
-    // ① 1,000,000 〜 1,005,000点（倍率：0.4 から 0.55 までゆるやかに上昇）
-    if (score >= 1000000 && score < 1005000) {
-        modifier = 0.4 + (score - 1000000) * (0.15 / 5000);
-    }
-    // ② 1,005,000 〜 1,007,500点（倍率：0.55 から 1.85 まで【さらに最も激しく】上昇）
-    else if (score >= 1005000 && score < 1007500) {
-        modifier = 0.55 + (score - 1005000) * (1.3 / 2500);
-    }
-    // ③ 1,007,500 〜 1,009,000点（倍率：1.85 から 2.39 まで【2番目に激しく】上昇）
-    else if (score >= 1007500 && score < 1009000) {
-        modifier = 1.85 + (score - 1007500) * (0.54 / 1500);
-    }
-    // ④ 1,009,000 〜 1,010,000点（倍率：2.39 から 2.65 まで上昇、傾きを少しマイルドに減少）
-    // 💡 最終3.0倍(AJ込み)の帳尻を合わせるため、この区間の計算結果に調整値(+0.25)を加算しています
-    else {
-        modifier = 2.39 + (score - 1009000) * (0.26 / 1000) + 0.25;
-    }
-    
-    // ⑤ ＋AJ（All Justice / AJC含む）の時にボーナス（+0.10倍）を与える
-    // 理論値（1,010,000点）の時は、2.65 + 0.25(上記) + 0.10 = ぴったり3.0倍になります
-    const currentLamp = String(lamp || "");
-    if (currentLamp.includes("AJ") || currentLamp.includes("AJC")) {
-        modifier += 0.10;
-    }
-    
-    return modifier;
-}
+
 
 /**
- * 💡 完全版：APIからレコードを取得し、MasterDataの最新定数・コスト・トレンドを完全内包して返す
+ * 💡 完全版：APIから通常譜面とWORLD'S ENDレコードを両方取得し、
+ * MasterDataの情報を完全内包して返す（WE対応版）
  */
 function fetchAndProcessFromApi(token, ss, playerName) {
-    // 1. MasterDataから最新の定数、新曲フラグ、コスト、MainTrendをすべてキャッシュする
+    // 1. MasterDataから最新の情報をキャッシュ（変更なし）
     const masterSheet = ss.getSheetByName("MasterData");
     const masterDataCache = {};
     
-    // 各項目の列インデックス（A列=0, B列=1, C列=2...）
     const targetConstIdx = 2;   // C列：定数
     const targetIsNewIdx = 3;   // D列：isNew
     const targetTairyokuIdx = 4; // E列：体力コスト
     const targetKenbanIdx = 5;   // F列：鍵盤コスト
     const targetChuniIdx = 6;    // G列：チュウニズム力コスト
     const targetKuseIdx = 7;     // H列：癖コスト
-    const targetTrendIdx = 9;    // J列：Main Trend (10列目)
+    const targetTrendIdx = 9;    // J列：Main Trend
 
     if (masterSheet) {
         const masterData = masterSheet.getDataRange().getValues();
@@ -894,32 +956,44 @@ function fetchAndProcessFromApi(token, ss, playerName) {
                     kenban: parseFloat(mRow[targetKenbanIdx] || 0),
                     chuni: parseFloat(mRow[targetChuniIdx] || 0),
                     kuse: parseFloat(mRow[targetKuseIdx] || 0),
-                    mainTrend: String(mRow[targetTrendIdx] || "None").trim() // 💡ここが抜けていました！
+                    mainTrend: String(mRow[targetTrendIdx] || "None").trim()
                 };
             }
         }
     }
 
-    // 2. API通信とエラーハンドリング
-    const apiUrl = `https://api.chunirec.net/2.0/records/showall.json?token=${token}&region=jp2`;
-    let apiRecords = null;
+    // 2. API通信とエラーハンドリング（通常譜面 ＆ WE譜面の並列取得）
+    const normalApiUrl = `https://api.chunirec.net/2.0/records/showall.json?token=${token}&region=jp2`;
+    const weApiUrl = `https://api.chunirec.net/2.0/records/worldsend.json?token=${token}&region=jp2`; // 💡WE用のエンドポイント
+    
+    let apiRecords = [];
     let isApiAvailable = true;
 
     try {
-        const res = UrlFetchApp.fetch(apiUrl, { "muteHttpExceptions": true });
-        const responseCode = res.getResponseCode();
+        // ① 通常譜面のフェッチ
+        const resNormal = UrlFetchApp.fetch(normalApiUrl, { "muteHttpExceptions": true });
+        if (resNormal.getResponseCode() === 200) {
+            const jsonNormal = JSON.parse(resNormal.getContentText());
+            if (jsonNormal.records) {
+                apiRecords = apiRecords.concat(jsonNormal.records);
+            }
+        }
 
-        if (responseCode === 200) {
-            const json = JSON.parse(res.getContentText());
-            if (json.records) {
-                apiRecords = json.records;
+        // ② WORLD'S END譜面のフェッチ（💡新設）
+        const resWe = UrlFetchApp.fetch(weApiUrl, { "muteHttpExceptions": true });
+        if (resWe.getResponseCode() === 200) {
+            const jsonWe = JSON.parse(resWe.getContentText());
+            if (jsonWe.records) {
+                // プレイ済みのWEレコードのみを対象にマージする
+                const playedWe = jsonWe.records.filter(rec => rec.is_played === true);
+                apiRecords = apiRecords.concat(playedWe);
             }
         }
     } catch (e) {
         console.warn("API取得中に例外が発生しました: " + e.toString());
     }
 
-    // API停止時の個人シートからのフォールバックモード
+    // API停止時の個人シートからのフォールバックモード（通常・WE混在シートから読み出すため変更なしでOK）
     if (!apiRecords || apiRecords.length === 0) {
         console.log("⚠️ chunirec API停止中。個人シートの既存データから再計算します。");
         isApiAvailable = false;
@@ -958,7 +1032,7 @@ function fetchAndProcessFromApi(token, ss, playerName) {
     const processedRecords = apiRecords.map(r => {
         const key = r.title + "_" + r.diff;
         
-        // MasterDataのキャッシュから最新情報を取得。なければ初期値
+        // MasterDataキャッシュ参照
         const masterInfo = masterDataCache[key] || { 
             constant: parseFloat(r.const || 0), 
             isNew: false, 
@@ -972,17 +1046,18 @@ function fetchAndProcessFromApi(token, ss, playerName) {
         const c = masterInfo.constant;
         const isNewSong = masterInfo.isNew;
 
+        // ランプの判定（通常譜面もWE譜面も共通のプロパティ構造なのでそのまま適用可能）
         let lamp = isApiAvailable ? (r.score >= 1010000 ? "AJC" : r.is_alljustice ? "AJ" : r.is_fullcombo ? "FC" : "") : (r.lamp || "");
         
         // スコア補正値を計算
         const scoreMod = calculateScoreModifier(r.score, lamp);
 
-        // 💡【重要】ここでコスト計算を完了させ、オブジェクトの中にプロパティとしてガッチリ保存する！
         return {
             title: r.title,
             diff: r.diff,
             const: c,
             score: r.score,
+            // 💡 補足：WEの場合、通常譜面用のレーティング計算を走らせると 0 になります（仕様通りでOK）
             rating: calculateChuniRating(r.score, c),
             lamp: lamp,
             isNew: isNewSong,
@@ -990,15 +1065,56 @@ function fetchAndProcessFromApi(token, ss, playerName) {
             kenban: Math.round(masterInfo.kenban * scoreMod * 100) / 100,
             chuni: Math.round(masterInfo.chuni * scoreMod * 100) / 100,
             kuse: Math.round(masterInfo.kuse * scoreMod * 100) / 100,
-            mainTrend: masterInfo.mainTrend // 💡これでフロントエンドまで100%トレンドが届きます！
+            mainTrend: masterInfo.mainTrend 
         };
-    }).filter(r => r.const >= 13.5 || r.const === 0);
+    }).filter(r => {
+        // 💡【重要・フィルター条件緩和】
+        // 通常譜面は「定数13.5以上」、WORLD'S ENDは「難易度がWE（定数0）」のものを両方残す
+        return r.const >= 13.5 || r.diff === "WE";
+    });
 
     return processedRecords;
 }
 
 /**
- * 💡 スコア補正値計算用のヘルパー関数（もしGAS内にまだ無ければ、fetchAndProcessFromApiの下辺りに貼り付けてください）
+ * 💡 カスタム補正値計算（100万点未満0.4 / 最終3.0倍 / ②強化・④マイルド版）
+ */
+function calculateScoreModifier(score, lamp) {
+    // 1,000,000点（S）未満は一律 0.4
+    if (score < 1000000) return 0.4;
+    
+    let modifier = 0.0;
+    
+    // ① 1,000,000 〜 1,005,000点（倍率：0.4 から 0.55 までゆるやかに上昇）
+    if (score >= 1000000 && score < 1005000) {
+        modifier = 0.4 + (score - 1000000) * (0.15 / 5000);
+    }
+    // ② 1,005,000 〜 1,007,500点（倍率：0.55 から 1.85 まで【さらに最も激しく】上昇）
+    else if (score >= 1005000 && score < 1007500) {
+        modifier = 0.55 + (score - 1005000) * (1.3 / 2500);
+    }
+    // ③ 1,007,500 〜 1,009,000点（倍率：1.85 から 2.39 まで【2番目に激しく】上昇）
+    else if (score >= 1007500 && score < 1009000) {
+        modifier = 1.85 + (score - 1007500) * (0.54 / 1500);
+    }
+    // ④ 1,009,000 〜 1,010,000点（倍率：2.39 から 2.65 まで上昇、傾きを少しマイルドに減少）
+    // 💡 最終3.0倍(AJ込み)の帳尻を合わせるため、この区間の計算結果に調整値(+0.25)を加算しています
+    else {
+        modifier = 2.39 + (score - 1009000) * (0.26 / 1000) + 0.25;
+    }
+    
+    // ⑤ ＋AJ（All Justice / AJC含む）の時にボーナス（+0.10倍）を与える
+    // 理論値（1,010,000点）の時は、2.65 + 0.25(上記) + 0.10 = ぴったり3.0倍になります
+    const currentLamp = String(lamp || "");
+    if (currentLamp.includes("AJ") || currentLamp.includes("AJC")) {
+        modifier += 0.10;
+    }
+    
+    return modifier;
+}
+
+/**
+ *  スコア補正値計算用のヘルパー関数（もしGAS内にまだ無ければ、fetchAndProcessFromApiの下辺りに貼り付けてください）
  */
 function calculateScoreModifier(score, lamp) {
     if (score >= 1010000 || lamp === "AJC") return 1.0;
@@ -1027,6 +1143,168 @@ function calculateChuniRating(score, constant) {
 function createJsonResponse(obj) {
     return ContentService.createTextOutput(JSON.stringify(obj))
         .setMimeType(ContentService.MimeType.JSON);
+}
+
+// =========================================================================
+// 手元動画プラットフォーム用：スプレッドシート操作関数群（本番確定版）
+// =========================================================================
+
+/**
+ * 最新30件のリクエストとアップロードのデータを取得する（備考欄対応版）
+ */
+function getVideoHistory(ss) {
+    const reqSheet = ss.getSheetByName("VideoRequests") || ss.insertSheet("VideoRequests");
+    const supSheet = ss.getSheetByName("VideoSupplies") || ss.insertSheet("VideoSupplies");
+
+    if (reqSheet.getLastRow() === 0) reqSheet.appendRow(["ID", "曲名", "難易度", "投稿者", "日時", "備考"]);
+    if (supSheet.getLastRow() === 0) supSheet.appendRow(["ID", "曲名", "難易度", "動画タイトル", "URL", "提供者", "日時"]);
+
+    return {
+        // 💡 取得するキーに "comment" を追加（6列目）
+        requests: getLatestRowsArray(reqSheet, 30, ["id", "title", "diff", "user", "date", "comment"]),
+        supplies: getLatestRowsArray(supSheet, 30, ["id", "title", "diff", "videoTitle", "url", "user", "date"])
+    };
+}
+
+/**
+ * リクエストの登録（新規追加 ＆ 既存の編集上書き / 備考欄対応版）
+ */
+function addVideoRequestRow(ss, id, title, diff, requester, comment) {
+    const sheet = ss.getSheetByName("VideoRequests") || ss.insertSheet("VideoRequests");
+    if (sheet.getLastRow() === 0) sheet.appendRow(["ID", "曲名", "難易度", "投稿者", "日時", "備考"]);
+
+    const nowStr = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm");
+    const finalComment = comment ? String(comment).trim() : ""; // 空なら空文字
+
+    if (id) {
+        // 【編集モード】
+        const data = sheet.getDataRange().getValues();
+        const rowIdx = data.findIndex(row => String(row[0]) === String(id));
+        if (rowIdx === -1) return { status: "error", message: "指定されたリクエストが見つかりません。" };
+        if (data[rowIdx][3] !== requester) return { status: "error", message: "他人の投稿は編集できません。" };
+
+        // 曲名[2列目]、難易度[3列目]を更新、さらに備考[6列目]を上書き
+        sheet.getRange(rowIdx + 1, 2, 1, 2).setValues([[title, diff]]);
+        sheet.getRange(rowIdx + 1, 6).setValue(finalComment); // 6列目(F列)に備考をセット
+        return { status: "success", message: "updated" };
+    } else {
+        // 【新規投稿モード】
+        const newId = "REQ_" + new Date().getTime();
+        sheet.appendRow([newId, title, diff, requester, nowStr, finalComment]);
+        return { status: "success", message: "inserted" };
+    }
+}
+
+/**
+ * 動画共有リンクの登録（新規追加 ＆ 既存の編集上書き）
+ */
+function addVideoSupplyRow(ss, id, title, diff, contributor, videoUrl, videoTitle) {
+    const sheet = ss.getSheetByName("VideoSupplies") || ss.insertSheet("VideoSupplies");
+    if (sheet.getLastRow() === 0) sheet.appendRow(["ID", "曲名", "難易度", "動画タイトル", "URL", "提供者", "日時"]);
+
+    const nowStr = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy/MM/dd HH:mm");
+
+    if (id) {
+        // 【編集モード】
+        const data = sheet.getDataRange().getValues();
+        const rowIdx = data.findIndex(row => String(row[0]) === String(id));
+        if (rowIdx === -1) return { status: "error", message: "指定された動画共有が見つかりません。" };
+
+        // セキュリティチェック：提供者が一致しているか
+        if (data[rowIdx][5] !== contributor) return { status: "error", message: "他人の投稿は編集できません。" };
+
+        // 曲名[2列目]、難易度[3列目]、動画タイトル[4列目]、URL[5列目]を上書き
+        sheet.getRange(rowIdx + 1, 2, 1, 4).setValues([[title, diff, videoTitle, videoUrl]]);
+        return { status: "success", message: "updated" };
+    } else {
+        // 【新規投稿モード】
+        const newId = "SUP_" + new Date().getTime();
+        sheet.appendRow([newId, title, diff, videoTitle, videoUrl, contributor, nowStr]);
+        return { status: "success", message: "inserted" };
+    }
+}
+
+/**
+ * 投稿の削除（IDのプレフィックスからシートを自動判別）
+ */
+function deleteVideoItemRow(ss, id, playerName) {
+    if (!id) return { status: "error", message: "IDが指定されていません。" };
+    
+    // REQ_ から始まるならリクエストシート、違えばサプライシート
+    const sheetName = id.indexOf("REQ_") === 0 ? "VideoRequests" : "VideoSupplies";
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return { status: "error", message: "シートが見つかりません。" };
+
+    const data = sheet.getDataRange().getValues();
+    const rowIdx = data.findIndex(row => String(row[0]) === String(id));
+    if (rowIdx === -1) return { status: "error", message: "削除対象のデータが見つかりません。" };
+
+    // セキュリティチェック（リクエストは4列目[3]、サプライは6列目[5]が投稿者ユーザー名）
+    const userColIdx = (sheetName === "VideoRequests") ? 3 : 5;
+    if (data[rowIdx][userColIdx] !== playerName) {
+        return { status: "error", message: "他人の投稿は削除できません。" };
+    }
+
+    // 行を丸ごと削除
+    sheet.deleteRow(rowIdx + 1);
+    return { status: "success", message: "deleted" };
+}
+
+/**
+ * 内部ヘルパー：指定シートの下部から最新のデータを逆順（降順）のオブジェクト配列で返す（データ欠損修正版）
+ */
+function getLatestRowsArray(sheet, count, keys) {
+    const lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return []; // ヘッダーのみ、または空
+    
+    const lastCol = sheet.getLastColumn();
+    const startRow = Math.max(2, lastRow - count + 1);
+    const numRows = lastRow - startRow + 1;
+    
+    // 💡 keys.length ではなく、シートの実際の最大列数（lastCol）を指定して確実に全列取得する
+    const values = sheet.getRange(startRow, 1, numRows, lastCol).getValues();
+    
+    const resultList = [];
+    // 新しい投稿が「上」に表示されるように逆順ループ
+    for (let i = values.length - 1; i >= 0; i--) {
+        let obj = {};
+        for (let j = 0; j < keys.length; j++) {
+            // 万が一シートの列数が指定キーより少なければ空文字を、あればシートの値をセット
+            obj[keys[j]] = (j < lastCol) ? values[i][j] : "";
+        }
+        resultList.push(obj);
+    }
+    return resultList;
+}
+
+/**
+ * 既存の getVideosForSong (ランキング用) が無い場合、または連動を強化するための関数
+ * スプレッドシートから該当する曲名と難易度の動画リストを引っ張る
+ */
+function getVideosForSong(ss, title, diff) {
+    const sheet = ss.getSheetByName("VideoSupplies");
+    if (!sheet || sheet.getLastRow() <= 1) return [];
+
+    const data = sheet.getDataRange().getValues();
+    const list = [];
+    
+    // 2行目（データ開始行）からスキャン
+    for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        // 曲名と難易度が完全一致するか（大文字小文字無視）
+        if (String(row[1]).toLowerCase() === title.toLowerCase() && String(row[2]).toLowerCase() === diff.toLowerCase()) {
+            list.push({
+                id: row[0],
+                title: row[1],
+                diff: row[2],
+                videoTitle: row[3],
+                url: row[4],
+                user: row[5],
+                date: row[6]
+            });
+        }
+    }
+    return list; // 既存の getRanking 時に自動的にこの配列がフロントへ返ります
 }
 
 /**

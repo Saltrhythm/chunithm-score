@@ -181,6 +181,54 @@ button:hover {
     box-shadow: none !important;
 }
 
+/* 手元動画プラットフォーム起動ボタン：カプセルデザイン */
+.btn-video-hub {
+    background: linear-gradient(135deg, #1a73e8, #0d47a1);
+    color: #ffffff;
+    border-radius: 999px;
+    
+    /* ボタン自体の太さ（再同期ボタンと同等のサイズ感） */
+    padding: 12px 35px;
+    height: auto;
+    
+    /* 文字の太さと装飾 */
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    
+    border: none;
+    box-shadow: 0 4px 15px rgba(26, 115, 232, 0.4);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* PC（マウス環境）のみhoverアニメーション */
+@media (hover: hover) {
+    .btn-video-hub:hover {
+        background: linear-gradient(135deg, #2979ff, #1565c0);
+        transform: translateY(-3px); /* 再同期ボタンと同じ浮き上がり量 */
+        box-shadow: 0 8px 20px rgba(26, 115, 232, 0.5);
+    }
+}
+
+/* クリック時の押し込みエフェクト */
+.btn-video-hub:active {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(26, 115, 232, 0.3);
+}
+
+/* 無効化時（送信中など用） */
+.btn-video-hub:disabled {
+    background: #d0d0d0 !important;
+    color: #ffffff !important;
+    transform: none !important;
+    box-shadow: none !important;
+    cursor: not-allowed;
+}
+
 .rating-wrapper {
     text-align: center;
     width: 100%;
@@ -535,6 +583,86 @@ input[type="number"]::-webkit-inner-spin-button {
 .filter-mode-select option {
     color: #2d3748;
     font-weight: normal;
+}
+
+/* =================================================================
+   追加：難易度（diff）フィルターボタンの個別装飾
+   ================================================================= */
+/* 共通ベーススタイル（Trendフィルターの仕様を完全継承） */
+.btn-diff-filter {
+    height: 42px;
+    padding: 0 14px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 30px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #555;
+    font-weight: bold;
+    transition: all 0.2s;
+    white-space: nowrap;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.btn-diff-filter:hover {
+    background: #f0f0f0;
+    border-color: #bbb;
+}
+
+/* OFF（非アクティブ）状態：Trend同様に除外を表現 */
+.btn-diff-filter:not(.active) {
+    background: #f5f5f5;
+    color: #aaa;
+    border-color: #ddd;
+    box-shadow: none;
+    text-decoration: line-through;
+}
+
+/* 各難易度個別のON（アクティブ）カラー設定 */
+
+/* EXP (赤) */
+.btn-diff-filter[data-diff="EXP"].active {
+    background: #ff4d4d;
+    color: #fff;
+    border-color: #ff4d4d;
+    box-shadow: 0 2px 5px rgba(255, 77, 77, 0.3);
+}
+
+/* MAS (紫) */
+.btn-diff-filter[data-diff="MAS"].active {
+    background: #9966ff;
+    color: #fff;
+    border-color: #9966ff;
+    box-shadow: 0 2px 5px rgba(153, 102, 255, 0.3);
+}
+
+/* ULT (黒/ダークグレー) */
+.btn-diff-filter[data-diff="ULT"].active {
+    background: #2b2b2b;
+    color: #fff;
+    border-color: #2b2b2b;
+    box-shadow: 0 2px 5px rgba(43, 43, 43, 0.3);
+}
+
+/* WE (虹色の流れるグラデーション) */
+.btn-diff-filter[data-diff="WE"].active {
+    background: linear-gradient(45deg, #ff3366, #ff9933, #33cc66, #3399ff, #9933ff);
+    background-size: 200% 200%;
+    animation: rainbowShift 3s linear infinite;
+    color: #fff;
+    border: none; /* グラデーションを邪魔しないようボーダーは消す */
+    box-shadow: 0 2px 8px rgba(153, 51, 255, 0.4);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); /* 文字の視認性アップ */
+}
+
+/* 💡 WEボタン用のグラデーションアニメーション */
+@keyframes rainbowShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
 }
 
 /* =================================================================
@@ -1089,7 +1217,7 @@ td:nth-child(2) {
 
 
 
-/* style.css の難易度帯の部分を書き換え */
+/* 既存の難易度帯の並びに追加 */
 #score-body tr.mas td:first-child {
     border-left: 4px solid #92278f !important;
 }
@@ -1100,6 +1228,37 @@ td:nth-child(2) {
 
 #score-body tr.ult td:first-child {
     border-left: 4px solid #1d0707 !important;
+}
+
+/* 🌈【新設】WE用の虹色に変化する左端帯 */
+#score-body tr.we {
+    position: relative; /* 疑似要素の基準点にする */
+}
+
+#score-body tr.we td:first-child {
+    /* 通常のボーダーは透明にして、位置（余白）だけを確保する */
+    border-left: 4px solid transparent !important; 
+    position: relative;
+}
+
+#score-body tr.we td:first-child::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 4px; /* ボーダーと同じ太さ */
+    /* 虹色のグラデーション（上から下へ流れるように配置） */
+    background: linear-gradient(to bottom, #ff3366, #ff9933, #33cc66, #3399ff, #9933ff);
+    background-size: 100% 200%;
+    animation: rainbowBorderShift 3s linear infinite;
+}
+
+/* 帯用の縦流れアニメーション */
+@keyframes rainbowBorderShift {
+    0% { background-position: 50% 0%; }
+    50% { background-position: 50% 100%; }
+    100% { background-position: 50% 0%; }
 }
 
 /* 隠れないようにパディングを少し調整 */
@@ -1885,6 +2044,25 @@ td {
     box-shadow: 0 2px 5px rgba(153, 102, 255, 0.3);
 }
 
+/* VS専用 難易度ボタン基本スタイル */
+.vs-btn-diff-filter {
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: bold;
+    border: 2px solid #ccc;
+    background-color: #f8f9fa;
+    color: #666;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+/* アクティブ（選択中）時の各公式カラー */
+.vs-btn-diff-filter[data-diff="EXP"].active { background-color: #ff4c4c; color: #fff; border-color: #ff4c4c; }
+.vs-btn-diff-filter[data-diff="MAS"].active { background-color: #aa33ff; color: #fff; border-color: #aa33ff; }
+.vs-btn-diff-filter[data-diff="ULT"].active { background-color: #222222; color: #ffcc00; border-color: #222222; }
+.vs-btn-diff-filter[data-diff="WE"].active  { background: linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3); color: #fff; border-color: #ff7f00; text-shadow: 1px 1px 1px rgba(0,0,0,0.5); }
+
 /* -----------------------------------------
    ヘッダー情報エリア（レイアウト枠）
    ----------------------------------------- */
@@ -2270,5 +2448,363 @@ td {
     /* スマホ用に基準プレイヤーセルの文字サイズ微調整 */
     .vs-drawer-content .vs-table-single td.vs-multi-my-cell .vs-multi-player-score-large {
         font-size: 0.9em !important;
+    }
+}
+
+/* ==========================================
+   手元動画プラットフォーム（モーダル）
+   ========================================== */
+
+/* 背景エリア（既存の #ranking-modal や #sub-modal と同様の設計） */
+#video-hub-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 1500;
+    justify-content: center;
+    align-items: center;
+}
+
+/* 白い箱（.modal-content の設定をベースにカスタマイズ） */
+.modal-content.video-hub-content {
+    min-width: 320px;
+    max-width: 750px; /* 横に広がりすぎず見やすいサイズ */
+    background: white;
+    padding: 25px;
+    border-radius: 15px;
+    width: 95%;
+    max-height: 90vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+/* モーダル内の見出し */
+.modal-content.video-hub-content h3 {
+    margin: 0 0 5px 0;
+    font-size: 1.3em;
+    font-weight: bold;
+    color: #333;
+    text-align: center;
+}
+
+/* ==========================================
+   タブ切り替えスイッチ（.range-selector を参考）
+   ========================================== */
+.video-tab-container {
+    display: flex;
+    justify-content: center;
+    gap: 0; /* 隙間をなくして結合させる */
+    margin: 5px 0 10px 0;
+    border-bottom: 2px solid #ddd;
+    padding-bottom: 0;
+}
+
+.video-tab {
+    background-color: #f9f9f9;
+    color: #666;
+    border: 1px solid #ddd;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0; /* 上だけ丸める */
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    outline: none;
+    flex: 1;
+    max-width: 180px;
+    text-align: center;
+}
+
+.video-tab:hover {
+    background-color: #f0f0f0;
+}
+
+/* 選択中のタブ（.range-btn.active のニュアンスを踏襲しつつ、タブらしいデザインに） */
+.video-tab.active {
+    background-color: #1a73e8; /* 起動ボタンと合わせたテーマカラー */
+    color: #fff;
+    border-color: #1a73e8;
+    position: relative;
+    margin-bottom: -2px; /* 下線と被らせる */
+    padding-bottom: 11px;
+}
+
+/* コンテンツパネルの基本状態 */
+.video-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+/* ==========================================
+   入力フォームエリア（.sub-modal-content の整理感を踏襲）
+   ========================================== */
+.video-form-box {
+    background: #fdfdfd;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    padding: 15px;
+}
+
+.video-form-box h4 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: #333;
+    font-weight: bold;
+}
+
+/* インラインフォーム（横並び用：リクエストなど） */
+.video-inline-form {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+
+.video-inline-form input[type="text"] {
+    flex: 1;
+    min-width: 0; /* flex内の縮小対策 */
+}
+
+/* 垂直フォーム（複数行用：アップロードなど） */
+.video-vertical-form {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.form-row-flex {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+
+.form-row-flex input[type="text"],
+.form-row-flex input[type="url"] {
+    flex: 1;
+    min-width: 0;
+}
+
+/* フォーム内パーツの共通デザイン */
+.video-form-box input[type="text"],
+.video-form-box input[type="url"],
+.video-form-box select {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    background-color: #fff;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.video-form-box select {
+    width: 110px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+/* フォーム送信ボタン（.switch-mode-btn をベースにしたスマートな設計） */
+.btn-submit-video {
+    background-color: #1a73e8;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.2s, transform 0.1s;
+    white-space: nowrap;
+}
+
+.btn-submit-video:hover {
+    background-color: #1557b0;
+}
+
+.btn-submit-video:active {
+    transform: scale(0.98);
+}
+
+/* ==========================================
+   手元動画履歴テーブル（#ranking-table をベースに調整）
+   ========================================== */
+.modal-content.video-hub-content h4 {
+    margin: 10px 0 0 0;
+    font-size: 13px;
+    color: #666;
+    font-weight: bold;
+}
+
+.video-table-wrapper {
+    width: 100%;
+    max-height: 250px; /* テーブルが伸びすぎないよう固定してスクロール */
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+}
+
+.video-hub-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+.video-hub-table th,
+.video-hub-table td {
+    padding: 10px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+    font-size: 13px;
+}
+
+.video-hub-table th {
+    background-color: #f5f5f5;
+    font-weight: bold;
+    color: #444;
+    position: sticky; /* スクロールしてもヘッダーを固定 */
+    top: 0;
+    z-index: 10;
+}
+
+/* 行ホバー時にクリック可能であることを伝えるエフェクト */
+.video-hub-table tbody tr {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.video-hub-table tbody tr:hover {
+    background-color: #f1f5f9; /* 薄い青みのある灰色 */
+}
+
+/* リンクテキストの装飾 */
+.video-hub-table td a {
+    color: #1a73e8;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+.video-hub-table td a:hover {
+    text-decoration: underline;
+}
+
+/* ==========================================
+   ランキング画面最下部の動画セクション（新規追加パーツ）
+   ========================================== */
+.ranking-video-box {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.ranking-video-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+}
+
+/* 動画リンクカード（見やすさと押しやすさを兼ね備えたカプセル/ボックス形状） */
+.ranking-video-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 10px 15px;
+    transition: all 0.2s ease;
+}
+
+.ranking-video-item:hover {
+    background: #e8f0fe;
+    border-color: #d2e3fc;
+}
+
+/* 左側：動画リンクとタイトル */
+.video-item-left {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.video-item-url {
+    color: #1a73e8;
+    font-weight: bold;
+    font-size: 14px;
+    text-decoration: none;
+}
+
+.video-item-url:hover {
+    text-decoration: underline;
+}
+
+.video-item-title {
+    font-size: 11px;
+    color: #777;
+}
+
+/* 右側：提供者名 */
+.video-item-provider {
+    font-size: 12px;
+    color: #555;
+    background: #e9ecef;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+
+/* 編集・削除ボタンの基本スタイル */
+.btn-video-action {
+    padding: 2px 6px;
+    font-size: 11px;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    color: #fff;
+    margin-right: 2px;
+}
+.btn-video-action.edit {
+    background-color: #2196F3; /* 青 */
+}
+.btn-video-action.edit:hover {
+    background-color: #0b7dda;
+}
+.btn-video-action.delete {
+    background-color: #f44336; /* 赤 */
+}
+.btn-video-action.delete:hover {
+    background-color: #da190b;
+}
+
+/* --- モーダル内のスマホ幅調整 (@media) --- */
+@media screen and (max-width: 600px) {
+    .video-inline-form {
+        flex-direction: column;
+    }
+    
+    .video-form-box select {
+        width: 100%;
+    }
+    
+    .form-row-flex {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .ranking-video-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+    }
+    
+    .video-item-provider {
+        align-self: flex-end; /* 名前だけ右下に寄せる */
     }
 }

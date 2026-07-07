@@ -207,7 +207,7 @@ function handleSuccess(result) {
 
 
 /**
- * フィルター（検索窓 + セレクトボックス + トレンド）の値を読み取って表示を更新する
+ * フィルター（検索窓 + セレクトボックス + トレンド + 難易度）の値を読み取って表示を更新する
  */
 function updateFilters() {
     const searchInput = document.getElementById('search-input');
@@ -255,19 +255,33 @@ function updateFilters() {
     const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
     const activeTrends = Array.from(document.querySelectorAll('.btn-trend-filter.active')).map(btn => btn.getAttribute('data-trend'));
 
+    // 💡 アクティブな難易度（diff）を取得
+    const activeDiffs = Array.from(document.querySelectorAll('.btn-diff-filter.active')).map(btn => btn.getAttribute('data-diff'));
+
+    // 💡【追加】WE単体、またはWEを含むマルチ選択かをチェック
+    const hasWE = activeDiffs.includes("WE");
+    const isOnlyWE = activeDiffs.length === 1 && hasWE;
+
     // フィルタリング実行
     const filteredData = myCurrentRecords.filter(item => {
         // 1. 曲名で絞り込み
         const title = String(item.title || "").toLowerCase();
         const matchesTitle = title.includes(searchText);
 
-        // 2. Ratingで絞り込み
-        const currentRate = parseFloat(item.rating) || 0;
-        const matchesRating = (currentRate >= minRate && currentRate <= maxRate);
+        // 💡 難易度（diff）で絞り込み
+        const itemDiff = String(item.diff || "").toUpperCase();
+        const matchesDiff = activeDiffs.includes(itemDiff);
 
-        // 3. 定数で絞り込み
+        // 2. Ratingで絞り込み（★WE選択時は単曲レートフィルターを無視・免除）
+        const currentRate = parseFloat(item.rating) || 0;
+        const isRateExempt = (itemDiff === "WE" && hasWE); 
+        const matchesRating = isRateExempt || (currentRate >= minRate && currentRate <= maxRate);
+
+        // 3. 定数で絞り込み（★WE用のエスケープ安全弁付きに強化）
         const constant = parseFloat(item.const) || 0;
-        const matchesConstant = (constant >= minConst && constant <= maxConst);
+        // 現在の曲がWE、かつ難易度WEが選択されている場合は、定数フィルター(13.5〜16.0)をパスさせる
+        const isWeExempt = (itemDiff === "WE" && hasWE);
+        const matchesConstant = isWeExempt || (constant >= minConst && constant <= maxConst);
 
         // 4. Rank または スコア で絞り込み
         const tScore = parseFloat(item.score) || 0;
@@ -294,23 +308,22 @@ function updateFilters() {
             }
         }
 
-        // 7. 表示対象（全曲/旧曲/新曲）判定
+        // 7. 表示対象（全曲/旧曲/新曲）判定（★WE選択時は強制的に「全曲(all)」として扱いパスさせる）
         let matchesType = true;
-        if (currentTypeFilter === 'old') matchesType = !item.isNew;
-        if (currentTypeFilter === 'new') matchesType = item.isNew;
+        const effectiveTypeFilter = hasWE ? 'all' : currentTypeFilter;
+        if (effectiveTypeFilter === 'old') matchesType = !item.isNew;
+        if (effectiveTypeFilter === 'new') matchesType = item.isNew;
 
-        // 💡 修正：トレンドフィルター判定
+        // トレンドフィルター判定
         let matchesTrend = true;
         if (isTrendEnabled) {
-            // トレンド機能有効時：設定されているトレンドが現在ONのボタンに含まれている曲のみ（未設定Noneは自動除外）
             const songTrend = item.mainTrend || "None";
             matchesTrend = activeTrends.includes(songTrend);
         } else {
-            // トレンド機能無効時：未設定含め全ての曲を通過させる
             matchesTrend = true;
         }
 
-        return matchesTitle && matchesRating && matchesConstant && matchesRankOrScore && matchesLamp && matchesType && matchesTrend;
+        return matchesTitle && matchesRating && matchesDiff && matchesConstant && matchesRankOrScore && matchesLamp && matchesType && matchesTrend;
     });
 
     // 6. ソートの実行
@@ -338,7 +351,20 @@ function updateFilters() {
             hasActiveFilter = true;
         };
 
-        if (minRateVal !== "" || maxRateVal !== "") {
+        // 難易度バッジ表示（デフォルト[EXP, MAS, ULT]以外になっている時だけバッジ表示）
+        const isDefaultDiff = activeDiffs.length === 3 && activeDiffs.includes("EXP") && activeDiffs.includes("MAS") && activeDiffs.includes("ULT") && !activeDiffs.includes("WE");
+        if (!isDefaultDiff) {
+            if (activeDiffs.length === 0) {
+                addBadge("難易度: 表示なし");
+            } else if (activeDiffs.length === 4) {
+                addBadge("難易度: すべて");
+            } else {
+                addBadge(`難易度: ${activeDiffs.join(', ')}`);
+            }
+        }
+
+        // 💡【追加条件】WE選択時は「単レバッジ」を表示しない
+        if (!hasWE && (minRateVal !== "" || maxRateVal !== "")) {
             addBadge(`単レ: ${minRateVal || '0'}〜${maxRateVal || '99.99'}`);
         }
 
@@ -361,17 +387,21 @@ function updateFilters() {
             }
         }
 
-        if (minConstSelect.value !== '13.5' || maxConstSelect.value !== '16.0') {
+        // 定数フィルターが有効なバッジ表示条件（WE選択時は定数が意味を持たないため非表示）
+        if ((minConstSelect.value !== '13.5' || maxConstSelect.value !== '16.0') && !hasWE) {
             addBadge(`定数: ${minConstSelect.value}〜${maxConstSelect.value}`);
         }
 
-        if (typeof currentTypeFilter !== 'undefined' && currentTypeFilter !== 'all') {
+        // 💡【条件変更】WE選択時は強制的に「対象: 全曲」のバッジを出すか、不要なら出さないように制御
+        if (hasWE) {
+            // WE選択時は「対象: 全曲」に固定されることをユーザーに明示
+            addBadge(`対象: 全曲 (WE固定)`);
+        } else if (typeof currentTypeFilter !== 'undefined' && currentTypeFilter !== 'all') {
             const targetBtn = document.getElementById(`filter-${currentTypeFilter}`);
             const targetText = targetBtn ? targetBtn.textContent.trim() : currentTypeFilter;
             addBadge(`対象: ${targetText}`);
         }
 
-        // 💡 修正：トレンド有効時のみバッジを連動
         if (isTrendEnabled) {
             const inactiveTrends = Array.from(document.querySelectorAll('.btn-trend-filter:not(.active)')).map(btn => btn.getAttribute('data-trend'));
             if (inactiveTrends.length > 0 && inactiveTrends.length < 4) {
@@ -456,6 +486,13 @@ function initFilters() {
     // 表示対象ボタン
     document.querySelectorAll('.btn-filter').forEach(btn => {
         btn.addEventListener('click', (e) => {
+            // 💡【追加】難易度でWEが選ばれている時は、ボタンの見た目のアクティブ切り替えや変数更新を制限する
+            const activeDiffs = Array.from(document.querySelectorAll('.btn-diff-filter.active')).map(btn => btn.getAttribute('data-diff'));
+            if (activeDiffs.includes("WE")) {
+                alert("WORLD'S END選択時は、表示対象を「全曲」から変更できません。");
+                return;
+            }
+
             document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
             e.target.classList.add('active');
             if (e.target.id === 'filter-all') currentTypeFilter = 'all';
@@ -465,26 +502,58 @@ function initFilters() {
         });
     });
 
-    // 💡 修正：初期状態の設定（デフォルトは無効化、ボタンは全OFF風グレー）
+    // メイン画面 難易度ボタンの相互排他クリックイベント
+    document.querySelectorAll('.btn-diff-filter').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const clickedBtn = e.target;
+            const clickedDiff = clickedBtn.getAttribute('data-diff');
+
+            // まずクリックされたボタン自身をトグル（ON/OFF反転）
+            clickedBtn.classList.toggle('active');
+
+            // 排他判定を実行
+            if (clickedBtn.classList.contains('active')) {
+                if (clickedDiff === "WE") {
+                    // 💡 WEがONになったら、新曲・旧曲ボタンのactiveを「全曲」に強制リセット
+                    document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
+                    const allBtn = document.getElementById('filter-all');
+                    if (allBtn) allBtn.classList.add('active');
+                    currentTypeFilter = 'all';
+
+                    // 通常難易度（EXP, MAS, ULT）をすべてOFFにする
+                    document.querySelectorAll('.btn-diff-filter:not([data-diff="WE"])').forEach(b => {
+                        b.classList.remove('active');
+                    });
+                } else {
+                    // 通常難易度のいずれかがアクティブになったら、WEをOFFにする
+                    document.querySelectorAll('.btn-diff-filter[data-diff="WE"]').forEach(b => {
+                        b.classList.remove('active');
+                    });
+                }
+            }
+
+            // 最後に表示を更新
+            updateFilters();
+        });
+    });
+
+    // トレンド初期設定
     if (trendSwitch) {
-        trendSwitch.checked = false; // デフォルトOFF
+        trendSwitch.checked = false;
     }
     document.querySelectorAll('.btn-trend-filter').forEach(btn => {
         btn.classList.remove('active');
-        btn.classList.add('trend-disabled'); // 専用のグレーアウトクラス付与
+        btn.classList.add('trend-disabled');
     });
 
-    // 💡 修正：有効化スイッチの切り替えイベント
     if (trendSwitch) {
         trendSwitch.addEventListener('change', (e) => {
             const isEnabled = e.target.checked;
             document.querySelectorAll('.btn-trend-filter').forEach(btn => {
                 if (isEnabled) {
-                    // スイッチがONになったら：すべてのトレンドボタンをONにする
                     btn.classList.add('active');
                     btn.classList.remove('trend-disabled');
                 } else {
-                    // スイッチがOFFになったら：すべて非活性化のグレーに戻す
                     btn.classList.remove('active');
                     btn.classList.add('trend-disabled');
                 }
@@ -493,12 +562,9 @@ function initFilters() {
         });
     }
 
-    // 💡 修正：トレンドボタン自体のクリックイベント
     document.querySelectorAll('.btn-trend-filter').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            // スイッチがOFFの時はボタンを押しても何もさせない
             if (trendSwitch && !trendSwitch.checked) return;
-
             e.target.classList.toggle('active');
             updateFilters();
         });
@@ -512,7 +578,8 @@ function initFilters() {
             if (minConstSelect) minConstSelect.value = "13.5";
             if (maxConstSelect) maxConstSelect.value = "16.0";
             if (minRateInput) minRateInput.value = "";
-            if (maxRateInput) maxRateInput.value = "";
+            if (maxRateInput) maxRateInput.value = "16.0"; // 元コードのロジック維持
+            if (maxRateInput && maxRateInput.id === 'max-rating') maxRateInput.value = ""; // 安全クリア
             if (lampSelect) lampSelect.value = "all";
 
             if (rankMinSelect) rankMinSelect.value = "0";
@@ -534,11 +601,20 @@ function initFilters() {
             document.getElementById('filter-all').classList.add('active');
             currentTypeFilter = 'all';
 
-            // 💡 修正：リセット時はトレンド機能自体をデフォルト（無効化）に戻す
             if (trendSwitch) trendSwitch.checked = false;
             document.querySelectorAll('.btn-trend-filter').forEach(b => {
                 b.classList.remove('active');
                 b.classList.add('trend-disabled');
+            });
+
+            // リセット時に難易度ボタンをデフォルト（EXP, MAS, ULTがON、WEがOFF）に戻す
+            document.querySelectorAll('.btn-diff-filter').forEach(b => {
+                const diff = b.getAttribute('data-diff');
+                if (diff === 'WE') {
+                    b.classList.remove('active');
+                } else {
+                    b.classList.add('active');
+                }
             });
 
             currentSortKey = 'rating';
@@ -685,7 +761,7 @@ function calculatechuniRate(playerName) {
 
 
 /**
- * 画面にスコアを表示する（💡既存CSS完全継承・Main Trend色変更版）
+ * 画面にスコアを表示する（💡既存CSS完全継承・Main Trend色変更版・WE最適化）
  */
 function displayScores(data) {
     console.log("--- displayScores開始 ---");
@@ -699,7 +775,7 @@ function displayScores(data) {
 
     if (!data || data.length === 0) {
         console.warn("警告: 表示するデータが0件です。");
-        body.innerHTML = "<tr><td colspan='4'>表示できるデータがありません</td></tr>";
+        body.innerHTML = "<tr><td colspan='5'>表示できるデータがありません</td></tr>";
         return;
     }
 
@@ -718,17 +794,30 @@ function displayScores(data) {
     };
 
     limitedData.forEach((item, index) => {
-        // GAS側から送られてくる diff (MAS, ULT等) を取得
-        const diff = String(item.diff || "").toLowerCase();
+        // GAS側から送られてくる diff (MAS, ULT, WE等) を取得
+        const diffRaw = String(item.diff || "");
+        const diffLower = diffRaw.toLowerCase();
+        const isWE = (diffRaw.toUpperCase() === "WE");
 
         // 数値としての定数とスコア、Ratingを取得
         const currentConst = parseFloat(item.const) || 0;
         const tScore = parseFloat(item.score) || 0;
         const RatingNum = parseFloat(item.rating) || 0;
 
-        // 表示用の定数 (0の場合は - と表示)
-        const displayLevel = currentConst > 0 ? currentConst.toFixed(1) : "-";
-        const RatingText = RatingNum > 0
+        // 💡【WE対応：定数非表示 / 通常は定数表示】の切り替え
+        let diffLevelText = "";
+        if (isWE) {
+            // WEの場合は定数を完全に非表示にし、属性（例: 狂、跳など）を【】付きでスマートに表示
+            const attr = item.weAttr || item.attribute || "";
+            diffLevelText = `WORLD'S END ${attr ? `【${attr}】` : ""}`;
+        } else {
+            // 通常譜面は従来通り「MAS 14.5」などの形式
+            const displayLevel = currentConst > 0 ? currentConst.toFixed(1) : "-";
+            diffLevelText = `${diffRaw} ${displayLevel}`;
+        }
+
+        // 💡【WE対応：単曲Ratingを「-」に固定】
+        const RatingText = (!isWE && RatingNum > 0)
             ? (Math.floor((RatingNum + 0.000001) * 100) / 100).toFixed(2)
             : "-";
 
@@ -746,29 +835,27 @@ function displayScores(data) {
         // 2. 新曲バッジ (item.isNew判定は既存ロジックを継続)
         const newBadge = item.isNew ? `<span class="new-song-label">NEW</span>` : "";
 
-        // 💡【修正】既存CSSを100%活かし、カラーだけを綺麗に上書きするトレンドHTML
+        // トレンドHTML
         let trendHtml = "";
         if (item.mainTrend && item.mainTrend !== "None") {
             const trendColor = colorMap[item.mainTrend] || "#555";
-            // スラッシュ「/」はインライン色指定をせず、.diff-level-cell の元の色（#555）をそのまま適用
-            // トレンド名だけ span で囲って color のみを指定（太さやサイズはCSSを継承）
             trendHtml = ` / <span style="color: ${trendColor};">${item.mainTrend}</span>`;
         }
 
         // --- 3. テーブル行の作成 ---
         const tr = document.createElement('tr');
-        tr.className = diff;
-        tr.style.cursor = "pointer"; // クリック可能であることを示す
+        tr.className = diffLower; // クラス名はCSSに合わせて小文字（we, mas, ult等）
+        tr.style.cursor = "pointer";
 
         // クリックイベント：ランキング機能を呼び出す
         tr.onclick = () => {
             if (typeof loadRanking === "function") {
-                loadRanking(item.title, item.diff, item.const);
+                loadRanking(item.title, diffRaw, item.const);
             }
         };
 
-        // ハイライト判定 (rateThresholdsとの比較)
-        if (RatingNum > 0) {
+        // ハイライト判定 (WEは単レ算出がないため、通常曲のみハイライト判定を行う)
+        if (!isWE && RatingNum > 0) {
             if (item.isNew && RatingNum >= rateThresholds.new20) {
                 tr.classList.add('is-new-target');
             } else if (!item.isNew && RatingNum >= rateThresholds.best30) {
@@ -776,12 +863,12 @@ function displayScores(data) {
             }
         }
 
-        // HTML組み立て (💡diff-level-cellの本来のスタイルを一切崩さずに結合)
+        // HTML組み立て
         tr.innerHTML = `
             <td class="num-cell">${index + 1}</td> 
             <td>
                 <div class="title-cell">${newBadge}${item.title || "Unknown"}</div>
-                <div class="diff-level-cell">${diff} ${displayLevel}${trendHtml}</div>
+                <div class="diff-level-cell">${diffLevelText}${trendHtml}</div>
             </td>
             <td class="lamp-cell">${lampHtml}</td>
             <td class="t-score-cell"><span class="t-score">${tScore.toLocaleString()}</span></td>
@@ -796,10 +883,10 @@ function displayScores(data) {
 }
 
 /**
- * 選曲中の演出付きランダム選出
+ * 選曲中の演出付きランダム選出（難易度マルチセレクト＆WE対応完全版）
  */
 function pickRandomSong() {
-    // 1. 現在適用されているフィルタ条件で候補（candidates）を絞り込む
+    // 1. 各種フィルター要素の取得
     const searchInput = document.getElementById('search-input');
     const minConstSelect = document.getElementById('min-constant');
     const maxConstSelect = document.getElementById('max-constant');
@@ -807,7 +894,7 @@ function pickRandomSong() {
     const maxRateInput = document.getElementById('max-rating');
     const lampSelect = document.getElementById('lamp-filter');
 
-    // ★【連動拡張】Rank / スコア切り替え要素を新しく取得
+    // Rank / スコア切り替え要素
     const filterModeSelect = document.getElementById('filter-mode');
     const rankMinSelect = document.getElementById('rank-min');
     const rankMaxSelect = document.getElementById('rank-max');
@@ -821,7 +908,7 @@ function pickRandomSong() {
     const maxRate = (maxRateInput && maxRateInput.value !== "") ? parseFloat(maxRateInput.value) : 99.99;
     const lampValue = lampSelect ? lampSelect.value : 'all';
 
-    // モード（"rank" または "score"）と、それぞれの境界値を取得
+    // モード取得
     const filterMode = filterModeSelect ? filterModeSelect.value : 'rank';
     const rankMin = rankMinSelect ? parseFloat(rankMinSelect.value) : 0;
     const rankMax = rankMaxSelect ? parseFloat(rankMaxSelect.value) : 1010000;
@@ -831,12 +918,15 @@ function pickRandomSong() {
     const minScore = minScoreVal !== "" ? parseFloat(minScoreVal) : 0;
     const maxScore = maxScoreVal !== "" ? parseFloat(maxScoreVal) : 1010000;
 
-    // 💡 トレンド有効化スイッチと、ONになっているトレンドボタンの情報を取得
+    // トレンドスイッチ情報
     const trendSwitch = document.getElementById('trend-enable-switch');
     const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
     const activeTrends = Array.from(document.querySelectorAll('.btn-trend-filter.active')).map(btn => btn.getAttribute('data-trend'));
 
-    // ここで candidates を定義
+    // 💡【新設】現在アクティブな難易度ボタンのリストを取得
+    const activeDiffs = Array.from(document.querySelectorAll('.btn-diff-filter.active')).map(btn => btn.getAttribute('data-diff'));
+
+    // 候補（candidates）の絞り込み
     const candidates = myCurrentRecords.filter(item => {
         const title = String(item.title || "").toLowerCase();
         if (!title.includes(searchText)) return false;
@@ -844,16 +934,20 @@ function pickRandomSong() {
         const currentRate = parseFloat(item.rating) || 0;
         if (currentRate < minRate || currentRate > maxRate) return false;
 
-        const constant = parseFloat(item.const) || 0;
-        if (constant < minConst || constant > maxConst) return false;
+        // 💡【新設】難易度（diff）で絞り込み
+        const itemDiff = String(item.diff || "").toUpperCase();
+        if (!activeDiffs.includes(itemDiff)) return false;
 
-        // ★【修正】Rankモードかスコアモードかに応じて判定をスイッチ
+        // 💡【修正】定数で絞り込み（★WE用のエスケープ安全弁を追加）
+        const constant = parseFloat(item.const) || 0;
+        const isWeExempt = (itemDiff === "WE" && activeDiffs.includes("WE"));
+        if (!isWeExempt && (constant < minConst || constant > maxConst)) return false;
+
+        // Rankかスコアモードかに応じて判定
         const tScore = parseFloat(item.score) || 0;
         if (filterMode === 'rank') {
-            // Rank選択時: 下限以上 かつ 上限区分の最大値以下
             if (tScore < rankMin || tScore > getUpperLimit(rankMax)) return false;
         } else {
-            // スコア選択時: 直接入力された数値の範囲で判定
             if (tScore < minScore || tScore > maxScore) return false;
         }
 
@@ -868,14 +962,9 @@ function pickRandomSong() {
         if (currentTypeFilter === 'old' && item.isNew) return false;
         if (currentTypeFilter === 'new' && !item.isNew) return false;
 
-        // 💡 追加：傾向フィルター有効化スイッチとの完全連動判定
         if (isTrendEnabled) {
-            // 傾向フィルターが「オン」のとき：未設定(None)は除外し、ONのトレンド属性のみを許可
             const songTrend = item.mainTrend || "None";
             if (!activeTrends.includes(songTrend)) return false;
-        } else {
-            // 傾向フィルターが「オフ」のとき：未設定も含めて全ての曲を通過させる
-            // (何も判定せずスルーしてOK)
         }
 
         return true;
@@ -897,22 +986,49 @@ function pickRandomSong() {
     overlay.innerHTML = `
         <div style="font-size: 1.2rem; color: #27ae60; margin-bottom: 20px; font-weight: bold;">SELECTING...</div>
         <div id="roulette-title" style="font-size: 1.8rem; font-weight: bold; text-align: center; min-height: 3em; padding: 0 20px;"></div>
-        <div id="roulette-diff" style="margin-top: 10px; padding: 5px 15px; border-radius: 20px; font-weight: bold;"></div>
+        <div id="roulette-diff" style="margin-top: 10px; padding: 5px 15px; border-radius: 20px; font-weight: bold; transition: all 0.1s;"></div>
     `;
     document.body.appendChild(overlay);
 
     const titleEl = document.getElementById('roulette-title');
     const diffEl = document.getElementById('roulette-diff');
 
+    // 💡【新設】難易度ごとの演出カラー設定とスタイル適用関数
+    const diffColors = {
+        'EXP': '#ff4d4d',
+        'MAS': '#9966ff',
+        'ULT': '#2b2b2b'
+    };
+
+    function applyDiffStyle(targetEl, diffStr, itemObj) {
+        const dUpper = diffStr.toUpperCase();
+        if (dUpper === 'WE') {
+            // WEの場合は虹色の流れるグラデーション演出
+            const attr = itemObj.weAttr || itemObj.attribute || "";
+            targetEl.innerText = `WORLD'S END ${attr ? `【${attr}】` : ""}`;
+            targetEl.style.background = 'linear-gradient(45deg, #ff3366, #ff9933, #33cc66, #3399ff, #9933ff)';
+            targetEl.style.backgroundSize = '200% 200%';
+            targetEl.style.animation = 'rainbowShift 3s linear infinite';
+            targetEl.style.color = '#fff';
+            targetEl.style.border = 'none';
+        } else {
+            // 通常難易度の表記とベタ塗り背景
+            targetEl.innerText = diffStr;
+            targetEl.style.background = diffColors[dUpper] || '#555';
+            targetEl.style.backgroundSize = 'auto';
+            targetEl.style.animation = 'none';
+            targetEl.style.color = '#fff';
+        }
+    }
+
     let count = 0;
     const maxTicks = 20;
     const interval = setInterval(() => {
         const temp = candidates[Math.floor(Math.random() * candidates.length)];
         titleEl.innerText = temp.title;
-        diffEl.innerText = temp.diff;
 
-        const diffColors = { 'basic': '#22ac22', 'advanced': '#f39c12', 'expert': '#e74c3c', 'master': '#9b59b6', 'ultima': '#222' };
-        diffEl.style.backgroundColor = diffColors[temp.diff.toLowerCase()] || '#555';
+        // 💡 演出中のスタイル適用
+        applyDiffStyle(diffEl, temp.diff, temp);
 
         count++;
         if (count >= maxTicks) {
@@ -938,10 +1054,14 @@ function pickRandomSong() {
         titleEl.style.transition = "all 0.5s ease-out";
         titleEl.innerText = picked.title;
 
-        diffEl.innerText = picked.diff;
-        const diffColors = { 'basic': '#22ac22', 'advanced': '#f39c12', 'expert': '#e74c3c', 'master': '#9b59b6', 'ultima': '#222' };
-        diffEl.style.backgroundColor = diffColors[picked.diff.toLowerCase()] || '#555';
-        diffEl.style.boxShadow = `0 0 20px ${diffEl.style.backgroundColor}`;
+        // 💡 決定曲へのスタイル適用
+        applyDiffStyle(diffEl, picked.diff, picked);
+
+        if (picked.diff.toUpperCase() === 'WE') {
+            diffEl.style.boxShadow = `0 0 25px rgba(153, 51, 255, 0.7)`;
+        } else {
+            diffEl.style.boxShadow = `0 0 20px ${diffEl.style.backgroundColor}`;
+        }
 
         requestAnimationFrame(() => {
             flash.style.opacity = "0";
@@ -960,6 +1080,8 @@ function pickRandomSong() {
             for (let tr of rows) {
                 const titleCell = tr.querySelector('.title-cell');
                 const rowTitle = titleCell ? titleCell.innerText.replace("NEW", "").trim() : "";
+
+                // 💡 クラス名による判定も小文字統一で確実に行う
                 if (rowTitle === picked.title && tr.classList.contains(picked.diff.toLowerCase())) {
                     targetRow = tr;
                     break;
@@ -982,9 +1104,11 @@ function pickRandomSong() {
     }
 }
 
+// 💡 軽量化のためのグローバルキャッシュ変数（コードの最上部等に自動配置されます）
+if (!window.rankingCache) window.rankingCache = {};
+
 /**
- * 💡 修正版：特定の曲のランキングを取得して表示
- * （データが到着するまで、難易度・定数部分は一切表示させない仕様）
+ * 💡 確定決定版：特定の曲のランキングを取得して表示（超軽量キャッシュ＆裏動線完全非同期版）
  */
 async function loadRanking(title, diff, songConst) {
 
@@ -992,14 +1116,26 @@ async function loadRanking(title, diff, songConst) {
     const rankingBody = document.getElementById('ranking-body');
     const titleContainer = document.getElementById('ranking-title-container');
 
-    // --- 1. 表示エリアの切り替え（統計モードから通常モードへ復帰） ---
+    // 引数で送られてきた生のdiff文字列を1ミリも書き換えずに保存する
+    const originalDiff = diff;
+
+    let cleanDiff = diff ? String(diff).trim().toUpperCase() : "";
+    if (cleanDiff.includes("WORLD") || cleanDiff === "WE") {
+        cleanDiff = "WE";
+    }
+    const isWE = (cleanDiff === "WE");
+
+    // --- 1. 表示エリアの切り替え ---
     const controls = document.getElementById('ranking-controls');
     const statsControlArea = document.getElementById('stats-control-area');
     const radarContainer = document.getElementById('radar-chart-container');
+    const videoSection = document.getElementById("ranking-video-section");
 
-    if (controls) controls.style.display = 'block';           
-    if (statsControlArea) statsControlArea.style.display = 'none'; 
-    if (radarContainer) radarContainer.style.display = 'block';     
+    if (controls) controls.style.display = 'block';
+    if (statsControlArea) statsControlArea.style.display = 'none';
+
+    if (videoSection) videoSection.style.display = 'block';
+    if (radarContainer) radarContainer.style.display = isWE ? 'none' : 'block';
 
     // --- 2. テーブルヘッダーを通常用にリセット ---
     const modalTableHead = document.querySelector('#ranking-modal table thead tr');
@@ -1012,7 +1148,6 @@ async function loadRanking(title, diff, songConst) {
         `;
     }
 
-    // --- 3. その他のリセット処理 ---
     selectedPlayer = null;
     lastRankingData = [];
 
@@ -1020,7 +1155,7 @@ async function loadRanking(title, diff, songConst) {
     if (canvas) {
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        canvas.style.display = 'block'; 
+        canvas.style.display = 'block';
     }
 
     if (radarChartInstance) {
@@ -1028,130 +1163,277 @@ async function loadRanking(title, diff, songConst) {
         radarChartInstance = null;
     }
 
-    // 💡【変更点】初期状態では曲名のみを表示し、サブ情報エリア（.title-sub-info）は中身を完全に空にしておきます
-    const displayDiff = diff ? diff.toUpperCase() : "";
-    titleContainer.innerHTML = `
-        ${title} 
-        <span class="title-sub-info"></span>
-    `.trim();
+    // ① モーダルが開いた瞬間に、一度描画を試みる（この時点では空の可能性あり）
+    if (typeof updateRankingVideoSection === "function") {
+        updateRankingVideoSection(title, originalDiff);
+    }
 
+    const displayDiff = isWE ? "WORLD'S END" : cleanDiff;
+    // 引数で送られてくる変数をそのまま安全にエスケープして関数に渡す準備
+    const escapedTitle = title.replace(/'/g, "\\'");
+    const escapedDiff = originalDiff ? originalDiff.replace(/'/g, "\\'") : "";
+
+    titleContainer.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 15px; flex-wrap: wrap;">
+        <span style="font-size: 20px; font-weight: bold;">${title}</span>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <button id="btn-ranking-showall" class="reset-btn" style="display: none;">
+                全員を再表示
+            </button>
+            <button class="btn-ranking-refresh" 
+                onclick="refreshCurrentRanking('${escapedTitle}', '${escapedDiff}', '${songConst}')"
+                style="background: #34495e; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; display: flex; align-items: center; gap: 4px; transition: 0.2s;"
+                onmouseover="this.style.background='#2c3e50'" 
+                onmouseout="this.style.background='#34495e'">
+                 この楽曲のデータを更新
+            </button>
+        </div>
+    </div>
+    <span class="title-sub-info" style="display: block; margin-top: 4px;"></span>
+`.trim();
+
+    // 💡「全員を再表示」ボタンのクリックイベントをここで登録
+    const showAllBtn = document.getElementById('btn-ranking-showall');
+    if (showAllBtn) {
+        showAllBtn.onclick = function () {
+            // テーブルの全行（tr）を表示に戻す
+            document.querySelectorAll('#ranking-body tr').forEach(tr => {
+                tr.style.display = '';
+            });
+            // ボタン自体をまた隠す
+            this.style.display = 'none';
+            // チャートを全員分で再描画
+            if (typeof drawRankingChart === "function") drawRankingChart();
+        };
+    }
+
+    // 💡 キャッシュキーの作成（曲名＋難易度）
+    const cacheKey = `${title}_${cleanDiff}`.toLowerCase();
+    const now = Date.now();
+    const CACHE_TIMEOUT = 5 * 60 * 1000; // ⏳ キャッシュの有効期限：5分
+
+    // 💡 【高速化①】もし5分以内のキャッシュがあれば、GAS通信をスキップして一瞬で描画
+    if (window.rankingCache[cacheKey] && (now - window.rankingCache[cacheKey].timestamp < CACHE_TIMEOUT)) {
+        console.log("⚡ キャッシュからランキングを高速描画します:", title);
+        const cachedResult = window.rankingCache[cacheKey].result;
+
+        // 描画処理を共通関数に丸投げして即終了
+        renderRankingData(cachedResult, title, cleanDiff, songConst, originalDiff, isWE, displayDiff);
+        modal.style.display = "flex";
+
+        // 裏で動画データのチェックと補完だけ走らせる
+        triggerBackgroundVideoFetch(title, originalDiff, isWE);
+        return;
+    }
+
+    // キャッシュがない場合は「読み込み中」にしてモーダルを開く
     rankingBody.innerHTML = "<tr><td colspan='4'>読み込み中...</td></tr>";
     modal.style.display = "flex";
 
-    try {
-        console.log("送るデータ:", { title, diff, const: songConst });
-        const response = await fetch(GAS_URL, {
-            method: "POST",
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({
-                mode: "get_ranking",
-                title: title,
-                diff: diff,
-                const: songConst
-            })
-        });
+    // -------------------------------------------------------------
+    // 💡【高速化②】足並みを揃えるのをやめ、最優先のランキング通信のみ単独で待つ
+    // -------------------------------------------------------------
+    const rankingPromise = fetch(GAS_URL, {
+        method: "POST",
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+            mode: "get_ranking",
+            title: title,
+            diff: cleanDiff,
+            const: songConst
+        })
+    }).then(res => res.json());
 
-        const result = await response.json();
+    // 動画の裏読み（必要な場合のみ）は Promise.all に入れず、完全に独立させてバックグラウンドへ流す
+    triggerBackgroundVideoFetch(title, originalDiff, isWE);
+
+    try {
+        console.log("送るデータ:", { title, diff: cleanDiff, const: songConst });
+
+        const result = await rankingPromise;
 
         if (result.status === "success" && result.data) {
-            rankingBody.innerHTML = "";
-            result.data.forEach((row, index) => {
-                const tr = document.createElement('tr');
-                tr.style.cursor = "pointer"; 
-                tr.dataset.playerName = row.playerName; 
+            // 💡 取得データをキャッシュに保存（5分間有効）
+            window.rankingCache[cacheKey] = {
+                timestamp: now,
+                result: result
+            };
 
-                tr.onclick = function (e) {
-                    this.style.display = "none";
-                    if (typeof drawRankingChart === "function") {
-                        drawRankingChart();
-                    }
-                };
-
-                const myName = localStorage.getItem('chunirec_player_name');
-                if (row.playerName === myName) tr.classList.add('my-rank');
-
-                let scoreVal = row.score;
-                const displayScore = (typeof scoreVal === 'number') ? scoreVal.toLocaleString() : scoreVal;
-
-                const lampText = row.lamp || "";
-                let badgeClass = "";
-
-                if (lampText.includes("AJC")) badgeClass = "ajc-badge";
-                else if (lampText.includes("AJ")) badgeClass = "aj-badge";
-                else if (lampText.includes("FC")) badgeClass = "fc-badge";
-
-                tr.innerHTML = `
-                    <td class="rank-cell">${index + 1}</td>
-                    <td>${row.playerName}</td>
-                    <td>${displayScore}</td> 
-                    <td style="text-align: center;">
-                     <span class="${badgeClass}">${lampText}</span>
-                    </td>
-                `;
-
-                rankingBody.appendChild(tr);
-            });
-
-            if (typeof drawRankingChart === "function") {
-                drawRankingChart(result.data);
-            }
-
-            // GASから返ってきた MasterData 基準の最新定数があればそれを最優先、なければ引数の songConst を適用
-            const latestConst = (result.songProps && result.songProps.constant) ? result.songProps.constant : songConst;
-
-            if (typeof drawRadarChart === "function") {
-                drawRadarChart(result.songProps, latestConst);
-            }
-
-            // 💡【重要変更点】データが正常に到着したここから、難易度・最新定数・トレンドを一斉に組み立てて流し込みます！
-            const subInfoContainer = titleContainer.querySelector('.title-sub-info');
-            if (subInfoContainer && result.songProps) {
-                const props = result.songProps;
-                
-                // GASから届いた最新定数を安全にパース、なければ手元の定数を使用
-                const finalConst = props.constant ? parseFloat(props.constant).toFixed(1) : parseFloat(latestConst).toFixed(1);
-
-                // 各属性に対応する専用カラーコード
-                const colorMap = {
-                    'POWER': '#36a2eb', 
-                    'NOTES': '#d7a62e', 
-                    'CHUNI': '#239898', 
-                    'TRICKY': '#9966ff'  
-                };
-
-                // ① 難易度と最新定数の土台を作成
-                let subHtml = `<span class="diff-const-txt">${displayDiff} ${finalConst}</span><span id="trend-container"></span>`;
-                subInfoContainer.innerHTML = subHtml;
-
-                // ② トレンド部分の組み立てと流し込み
-                const trendContainer = document.getElementById('trend-container');
-                if (trendContainer) {
-                    let trendHtml = "";
-
-                    // Main Trendの記述
-                    if (props.mainTrend && props.mainTrend !== "None") {
-                        const mainColor = colorMap[props.mainTrend] || "#666";
-                        trendHtml += `<span style="color: ${mainColor}; font-weight: 900; margin-left: 12px;">${props.mainTrend}</span>`;
-
-                        // Sub Trendの記述
-                        if (props.subTrend && props.subTrend !== "None" && props.subTrend !== props.mainTrend) {
-                            const subColor = colorMap[props.subTrend] || "#666";
-                            trendHtml += ` <span style="color: #888; font-weight: normal;">/</span> <span style="color: ${subColor}; font-weight: 900;">${props.subTrend}</span>`;
-                        }
-                    }
-                    trendContainer.innerHTML = trendHtml;
-                }
-            }
-
+            // 画面への描画を実行
+            renderRankingData(result, title, cleanDiff, songConst, originalDiff, isWE, displayDiff);
         } else {
             rankingBody.innerHTML = "<tr><td colspan='4'>データがありません</td></tr>";
-            if (typeof drawRadarChart === "function") drawRadarChart(null, songConst);
+            if (!isWE && typeof drawRadarChart === "function") drawRadarChart(null, songConst);
         }
     } catch (e) {
         console.error(e);
         rankingBody.innerHTML = "<tr><td colspan='4'>エラーが発生しました</td></tr>";
-        if (typeof drawRadarChart === "function") drawRadarChart(null, songConst);
+        if (!isWE && typeof drawRadarChart === "function") drawRadarChart(null, songConst);
     }
+}
+
+/**
+ * 💡【補助関数A】ランキングデータを実際にHTMLやチャートに描画する処理（共通化）
+ */
+function renderRankingData(result, title, cleanDiff, songConst, originalDiff, isWE, displayDiff) {
+    const rankingBody = document.getElementById('ranking-body');
+    const titleContainer = document.getElementById('ranking-title-container');
+
+    rankingBody.innerHTML = "";
+    result.data.forEach((row, index) => {
+        const tr = document.createElement('tr');
+        tr.style.cursor = "pointer";
+        tr.dataset.playerName = row.playerName;
+
+        // 💡 行クリックで非表示＆チャート再描画のロジックは綺麗に残します
+        tr.onclick = function (e) {
+            // 🛑 誤動作防止：行の中のリンクやボタン（もしあれば）が押された時は非表示にしない
+            if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+
+            // クリックされた行を非表示にする
+            this.style.display = 'none';
+
+            // 📊 行が消えた最新の状態を反映して、チャートを再描画する
+            if (typeof drawRankingChart === "function") {
+                drawRankingChart();
+            }
+        };
+
+        const myName = localStorage.getItem('chunirec_player_name');
+        if (row.playerName === myName) tr.classList.add('my-rank');
+
+        let scoreVal = row.score;
+        const displayScore = (typeof scoreVal === 'number') ? scoreVal.toLocaleString() : scoreVal;
+
+        const lampText = row.lamp || "";
+        let badgeClass = "";
+        if (lampText.includes("AJC")) badgeClass = "ajc-badge";
+        else if (lampText.includes("AJ")) badgeClass = "aj-badge";
+        else if (lampText.includes("FC")) badgeClass = "fc-badge";
+
+        // 💡 ランキングテーブル側は余計なボタンを入れず、元のシンプルな状態に戻します
+        tr.innerHTML = `
+            <td class="rank-cell">${index + 1}</td>
+            <td>${row.playerName}</td>
+            <td>${displayScore}</td> 
+            <td style="text-align: center;">
+             <span class="${badgeClass}">${lampText}</span>
+            </td>
+        `;
+        rankingBody.appendChild(tr);
+    });
+
+    if (typeof drawRankingChart === "function") {
+        drawRankingChart(result.data);
+    }
+
+    if (!isWE && typeof drawRadarChart === "function") {
+        const latestConst = (result.songProps && result.songProps.constant) ? result.songProps.constant : songConst;
+        drawRadarChart(result.songProps, latestConst);
+    }
+
+    if (typeof updateRankingVideoSection === "function") {
+        const finalTitle = (result.songProps && result.songProps.title) ? result.songProps.title : title;
+        updateRankingVideoSection(finalTitle, isWE ? "WE" : originalDiff);
+    }
+
+    const subInfoContainer = titleContainer.querySelector('.title-sub-info');
+    if (subInfoContainer) {
+        const props = result.songProps || {};
+        const colorMap = { 'POWER': '#36a2eb', 'NOTES': '#d7a62e', 'CHUNI': '#239898', 'TRICKY': '#9966ff' };
+
+        if (isWE) {
+            const attr = props.weAttr || props.attribute || props.attr || "";
+            subInfoContainer.innerHTML = `<span class="diff-const-txt">WORLD'S END ${attr ? `【${attr}】` : ""}</span>`;
+        } else {
+            const latestConst = props.constant ? result.songProps.constant : songConst;
+            const finalConst = latestConst ? parseFloat(latestConst).toFixed(1) : "-";
+
+            let subHtml = `<span class="diff-const-txt">${displayDiff} ${finalConst}</span><span id="trend-container"></span>`;
+            subInfoContainer.innerHTML = subHtml;
+
+            const trendContainer = document.getElementById('trend-container');
+            if (trendContainer) {
+                let trendHtml = "";
+                if (props.mainTrend && props.mainTrend !== "None") {
+                    const mainColor = colorMap[props.mainTrend] || "#666";
+                    trendHtml += `<span style="color: ${mainColor}; font-weight: 900; margin-left: 12px;">${props.mainTrend}</span>`;
+
+                    if (props.subTrend && props.subTrend !== "None" && props.subTrend !== props.mainTrend) {
+                        const subColor = colorMap[props.subTrend] || "#666";
+                        trendHtml += ` <span style="color: #888; font-weight: normal;">/</span> <span style="color: ${subColor}; font-weight: 900;">${props.subTrend}</span>`;
+                    }
+                }
+                trendContainer.innerHTML = trendHtml;
+            }
+        }
+    }
+}
+
+/**
+ * 💡【修正版】動画データを裏側（完全非同期）でロードし、終わったら確実に動画セクションを再描画する
+ */
+function triggerBackgroundVideoFetch(title, originalDiff, isWE) {
+    // 既にデータが存在する場合は何もしない
+    if (window.liveSupplies && window.liveSupplies.length > 0) {
+        return;
+    }
+
+    fetch(GAS_URL, {
+        method: "POST",
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ mode: "get_video_history" })
+    })
+        .then(res => res.json())
+        .then(videoResult => {
+            if (videoResult && videoResult.status === "success" && videoResult.data) {
+                const actualData = videoResult.data.supplies ? videoResult.data : (videoResult.data || videoResult);
+
+                // 💡 windowオブジェクト（グローバル）に対して確実にデータを代入
+                window.liveRequests = actualData.requests || [];
+                window.liveSupplies = actualData.supplies || [];
+
+                console.log("バックグラウンドでの動画データ自動救済完了:", window.liveSupplies);
+
+                // 💡 データの代入がブラウザに完全に認識された直後に再描画を走らせる
+                setTimeout(() => {
+                    if (typeof updateRankingVideoSection === "function") {
+                        updateRankingVideoSection(title, isWE ? "WE" : originalDiff);
+                    }
+                }, 10);
+            }
+        })
+        .catch(e => {
+            console.error("動画データ裏系統取得エラー:", e);
+            // エラー時も「読み込み中」のまま固まらないよう、空データ扱いで描画を解除する
+            if (typeof updateRankingVideoSection === "function") {
+                updateRankingVideoSection(title, isWE ? "WE" : originalDiff, []);
+            }
+        });
+}
+
+/**
+ * 🔄 現在表示している曲のランキングキャッシュを破棄して、強制的にGASから再取得する
+ */
+function refreshCurrentRanking(title, diff, songConst) {
+    let cleanDiff = diff ? String(diff).trim().toUpperCase() : "";
+    if (cleanDiff.includes("WORLD") || cleanDiff === "WE") cleanDiff = "WE";
+
+    // 💡 この曲専用のキャッシュキーを生成
+    const cacheKey = `${title}_${cleanDiff}`.toLowerCase();
+
+    // 💡 キャッシュが存在すれば削除（これで次回 loadRanking 実行時に必ずGASへ通信が走る）
+    if (window.rankingCache && window.rankingCache[cacheKey]) {
+        delete window.rankingCache[cacheKey];
+        console.log(`♻️ キャッシュを解放しました: ${cacheKey}`);
+    }
+
+    // 💡 リクエストと動画のグローバルデータも空にして、裏読みを強制リフレッシュさせる
+    window.liveSupplies = [];
+    window.liveRequests = [];
+
+    // 再度ランキングを読み込む
+    loadRanking(title, diff, songConst);
 }
 
 // モーダルを閉じる処理（window.onload または initFilters 内に追加）
@@ -1218,10 +1500,10 @@ function drawRadarChart(props, songConst) {
 
     // 15.0を基準とした差分を整数（0.1 = 1）として算出
     const diffDiff = Math.round((currentConst - 15.0) * 10);
-    
+
     // 基本の上限値16に、差分×4を加算
     let maxLimit = 16 + (diffDiff * 4);
-    
+
     // 【安全ガード】定数が15.0未満（14.5など）の曲でも、上限は16未満に下げない
     if (maxLimit < 16) {
         maxLimit = 16;
@@ -1303,16 +1585,16 @@ function drawRadarChart(props, songConst) {
                             lineHeight: 1.4  // ★【追加】1行目と2行目の間に程よい上下の余白を作る
                         },
                         // ★【最重要】すべての行のテキストを「中央寄せ」に強制固定する
-                        textAlign: 'center', 
-                        
+                        textAlign: 'center',
+
                         // 頂点ラベルのテキストを動的にカスタマイズ
-                        callback: function(label, index) {
+                        callback: function (label, index) {
                             let val = 0;
                             if (label === 'POWER') val = props.tairyoku || 0;
                             if (label === 'NOTES') val = props.kenban || 0;
                             if (label === 'CHUNI') val = props.chuni || 0;
                             if (label === 'TRICKY') val = props.kuse || 0;
-                            
+
                             // 前方のスペース（空白）を無くし、純粋な数値だけにします
                             // textAlign: 'center' の効果で、これだけで自動的に真ん中にドカンと配置されます
                             return [label, `${val.toFixed(2)}`];
@@ -1341,10 +1623,20 @@ function drawRankingChart(data) {
     const ctx = canvas.getContext('2d');
     const myName = localStorage.getItem('chunirec_player_name');
 
+    // 全ての行を取得
+    const allRows = Array.from(document.querySelectorAll('#ranking-body tr'));
+
     // ★ 表で非表示（display: none）になっていないプレイヤーだけを抽出
-    const visibleNames = Array.from(document.querySelectorAll('#ranking-body tr'))
+    const visibleNames = allRows
         .filter(tr => tr.style.display !== 'none')
         .map(tr => tr.dataset.playerName);
+
+    // 💡 非表示にされている人が1人でもいるかチェックして「全員を再表示」ボタンの表示を切り替え
+    const showAllBtn = document.getElementById('btn-ranking-showall');
+    if (showAllBtn) {
+        const hasHiddenPlayer = allRows.some(tr => tr.style.display === 'none');
+        showAllBtn.style.display = hasHiddenPlayer ? 'inline-block' : 'none';
+    }
 
     // 有効なスコアを抽出しソート
     const validScores = lastRankingData
@@ -1514,6 +1806,11 @@ async function fetchStats(mode) {
     }
 
     const typeFilter = document.querySelector('.btn-filter.active')?.getAttribute('data-value') || 'all';
+
+    // 💡 マルチ選択ボタンから、現在 active になっている難易度を配列としてすべて取得
+    const activeDiffs = Array.from(document.querySelectorAll('.btn-diff-filter.active'))
+        .map(btn => btn.getAttribute('data-diff'));
+
     const minC = document.getElementById('min-constant')?.value || "0";
     const maxC = document.getElementById('max-constant')?.value || "16.0";
     const minRate = document.getElementById('min-rating')?.value || "0";
@@ -1534,7 +1831,7 @@ async function fetchStats(mode) {
         rMax = (maxScoreInput && maxScoreInput.value !== "") ? maxScoreInput.value : "1010000";
     }
 
-    // ★【重要修正】傾向フィルターの選択状態を取得
+    // 傾向フィルターの選択状態を取得
     const trendSwitch = document.getElementById('trend-enable-switch');
     const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
     const activeTrends = isTrendEnabled
@@ -1544,6 +1841,7 @@ async function fetchStats(mode) {
     const requestParams = {
         mode: "get_stats",
         filterMode: filterMode,
+        diffFilter: activeDiffs,
         minConst: minC,
         maxConst: maxC,
         minRate: minRate,
@@ -1575,8 +1873,8 @@ async function fetchStats(mode) {
             const statsControlArea = document.getElementById('stats-control-area');
             if (statsControlArea) statsControlArea.style.display = 'block';
 
-            const radarContainer = document.getElementById('radar-chart-container'); // ★追加
-            if (radarContainer) radarContainer.style.display = 'none';     // ★追加：統計モードなのでレーダーを隠す
+            const radarContainer = document.getElementById('radar-chart-container');
+            if (radarContainer) radarContainer.style.display = 'none';
 
             currentStatsData = (mode === 'song') ? result.data.songRanking : result.data.playerRanking;
             currentStatsMode = mode;
@@ -1604,6 +1902,9 @@ async function fetchStats(mode) {
     }
 }
 
+/**
+ * 統計ランキングの表示描画（WEカットライン変更同期 ＆ ソート安全版 ＆ WEバッジ非表示版）
+ */
 function displayStatsRanking() {
     const tbody = document.getElementById('ranking-body');
     const modal = document.getElementById('ranking-modal');
@@ -1613,7 +1914,12 @@ function displayStatsRanking() {
 
     const statsData = [...currentStatsData];
     if (currentDisplayType === 'avg') {
-        statsData.sort((a, b) => (b.avgScore || 0) - (a.avgScore || 0));
+        // 💡 スコアが入っていない（0または不十分な）曲を確実に下位へ落とすソート
+        statsData.sort((a, b) => {
+            const scoreA = a.avgScore || 0;
+            const scoreB = b.avgScore || 0;
+            return scoreB - scoreA;
+        });
     } else {
         statsData.sort((a, b) => b.count - a.count);
     }
@@ -1623,7 +1929,7 @@ function displayStatsRanking() {
         const nameLabel = currentStatsMode === 'song' ? '楽曲名' : 'プレイヤー';
 
         if (currentDisplayType === 'avg') {
-            const col4Label = currentStatsMode === 'song' ? '全プレイ人数' : '全プレイ曲数';
+            const col4Label = currentStatsMode === 'song' ? '集計対象人数' : '集計対象曲数';
             thead.innerHTML = `
                 <th>順位</th>
                 <th>${nameLabel}</th>
@@ -1641,6 +1947,13 @@ function displayStatsRanking() {
         }
     }
 
+    // 🎨 各難易度に対応するカラーマップ（EXP, MAS, ULT のみ使用）
+    const diffColors = {
+        'EXP': { bg: '#ff4c4c', text: '#ffffff' }, // 赤
+        'MAS': { bg: '#aa33ff', text: '#ffffff' }, // 紫
+        'ULT': { bg: '#222222', text: '#ffcc00' }  // 黒・金文字
+    };
+
     statsData.forEach((row, index) => {
         const displayName = (currentStatsMode === 'song') ? (row.title || "不明") : (row.playerName || "不明");
         const unit = (currentStatsMode === 'song') ? "人" : "曲";
@@ -1649,26 +1962,36 @@ function displayStatsRanking() {
         let col3, col4;
         if (currentDisplayType === 'avg') {
             const avgVal = (row.avgScore && row.avgScore > 0) ? row.avgScore.toLocaleString() : "---";
-
-            let totalCount = 0;
-            if (currentStatsMode === 'song') {
-                totalCount = row.totalCountAll || 0;
-            } else {
-                totalCount = row.allPlayCount || 0;
-            }
+            let totalCount = (currentStatsMode === 'song') ? (row.totalCountAll || 0) : (row.allPlayCount || 0);
 
             col3 = `<td style="text-align:center; font-weight:bold; color: #2e7df0;">${avgVal}</td>`;
             col4 = `<td style="text-align:center;">${totalCount}<span style="font-size:10px;"> ${unit}</span></td>`;
         } else {
             const rateStr = currentDenominator > 0 ? ((row.count / currentDenominator) * 100).toFixed(1) + "%" : "-";
-
             col3 = `<td style="text-align:right; font-weight:bold;">${row.count} ${unit}</td>`;
             col4 = `<td style="text-align:center; color: #f02e2e;">${rateStr}</td>`;
         }
 
+        // 🎨【重要修正】WEの場合はバッジを表示せず、EXP/MAS/ULTの時だけ着色バッジを生成
+        let diffBadgeHtml = "";
+        if (currentStatsMode === 'song' && row.diff) {
+            const rawDiff = String(row.diff).toUpperCase();
+            const isWE = (rawDiff === "WE" || rawDiff.includes("WORLD") || rawDiff.includes("END"));
+            
+            if (!isWE) {
+                const colors = diffColors[rawDiff] || { bg: '#718093', text: '#ffffff' };
+                diffBadgeHtml = `<span style="background: ${colors.bg}; color: ${colors.text}; font-size: 10px; padding: 2px 5px; border-radius: 3px; margin-left: 6px; font-weight: bold; display: inline-block; vertical-align: middle; box-shadow: 0 1px 2px rgba(0,0,0,0.2);">${rawDiff}</span>`;
+            }
+        }
+
         tr.innerHTML = `
             <td class="rank-cell" style="text-align:center;">${index + 1}</td>
-            <td style="text-align:left;">${displayName}</td>
+            <td style="text-align:left;">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px;" title="${displayName}">${displayName}</span>
+                    ${diffBadgeHtml}
+                </div>
+            </td>
             ${col3}
             ${col4}
         `;
@@ -1676,7 +1999,14 @@ function displayStatsRanking() {
         tr.style.cursor = "pointer";
 
         if (currentStatsMode === 'song') {
-            tr.onclick = () => showSubModal(row);
+            tr.onclick = () => {
+                if (row.diff && (String(row.diff).toUpperCase() === "WE" || String(row.diff).includes("WORLD"))) {
+                    row.diff = "WE";
+                }
+                showSubModal(row);
+                const videoSection = document.getElementById("ranking-video-section");
+                if (videoSection) videoSection.style.display = "none";
+            };
         } else {
             tr.onclick = () => fetchAndShowPlayerDetail(row.playerName);
         }
@@ -1733,7 +2063,7 @@ function renderSwitchButton() {
 }
 
 /**
- * 統計モーダルのタイトル更新
+ * 💡 統計モーダルのタイトル更新（WEレインボーバッジ ＆ 定数非表示版）
  */
 function updateStatsTitle() {
     const titleContainer = document.getElementById('ranking-title-container');
@@ -1761,15 +2091,46 @@ function updateStatsTitle() {
     }
 
     const lampLabel = (lmp === 'all') ? 'すべて' : lmp.toUpperCase();
+
+    // 💡 現在選択されている難易度を取得
+    const activeDiffs = Array.from(document.querySelectorAll('.btn-diff-filter.active'))
+        .map(btn => btn.getAttribute('data-diff').toUpperCase());
+
+    // 🎨 各難易度に対応するカラーマップ
+    const diffColors = {
+        'EXP': { bg: '#ff4c4c', text: '#ffffff' }, // 赤
+        'MAS': { bg: '#aa33ff', text: '#ffffff' }, // 紫
+        'ULT': { bg: '#222222', text: '#ffcc00' }, // 黒・金文字
+        'WE': {
+            bg: 'linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3)',
+            text: '#ffffff',
+            extraStyle: 'text-shadow: 1px 1px 2px rgba(0,0,0,0.8);'
+        }
+    };
+
+    let diffBadgesHtml = "";
+    if (activeDiffs.length === 0) {
+        diffBadgesHtml = `<span style="color: #94a3b8; font-weight: bold; font-size:12px;">難易度: 未選択</span>`;
+    } else {
+        diffBadgesHtml = `<span style="font-weight: bold; font-size:12px;">難易度: </span>` + activeDiffs.map(diff => {
+            const colors = diffColors[diff] || { bg: '#718093', text: '#ffffff' };
+            const extra = colors.extraStyle || '';
+            return `<span style="background: ${colors.bg}; color: ${colors.text}; font-size: 11px; padding: 2px 6px; border-radius: 4px; margin-left: 4px; font-weight: bold; display: inline-block; vertical-align: middle; box-shadow: 0 1px 3px rgba(0,0,0,0.3); ${extra}">${diff}</span>`;
+        }).join('');
+    }
+
+    const hasWE = activeDiffs.includes("WE");
+    const isOnlyWE = activeDiffs.length === 1 && hasWE;
+
     let subInfo = "";
 
+    // 傾向バッジのレンダリング
     const trendSwitch = document.getElementById('trend-enable-switch');
     const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
     let trendHtml = "";
 
     if (isTrendEnabled) {
         const activeTrends = Array.from(document.querySelectorAll('.btn-trend-filter.active')).map(btn => btn.getAttribute('data-trend'));
-
         const trendColors = {
             'POWER': { bg: '#36a2eb', text: '#ffffff' },
             'NOTES': { bg: '#be901f', text: '#ffffff' },
@@ -1789,15 +2150,18 @@ function updateStatsTitle() {
     }
 
     if (currentDisplayType === 'avg') {
-        subInfo = `定数: ${minC} ～ ${maxC}${trendHtml}`;
+        if (isOnlyWE) {
+            subInfo = `${diffBadgesHtml}${trendHtml}`;
+        } else {
+            const constLabel = hasWE ? `通常定数: ${minC} ～ ${maxC} (WEを除く)` : `定数: ${minC} ～ ${maxC}`;
+            subInfo = `${diffBadgesHtml} / ${constLabel}${trendHtml}`;
+        }
     } else {
         let scoreLabel = "";
         if (filterMode === 'score') {
             const rMin = document.getElementById('min-score')?.value || "0";
             const rMax = document.getElementById('max-score')?.value || "1010000";
-            const displayMin = Number(rMin).toLocaleString();
-            const displayMax = Number(rMax).toLocaleString();
-            scoreLabel = `スコア: ${displayMin}～${displayMax}`;
+            scoreLabel = `スコア: ${Number(rMin).toLocaleString()}～${Number(rMax).toLocaleString()}`;
         } else {
             const rankMinSelect = document.getElementById('rank-min');
             const rankMaxSelect = document.getElementById('rank-max');
@@ -1806,12 +2170,18 @@ function updateStatsTitle() {
             scoreLabel = `Rank: ${minText}～${maxText}`;
         }
 
-        subInfo = `定数: ${minC}～${maxC} / レート: ${minRate}～${maxRate} / ${scoreLabel} / ランプ: ${lampLabel}${trendHtml}`;
+        if (isOnlyWE) {
+            subInfo = `${diffBadgesHtml} / ${scoreLabel} / ランプ: ${lampLabel}${trendHtml}`;
+        } else {
+            const constLabel = hasWE ? `通常定数: ${minC}～${maxC}` : `定数: ${minC}～${maxC}`;
+            const rateLabel = hasWE ? `通常レート: ${minRate}～${maxRate}` : `レート: ${minRate}～${maxRate}`;
+            subInfo = `${diffBadgesHtml} / ${constLabel} / ${rateLabel} / ${scoreLabel} / ランプ: ${lampLabel}${trendHtml}`;
+        }
     }
 
     titleContainer.innerHTML = `
         ${mainTitle}
-        <div class="title-sub-info" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 4px;">${subInfo}</div>
+        <div class="title-sub-info" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 4px; margin-top: 6px;">${subInfo}</div>
     `;
 }
 
@@ -1832,6 +2202,9 @@ function showSubModal(row) {
             <th style="text-align:center;">スコア</th>
         `;
     }
+
+    // 💡 現在選択されている楽曲がWEか判定
+    const isWE = row.diff && (String(row.diff).toUpperCase() === "WE" || String(row.diff).includes("WORLD"));
 
     const playDataMap = new Map();
     if (row.players) {
@@ -1863,7 +2236,14 @@ function showSubModal(row) {
     displayList.forEach(p => {
         const tr = document.createElement('tr');
 
-        if (p.isAchieved === true) {
+        // 💡 達成判定の同期（条件指定達成、または平均スコアモード時に対象スコアを満たしているか）
+        let shouldHighlight = p.isAchieved;
+        if (currentDisplayType === 'avg' && p.score !== -1) {
+            const cutoff = isWE ? 900000 : 990000; // 💡 WEなら90万点、通常は99万点
+            shouldHighlight = p.score >= cutoff;
+        }
+
+        if (shouldHighlight) {
             tr.style.backgroundColor = "rgba(255, 71, 87, 0.15)";
             tr.style.fontWeight = "bold";
         }
@@ -1882,9 +2262,6 @@ function showSubModal(row) {
     subModal.style.display = "flex";
 }
 
-/**
- * 個人別詳細を取得して表示
- */
 async function fetchAndShowPlayerDetail(playerName) {
     console.log(playerName + "の詳細を取得中...");
 
@@ -1911,17 +2288,21 @@ async function fetchAndShowPlayerDetail(playerName) {
         rMax = document.getElementById('rank-max')?.value || "1010000";
     }
 
-    // ★【重要修正】個人詳細取得時にも傾向フィルターの状態を取得
     const trendSwitch = document.getElementById('trend-enable-switch');
     const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
     const activeTrends = isTrendEnabled
         ? Array.from(document.querySelectorAll('.btn-trend-filter.active')).map(btn => btn.getAttribute('data-trend'))
         : [];
 
+    // 💡 難易度マルチ選択ボタンの状態を配列として取得
+    const activeDiffs = Array.from(document.querySelectorAll('.btn-diff-filter.active'))
+        .map(btn => btn.getAttribute('data-diff'));
+
     const params = {
         mode: "get_player_detail",
         filterMode: filterMode,
         playerName: playerName,
+        diffFilter: activeDiffs, // 💡 GAS側に選択中の難易度配列を送信
         minConst: document.getElementById('min-constant')?.value || "0",
         maxConst: document.getElementById('max-constant')?.value || "16.0",
         minRate: document.getElementById('min-rating')?.value || "0",
@@ -1930,7 +2311,6 @@ async function fetchAndShowPlayerDetail(playerName) {
         rankMax: rMax,
         lampFilter: document.getElementById('lamp-filter')?.value || 'all',
         typeFilter: document.querySelector('.btn-filter.active')?.getAttribute('data-value') || 'all',
-        // ★【重要修正】GAS側に傾向フィルターの情報を送信する
         isTrendEnabled: isTrendEnabled,
         activeTrends: activeTrends
     };
@@ -1986,6 +2366,14 @@ function showPlayerDetailModal(playerData) {
 
     const noScrollbarStyle = "scrollbar-width: none; -ms-overflow-style: none;";
 
+    // 🎨 個人詳細内用のバッジカラー設定（WEはレインボー仕様）
+    const badgeColors = {
+        'EXP': 'background: #ff4c4c; color: #fff;',
+        'MAS': 'background: #aa33ff; color: #fff;',
+        'ULT': 'background: #222; color: #ffcc00;',
+        'WE': 'background: linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3); color: #fff; text-shadow: 1px 1px 1px rgba(0,0,0,0.6);'
+    };
+
     playerData.details.forEach(item => {
         const tr = document.createElement('tr');
 
@@ -1995,10 +2383,23 @@ function showPlayerDetailModal(playerData) {
             tr.style.fontWeight = "bold";
         }
 
+        // 💡 曲名文字列（"楽曲名 [MAS]" など）から曲名本体と難易度表記をきれいに分離する処理
+        let songTitle = item.title;
+        let badgeHtml = "";
+        const diffMatch = item.title.match(/(.*)\s\[(.*?)\]$/);
+
+        if (diffMatch) {
+            songTitle = diffMatch[1].trim(); // 曲名だけ抽出
+            const diffStr = diffMatch[2].toUpperCase().trim();
+            const style = badgeColors[diffStr] || 'background: #718093; color: #fff;';
+            badgeHtml = `<span style="${style} font-size: 9px; padding: 1px 4px; border-radius: 3px; margin-left: 5px; font-weight: bold; vertical-align: middle;">${diffStr}</span>`;
+        }
+
         tr.innerHTML = `
             <td style="text-align: left; padding-left: 0px; font-size: 0.85em; width: 70%; max-width: 0;">
-                <div style="display: block; width: 100%; text-align: left; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; padding-left: 5px; padding-right: 5px; ${noScrollbarStyle}">
-                    ${item.title}
+                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; padding-left: 5px; padding-right: 5px;">
+                    <span style="overflow-x: auto; white-space: nowrap; ${noScrollbarStyle}" title="${item.title}">${songTitle}</span>
+                    ${badgeHtml}
                 </div>
             </td>
             <td style="text-align: center; width: 30%; font-size: 0.80em;">
@@ -2014,7 +2415,7 @@ function showPlayerDetailModal(playerData) {
 
 /**
  * ==========================================================================
- * VS機能 フロントエンド処理 JavaScript（タイマン＆複数人 完全統合版）
+ * VS機能 フロントエンド処理 JavaScript（WE排他＆定数動的高速非表示版）
  * ==========================================================================
  */
 
@@ -2027,12 +2428,10 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 let cachedVsPlayers = [];
-let lastVsResponseData = null; // GASから返ってきた比較データを保持するグローバル変数
+let lastVsResponseData = null;
 
 /**
  * ログイン中のプレイヤー名を自動取得する共通ヘルパー関数
- * 既存の rating-container 内の表示や構造は一切変えず、
- * そこに表示されているテキストからプレイヤー名だけを安全にサンプリングします。
  */
 function getLoggedInPlayerName() {
     const nameElement = document.querySelector('#rating-average strong')
@@ -2070,20 +2469,16 @@ async function openVsModal() {
         if (result.status === "success") {
             cachedVsPlayers = result.players || [];
 
-            // 自分の名前を自動取得
+            // 自分の名前を自動取得して表示
             const myName = getLoggedInPlayerName();
-
-            // ★修正：HTML側のID「vs-my-name-display」をピンポイントで取得して名前を書き換える
             const myNameDisplay = document.getElementById('vs-my-name-display');
             if (myNameDisplay) {
                 myNameDisplay.innerText = myName || "（プレイヤー未同期）";
             }
 
-            // メイン画面の定数フィルター（min-constant / max-constant）から現在の値を引き継ぎ
+            // メイン画面の定数フィルターの値を引き継ぎ
             const mainMinC = document.getElementById('min-constant')?.value || "13.5";
             const mainMaxC = document.getElementById('max-constant')?.value || "16.0";
-
-            // VSモーダル側のセレクトボックスにメイン画面の選択値をセット（小数点第1位の文字列として確実にセット）
             const minConstEl = document.getElementById('vs-min-const');
             const maxConstEl = document.getElementById('vs-max-const');
 
@@ -2095,6 +2490,23 @@ async function openVsModal() {
                 const parsedMax = parseFloat(mainMaxC);
                 maxConstEl.value = isNaN(parsedMax) ? "16.0" : parsedMax.toFixed(1);
             }
+
+            // メイン画面の難易度フィルターの選択状態をVSモーダル側のボタンに同期
+            const mainActiveDiffs = Array.from(document.querySelectorAll('.btn-diff-filter.active'))
+                .map(btn => btn.getAttribute('data-diff'));
+
+            const vsDiffButtons = document.querySelectorAll('#vs-diff-buttons-container .vs-btn-diff-filter');
+            vsDiffButtons.forEach(btn => {
+                const diffVal = btn.getAttribute('data-diff');
+                if (mainActiveDiffs.length === 0 || mainActiveDiffs.includes(diffVal)) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            // 💡 初期同期時にWEと通常難易度が混ざっていた場合のセーフティ排他
+            sanitizeVsDiffSelection();
 
             renderVsOpponents();
             document.getElementById('vs-setup-modal').style.display = "flex";
@@ -2109,16 +2521,20 @@ async function openVsModal() {
     }
 }
 
+/**
+ * 対戦相手リストの描画（システム用シートの除外）
+ */
 function renderVsOpponents() {
     const container = document.getElementById('vs-opponents-container');
     if (!container) return;
     container.innerHTML = "";
 
-    // 自動取得した自分の名前をベースに除外処理を行う
     const myName = getLoggedInPlayerName();
+    const excludeSheets = ["VideoRequests", "VideoSupplies", "MasterData", "Template"];
 
     cachedVsPlayers.forEach(p => {
-        if (p === myName) return; // 自分を対戦相手リストに出さない
+        if (p === myName || excludeSheets.includes(p)) return;
+
         const div = document.createElement('div');
         div.className = "vs-checkbox-item";
         div.innerHTML = `<label><input type="checkbox" class="vs-opp-checkbox" value="${p}" onchange="checkVsOpponentLimit(this)"><span>${p}</span></label>`;
@@ -2135,7 +2551,46 @@ function closeVsSetupModal() { document.getElementById('vs-setup-modal').style.d
 function closeVsResultModal() { document.getElementById('vs-result-modal').style.display = "none"; }
 
 /**
- * ★追加：VS設定画面の傾向フィルタースイッチのON/OFF制御
+ * 💡【修正】VS専用 難易度フィルターボタンの排他選択ロジック
+ */
+function toggleVsDiffButton(buttonElement) {
+    const clickedDiff = buttonElement.getAttribute('data-diff');
+
+    // まずクリックされたボタン自身をトグル
+    buttonElement.classList.toggle('active');
+
+    const container = document.getElementById('vs-diff-buttons-container');
+    const normalDiffButtons = container.querySelectorAll('.vs-btn-diff-filter:not([data-diff="WE"])');
+    const weButton = container.querySelector('.vs-btn-diff-filter[data-diff="WE"]');
+
+    if (buttonElement.classList.contains('active')) {
+        if (clickedDiff === "WE") {
+            // WEがアクティブになったら、通常難易度（EXP, MAS, ULT）をすべて非アクティブにする
+            normalDiffButtons.forEach(btn => btn.classList.remove('active'));
+        } else {
+            // 通常難易度がアクティブになったら、WEを非アクティブにする
+            if (weButton) weButton.classList.remove('active');
+        }
+    }
+}
+
+/**
+ * 💡 初期化時用の排他セーフティ関数
+ */
+function sanitizeVsDiffSelection() {
+    const container = document.getElementById('vs-diff-buttons-container');
+    if (!container) return;
+    const weButton = container.querySelector('.vs-btn-diff-filter[data-diff="WE"]');
+    const normalActive = container.querySelectorAll('.vs-btn-diff-filter:not([data-diff="WE"]).active');
+
+    // もしWEと通常難易度が両方アクティブなら、通常難易度を優先（WEを解除）する
+    if (weButton && weButton.classList.contains('active') && normalActive.length > 0) {
+        weButton.classList.remove('active');
+    }
+}
+
+/**
+ * VS設定画面の傾向フィルタースイッチのON/OFF制御
  */
 function toggleVsTrendFilters() {
     const switchEl = document.getElementById('vs-trend-enable-switch');
@@ -2143,30 +2598,25 @@ function toggleVsTrendFilters() {
     if (!switchEl || !containerEl) return;
 
     if (switchEl.checked) {
-        containerEl.classList.remove('vs-disabled'); // 明るくしてクリック可能にする
+        containerEl.classList.remove('vs-disabled');
     } else {
-        containerEl.classList.add('vs-disabled');    // 半透明にしてクリック不可にする
-        // スイッチがOFFになったら、選択されていたボタンのactiveクラスをすべて解除する
+        containerEl.classList.add('vs-disabled');
         const activeButtons = containerEl.querySelectorAll('.vs-btn-trend-filter.active');
         activeButtons.forEach(btn => btn.classList.remove('active'));
     }
 }
 
 /**
- * ★追加：VS専用 傾向フィルターボタンの選択/解除切り替え
+ * VS専用 傾向フィルターボタンの選択/解除切り替え
  */
 function toggleVsTrendButton(buttonElement) {
-    // スイッチ自体がOFFなら何もしない
     const switchEl = document.getElementById('vs-trend-enable-switch');
     if (!switchEl || !switchEl.checked) return;
-
-    // activeクラスがついていれば外し、ついていなければつける
     buttonElement.classList.toggle('active');
 }
 
 /**
- * ★追加：VS設定画面の定数セレクトボックス（0.1刻み）を自動生成する処理
- * ページ読み込み時に実行されます
+ * VS設定画面の定数セレクトボックス（0.1刻み）を自動生成する処理
  */
 document.addEventListener("DOMContentLoaded", () => {
     const minSelect = document.getElementById("vs-min-const");
@@ -2178,31 +2628,27 @@ document.addEventListener("DOMContentLoaded", () => {
     const end = 16.0;
     const step = 0.1;
 
-    // 1. 下限側の生成：昇順（13.5 -> 16.0）
     for (let i = Math.round(start * 10); i <= Math.round(end * 10); i += Math.round(step * 10)) {
         const val = (i / 10).toFixed(1);
         const opt = document.createElement("option");
         opt.value = val;
         opt.textContent = val;
-
-        if (val === "13.5") opt.selected = true; // 初期状態
+        if (val === "13.5") opt.selected = true;
         minSelect.appendChild(opt);
     }
 
-    // 2. 上限側の生成：降順（16.0 -> 13.5）
     for (let i = Math.round(end * 10); i >= Math.round(start * 10); i -= Math.round(step * 10)) {
         const val = (i / 10).toFixed(1);
         const opt = document.createElement("option");
         opt.value = val;
         opt.textContent = val;
-
-        if (val === "16.0") opt.selected = true; // 初期状態
+        if (val === "16.0") opt.selected = true;
         maxSelect.appendChild(opt);
     }
 });
 
 /**
- * 【完全統合版】比較実行・データ受信（VS専用の傾向フィルター連動）
+ * 比較実行・データ受信
  */
 async function startVsCompare() {
     const myName = getLoggedInPlayerName();
@@ -2212,21 +2658,23 @@ async function startVsCompare() {
     const opponents = Array.from(checkedBoxes).map(cb => cb.value);
     if (opponents.length === 0) { alert("対戦相手を少なくとも1人選択してください。"); return; }
 
-    // VSモーダル内のセレクトボックスから選択範囲を取得
     const minC = document.getElementById('vs-min-const')?.value || "13.5";
     const maxC = document.getElementById('vs-max-const')?.value || "16.0";
 
-    // ----------------------------------------------------
-    // VS設定画面専用のUIから傾向フィルターの状態を取得
-    // ----------------------------------------------------
     const vsTrendSwitch = document.getElementById('vs-trend-enable-switch');
     const isTrendEnabled = vsTrendSwitch ? vsTrendSwitch.checked : false;
-    
-    // コンテナ内にある「active」クラスが付いたボタンの data-trend 値（POWER, NOTES等）を集める
+
     const activeTrends = isTrendEnabled
         ? Array.from(document.querySelectorAll('#vs-trend-buttons-container .vs-btn-trend-filter.active')).map(btn => btn.getAttribute('data-trend'))
         : [];
-    // ----------------------------------------------------
+
+    const activeDiffs = Array.from(document.querySelectorAll('#vs-diff-buttons-container .vs-btn-diff-filter.active'))
+        .map(btn => btn.getAttribute('data-diff'));
+
+    if (activeDiffs.length === 0) {
+        alert("難易度は少なくとも1つ以上選択してください。");
+        return;
+    }
 
     const startBtn = document.getElementById('vs-start-btn');
     if (startBtn) { startBtn.disabled = true; startBtn.innerText = "比較中..."; }
@@ -2235,14 +2683,15 @@ async function startVsCompare() {
         const response = await fetch(GAS_URL, {
             method: "POST",
             headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({ 
-                mode: "get_vs_data", 
-                myName: myName, 
-                opponents: opponents, 
-                minConst: parseFloat(minC), 
+            body: JSON.stringify({
+                mode: "get_vs_data",
+                myName: myName,
+                opponents: opponents,
+                diffFilter: activeDiffs,
+                minConst: parseFloat(minC),
                 maxConst: parseFloat(maxC),
-                isTrendEnabled: isTrendEnabled, // GAS側に独立したスイッチの状態を送信
-                activeTrends: activeTrends       // GAS側に選択された具体的な傾向リストを送信
+                isTrendEnabled: isTrendEnabled,
+                activeTrends: activeTrends
             })
         });
         const result = await response.json();
@@ -2262,16 +2711,54 @@ async function startVsCompare() {
     }
 }
 
-/**
- * 誰を基準にするかセレクトボックスが変更された際のリレンダー用関数（複数人用）
- */
 function handleBasePlayerChange(selectElement) {
     renderVsResult(selectElement.value);
 }
 
 /**
- * 結果画面のメイン描画（タイマンと複数人を完全分離して生成）
- * ★修正：既存の傾向表示ロジック・カラー（NOTES: #be901f 等）と完全に統一
+ * 共通ヘルパー：曲名テキストから難易度バッジHTMLを生成する
+ */
+function getVsTitleAndBadgeHtml(fullTitle) {
+    const badgeColors = {
+        'EXP': 'background: #ff4c4c; color: #fff;',
+        'MAS': 'background: #aa33ff; color: #fff;',
+        'ULT': 'background: #222; color: #ffcc00;',
+        'WE': 'background: linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3); color: #fff; text-shadow: 1px 1px 1px rgba(0,0,0,0.6);'
+    };
+
+    let songTitle = fullTitle;
+    let badgeHtml = "";
+    const diffMatch = fullTitle.match(/(.*)\s\[(.*?)\]$/);
+
+    if (diffMatch) {
+        songTitle = diffMatch[1].trim();
+        const diffStr = diffMatch[2].toUpperCase().trim();
+        const style = badgeColors[diffStr] || 'background: #718093; color: #fff;';
+        badgeHtml = `<span style="${style} font-size: 9px; padding: 1px 4px; border-radius: 3px; margin-left: 5px; font-weight: bold; vertical-align: middle; white-space: nowrap;">${diffStr}</span>`;
+    }
+
+    const noScrollbarStyle = "scrollbar-width: none; -ms-overflow-style: none;";
+
+    return `
+        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <span style="overflow-x: auto; white-space: nowrap; ${noScrollbarStyle}" title="${fullTitle}">${songTitle}</span>
+            ${badgeHtml}
+        </div>
+    `;
+}
+
+/**
+ * 💡【修正版】全件がWORLD'S END(WE)楽曲のみであるかを判定する関数
+ * GAS側から返ってくる row.title は「曲名 [難易度]」の形式（例: "看板娘のちょこっとサンバ [WE]"）になっています。
+ */
+function isAllSongsWe(vsRows) {
+    if (!vsRows || vsRows.length === 0) return false;
+    // 末尾が [WE] で終わっているかを正規表現で確実にキャッチします
+    return vsRows.every(row => /\[WE\]$/i.test(row.title));
+}
+
+/**
+ * 結果画面のメイン描画（💡 WEの定数非表示対応）
  */
 function renderVsResult(forcedBasePlayer) {
     const container = document.getElementById('vs-result-dynamic-container');
@@ -2283,20 +2770,18 @@ function renderVsResult(forcedBasePlayer) {
     const totalPlayersCount = oppCount + 1;
     const formatScore = (sc) => sc === 0 ? `<span style="color:#aaa;">-</span>` : sc.toLocaleString();
 
-    // ----------------------------------------------------
-    // ★【修正】ご提示いただいた既存の傾向表示ロジックとの完全統合
-    // ----------------------------------------------------
+    // 💡【追加】取得された楽曲データが「すべてWE」であるかチェック
+    const isWeMode = isAllSongsWe(data.vsRows);
+
     let trendHtml = "";
     const vsTrendSwitch = document.getElementById('vs-trend-enable-switch');
     const isTrendEnabled = vsTrendSwitch ? vsTrendSwitch.checked : false;
 
-    if (isTrendEnabled) {
-        // VS専用コンテナ内のアクティブなボタンから data-trend を取得
+    if (isTrendEnabled && !isWeMode) {
         const activeTrends = Array.from(document.querySelectorAll('#vs-trend-buttons-container .vs-btn-trend-filter.active')).map(btn => btn.getAttribute('data-trend'));
-
         const trendColors = {
             'POWER': { bg: '#36a2eb', text: '#ffffff' },
-            'NOTES': { bg: '#be901f', text: '#ffffff' }, // 統一されたカラー
+            'NOTES': { bg: '#be901f', text: '#ffffff' },
             'CHUNI': { bg: '#239898', text: '#ffffff' },
             'TRICKY': { bg: '#9966ff', text: '#ffffff' }
         };
@@ -2311,9 +2796,7 @@ function renderVsResult(forcedBasePlayer) {
             trendHtml = ` / <span style="font-weight: bold; display: inline-block; align-items: center;">傾向:${badges}</span>`;
         }
     }
-    // ----------------------------------------------------
 
-    // 💡 共通で利用する「横並びボタン」のHTMLコンポーネント
     const actionButtonsHtml = `
         <div class="vs-action-row" style="display: flex; justify-content: center; gap: 12px; margin: 15px 0;">
             <button class="vs-btn-back-setup" 
@@ -2329,18 +2812,15 @@ function renderVsResult(forcedBasePlayer) {
         </div>
     `;
 
-    // ==========================================================================
-    // A. 【タイマンの場合（対戦相手が1人の場合）】
-    // ==========================================================================
     if (oppCount === 1) {
         const oppName = data.opponents[0];
         const vsRows = [...data.vsRows];
         const totalSongs = vsRows.length;
 
-        // ★ 定数の横辺りに自然に繋がるように ${trendHtml} を配置
+        // 💡 WEモードのときは定数のテキスト表示を隠す
         let html = `
             <div class="vs-header-left" style="line-height: 1.6; margin-bottom: 10px;">
-                <strong>定数:</strong> ${data.minConst} ～ ${data.maxConst}${trendHtml} （全 ${totalSongs} 曲）<br>
+                ${isWeMode ? '<strong>難易度タイプ:</strong> WORLD\'S END' : '<strong>定数:</strong> ' + data.minConst + ' ～ ' + data.maxConst}${trendHtml} （全 ${totalSongs} 曲）<br>
                 <strong>対戦相手:</strong> ${oppName}
             </div>
         `;
@@ -2353,10 +2833,9 @@ function renderVsResult(forcedBasePlayer) {
             </div>
         `;
 
-        // [上部] 横並びボタンを配置
         html += actionButtonsHtml;
 
-        // ソートロジック（WIN -> DRAW -> LOSE の順）
+        // ソート処理
         vsRows.sort((a, b) => {
             const resPriority = { "WIN": 1, "DRAW": 2, "LOSE": 3 };
             const pA = resPriority[a.matchResult] || 99;
@@ -2370,16 +2849,17 @@ function renderVsResult(forcedBasePlayer) {
 
             if (a.matchResult === "WIN") return diffB - diffA;
             if (a.matchResult === "LOSE") return diffB - diffA;
-            return b.constant - a.constant;
+            return isWeMode ? a.title.localeCompare(b.title) : b.constant - a.constant;
         });
 
+        // 💡 テーブルヘッダーから「定数」列を条件分岐で除外
         html += `
             <div class="vs-table-scroll-container">
                 <table class="vs-table-single">
                     <thead>
                         <tr>
                             <th class="vs-col-title">曲名</th>
-                            <th class="vs-col-const">定数</th>
+                            ${isWeMode ? '' : '<th class="vs-col-const">定数</th>'}
                             <th class="vs-col-score">${data.myName}</th>
                             <th class="vs-col-diff">点差</th>
                             <th class="vs-col-score">${oppName}</th>
@@ -2389,7 +2869,8 @@ function renderVsResult(forcedBasePlayer) {
         `;
 
         if (totalSongs === 0) {
-            html += `<tr><td colspan="5" style="text-align:center; padding:20px; color:#999;">対象データがありません。</td></tr>`;
+            const colspanVal = isWeMode ? 4 : 5;
+            html += `<tr><td colspan="${colspanVal}" style="text-align:center; padding:20px; color:#999;">対象データがありません。</td></tr>`;
         }
 
         vsRows.forEach(row => {
@@ -2407,10 +2888,13 @@ function renderVsResult(forcedBasePlayer) {
                 diffClass = "vs-diff-lose";
             }
 
+            const titleContent = getVsTitleAndBadgeHtml(row.title);
+
+            // 💡 データ行(td)からも定数列を非表示に
             html += `
                 <tr>
-                    <td class="vs-col-title"><div class="vs-song-title-scroll">${row.title}</div></td>
-                    <td class="vs-col-const">${row.constant.toFixed(1)}</td>
+                    <td class="vs-col-title">${titleContent}</td>
+                    ${isWeMode ? '' : '<td class="vs-col-const">' + row.constant.toFixed(1) + '</td>'}
                     <td class="vs-col-score">${formatScore(myScore)}</td>
                     <td class="vs-col-diff ${diffClass}">${diffStr}</td>
                     <td class="vs-col-score">${formatScore(oppScore)}</td>
@@ -2419,21 +2903,16 @@ function renderVsResult(forcedBasePlayer) {
         });
 
         html += `</tbody></table></div>`;
-
-        // [下部] 横並びボタンを配置
         html += actionButtonsHtml;
         container.innerHTML = html;
 
-        // ==========================================================================
-        // B. 【3人、4人対戦の場合】
-        // ==========================================================================
     } else {
+        // 複数人比較モード
         const basePlayer = forcedBasePlayer || data.myName;
         const vsRows = [...data.vsRows];
         const totalSongs = vsRows.length;
         const allActivePlayers = [data.myName, ...data.opponents];
 
-        // 基準プレイヤー選択セレクトボックス
         let html = `
             <div style="text-align:left; margin-bottom:15px; font-size:16px; font-weight:bold;">
                 <select id="vs-base-player-select" class="vs-select" style="width:auto; display:inline-block; font-size:15px; padding:4px 8px; margin-right:5px;" onchange="handleBasePlayerChange(this)">
@@ -2444,20 +2923,17 @@ function renderVsResult(forcedBasePlayer) {
         });
         html += `</select> のスコア比較結果</div>`;
 
-        // ★ 定数の横辺りに自然に繋がるように ${trendHtml} を配置
         const displayOpponents = allActivePlayers.filter(p => p !== basePlayer).join('、');
         html += `
             <div class="vs-header-left" style="line-height: 1.6; margin-bottom: 10px;">
-                <strong>定数:</strong> ${data.minConst} ～ ${data.maxConst}${trendHtml} （全 ${totalSongs} 曲）<br>
+                ${isWeMode ? '<strong>難易度タイプ:</strong> WORLD\'S END' : '<strong>定数:</strong> ' + data.minConst + ' ～ ' + data.maxConst}${trendHtml} （全 ${totalSongs} 曲）<br>
                 <strong>対戦相手:</strong> ${displayOpponents}
             </div>
         `;
 
-        // 各順位バケットの初期化
         const buckets = {};
         for (let r = 1; r <= totalPlayersCount; r++) { buckets[r] = []; }
 
-        // 楽曲を順位ごとに仕分け
         vsRows.forEach(row => {
             const baseScore = row.rankList.find(p => p.name === basePlayer)?.score || 0;
             let exactRank = 1;
@@ -2479,20 +2955,23 @@ function renderVsResult(forcedBasePlayer) {
             });
         });
 
-        // サマリー表示
         html += `<div class="vs-header-center">`;
         for (let r = 1; r <= totalPlayersCount; r++) {
             html += `<span style="font-weight:bold; margin:0 10px;">${r}位: <span style="font-size:18px;">${buckets[r].length}</span> 曲</span>`;
         }
         html += `</div>`;
 
-        // [上部] 横並びボタンを配置
         html += actionButtonsHtml;
 
-        // アコーディオン（順位ドロワー）の生成
         for (let dRank = 1; dRank <= totalPlayersCount; dRank++) {
             const songList = buckets[dRank];
-            songList.sort((a, b) => b.constant - a.constant); // 定数降順
+
+            // WEモードの時は曲名でソート、それ以外は定数でソート
+            if (isWeMode) {
+                songList.sort((a, b) => a.title.localeCompare(b.title));
+            } else {
+                songList.sort((a, b) => b.constant - a.constant);
+            }
 
             html += `
                 <details class="vs-drawer" ${dRank === 1 ? 'open' : ''}>
@@ -2503,10 +2982,9 @@ function renderVsResult(forcedBasePlayer) {
                                 <thead>
                                     <tr>
                                         <th class="vs-col-title">曲名</th>
-                                        <th class="vs-col-const">定数</th>
+                                        ${isWeMode ? '' : '<th class="vs-col-const">定数</th>'}
             `;
 
-            // ヘッダー生成
             for (let idx = 1; idx <= totalPlayersCount; idx++) {
                 if (idx === dRank) {
                     html += `<th class="vs-col-score vs-multi-my-column-header">${basePlayer}</th>`;
@@ -2522,17 +3000,19 @@ function renderVsResult(forcedBasePlayer) {
             `;
 
             if (songList.length === 0) {
-                html += `<tr><td colspan="${2 + totalPlayersCount}" style="text-align:center; padding:20px; color:#999;">該当する楽曲がありません。</td></tr>`;
+                const colspanVal = isWeMode ? (1 + totalPlayersCount) : (2 + totalPlayersCount);
+                html += `<tr><td colspan="${colspanVal}" style="text-align:center; padding:20px; color:#999;">該当する楽曲がありません。</td></tr>`;
             }
 
             songList.forEach(song => {
+                const titleContent = getVsTitleAndBadgeHtml(song.title);
+
                 html += `
                     <tr>
-                        <td class="vs-col-title"><div class="vs-song-title-scroll">${song.title}</div></td>
-                        <td class="vs-col-const">${song.constant.toFixed(1)}</td>
+                        <td class="vs-col-title">${titleContent}</td>
+                        ${isWeMode ? '' : '<td class="vs-col-const">' + song.constant.toFixed(1) + '</td>'}
                 `;
 
-                // 各順位列（1位〜最大4位）のデータを生成
                 for (let idx = 1; idx <= totalPlayersCount; idx++) {
                     if (idx === dRank) {
                         html += `
@@ -2562,7 +3042,6 @@ function renderVsResult(forcedBasePlayer) {
             html += `</tbody></table></div></div></details>`;
         }
 
-        // [下部] 横並びボタンを配置
         html += actionButtonsHtml;
         container.innerHTML = html;
     }
@@ -2590,6 +3069,902 @@ function resetTableVisibility() {
     // ★ グラフを再描画して点も全員分戻す
     drawRankingChart();
 }
+
+// ==========================================
+// 手元動画プラットフォーム：リアルタイム管理データ
+// ==========================================
+let liveRequests = [];
+let liveSupplies = [];
+let currentToolPlayerName = "ゲストプレイヤー";
+
+// ==========================================
+// 1. モーダルの開閉 ＆ リアルタイム同期（全表示修正版）
+// ==========================================
+async function openVideoHubModal() {
+    // 1. ローカルストレージからプレイヤー名を取得
+    const savedName = localStorage.getItem('chunirec_player_name');
+    currentToolPlayerName = savedName ? savedName : "ゲストプレイヤー";
+
+    // 2. まず先にプラットフォームのモーダル枠を表示する
+    const hubModal = document.getElementById("video-hub-modal");
+    if (hubModal) {
+        hubModal.style.display = "flex";
+    }
+
+    // 3. 【超重要】まず最優先でGASから「全員分」の最新30件データを完全に取得して描画する
+    await fetchVideoHubData();
+
+    // 4. データが全件表示された「後」に、入力欄のサジェストや文字入力センサーを初期化する
+    if (typeof updateSongSuggestions === 'function') {
+        updateSongSuggestions("");
+    }
+    if (typeof initSongSuggestionListeners === 'function') {
+        initSongSuggestionListeners();
+    }
+}
+
+function closeVideoHubModal() {
+    document.getElementById("video-hub-modal").style.display = "none";
+}
+
+// ==========================================
+// 【通信】GASからプラットフォーム全体の最新30件を取得する
+// ==========================================
+async function fetchVideoHubData() {
+    const reqTbody = document.getElementById("video-request-tbody");
+    const supTbody = document.getElementById("video-supply-tbody");
+
+    if (reqTbody) reqTbody.innerHTML = "<tr><td colspan='4' style='text-align:center; color:#888;'>読込中...</td></tr>";
+    if (supTbody) supTbody.innerHTML = "<tr><td colspan='4' style='text-align:center; color:#888;'>読込中...</td></tr>";
+
+    try {
+        console.log("【追跡】① fetchVideoHubData が呼び出されました。GASへ通信を開始します。");
+
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ mode: "get_video_history" })
+        });
+        const result = await response.json();
+
+        console.log("【追跡】② GASからレスポンスを受信しました。生のデータ構造:", result);
+
+        if (result && result.status === "success" && result.data) {
+            liveRequests = result.data.requests || [];
+            liveSupplies = result.data.supplies || [];
+        } else {
+            const actualData = result.data || result;
+            liveRequests = actualData.requests || [];
+            liveSupplies = actualData.supplies || [];
+        }
+
+        console.log("【追跡】③ 変数への格納が完了しました。現在保持している全プレイヤーの動画データ:", liveSupplies);
+
+        renderVideoHubTables();
+
+        console.log("【追跡】④ renderVideoHubTables の実行が完了しました。現在の liveSupplies:", liveSupplies);
+
+        setTimeout(() => {
+            console.log("【追跡】⑤ 描画から1秒後の liveSupplies:", liveSupplies);
+        }, 1000);
+
+    } catch (e) {
+        console.error("動画データ同期エラー:", e);
+        if (reqTbody) reqTbody.innerHTML = "<tr><td colspan='4' style='text-align:center; color:red;'>データ同期エラー</td></tr>";
+        if (supTbody) supTbody.innerHTML = "<tr><td colspan='4' style='text-align:center; color:red;'>データ同期エラー</td></tr>";
+    }
+}
+
+// ==========================================
+// 2. タブ切り替えロジック
+// ==========================================
+function switchVideoTab(tabType) {
+    const reqTab = document.getElementById("tab-request-btn");
+    const supTab = document.getElementById("tab-supply-btn");
+    const reqPanel = document.getElementById("video-request-panel");
+    const supPanel = document.getElementById("video-supply-panel");
+
+    if (tabType === 'request') {
+        reqTab.classList.add("active");
+        supTab.classList.remove("active");
+        reqPanel.style.display = "flex";
+        supPanel.style.display = "none";
+    } else if (tabType === 'supply') {
+        reqTab.classList.remove("active");
+        supTab.classList.add("active");
+        reqPanel.style.display = "none";
+        supPanel.style.display = "flex";
+    }
+}
+
+// ==========================================
+// 3. フォーム送信処理（安心の厳密チェック維持版）
+// ==========================================
+
+// --- リクエストの投稿 / 修正更新 ---
+async function submitVideoRequest() {
+    const titleInput = document.getElementById("req-title-input");
+    const diffInput = document.getElementById("req-diff-input");
+    const commentInput = document.getElementById("req-comment-input");
+    const editIndexInput = document.getElementById("req-edit-index");
+
+    const inputTitle = titleInput.value.trim();
+    const selectedDiff = diffInput.value;
+    const inputComment = commentInput ? commentInput.value.trim() : "";
+    const editIndex = parseInt(editIndexInput.value);
+
+    if (!inputTitle) return alert("曲名を入力してください。");
+
+    // 💡 所持データチェックは元の綺麗な「厳密一致」をそのまま採用！
+    const targetData = (typeof myCurrentRecords !== 'undefined' ? myCurrentRecords : []);
+    const exactSongWithDiff = targetData.find(item =>
+        String(item.title || "").toLowerCase() === inputTitle.toLowerCase() &&
+        String(item.diff || "").toUpperCase() === selectedDiff.toUpperCase()
+    );
+
+    if (!exactSongWithDiff) {
+        const isSongExistOnly = targetData.some(item => String(item.title || "").toLowerCase() === inputTitle.toLowerCase());
+        if (isSongExistOnly) {
+            alert(`「${inputTitle}」は見つかりましたが、選択された難易度 [${selectedDiff === "WE" ? "WORLD'S END" : selectedDiff}] のプレイデータが存在しません。`);
+        } else {
+            alert("該当する楽曲が見つかりません。予測候補から正しい曲名を選択してください。");
+        }
+        return;
+    }
+
+    const finalTitle = exactSongWithDiff.title;
+    const targetId = editIndex > -1 ? liveRequests[editIndex].id : null;
+
+    try {
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+                mode: "add_video_request",
+                id: targetId,
+                title: finalTitle,
+                diff: selectedDiff,
+                requester: currentToolPlayerName,
+                comment: inputComment
+            })
+        });
+        const result = await response.json();
+        if (result.status === "success") {
+            alert(targetId ? "リクエストを修正しました。" : "リクエストを登録しました。");
+            cancelRequestEdit();
+            titleInput.value = "";
+            if (commentInput) commentInput.value = "";
+            await fetchVideoHubData();
+        } else {
+            alert("エラー: " + result.message);
+        }
+    } catch (e) {
+        alert("送信に失敗しました。");
+    }
+}
+
+/**
+ * 💡 ランキング画面から「手元動画をリクエスト」ボタンを押したときのジャンプ処理（WE対応版）
+ */
+function jumpToVideoRequest(songTitle, diff) {
+    const rankingModal = document.getElementById('ranking-modal');
+    if (rankingModal) rankingModal.style.display = "none";
+
+    openVideoHubModal().then(() => {
+        switchVideoTab('request');
+        cancelRequestEdit();
+
+        const reqTitleInput = document.getElementById("req-title-input");
+        const reqDiffInput = document.getElementById("req-diff-input");
+
+        if (reqTitleInput) reqTitleInput.value = songTitle;
+        if (reqDiffInput) {
+            // ランキング側から "WE" や "WORLD'S END" で飛んできても、セレクトボックスの "WE" に綺麗に一致させる
+            let shortDiff = "MAS";
+            const upperDiff = diff.toUpperCase();
+            if (upperDiff.includes("EXP")) shortDiff = "EXP";
+            else if (upperDiff.includes("MAS")) shortDiff = "MAS";
+            else if (upperDiff.includes("ULT")) shortDiff = "ULT";
+            else if (upperDiff.includes("WE") || upperDiff.includes("WORLD")) shortDiff = "WE";
+
+            reqDiffInput.value = shortDiff;
+        }
+
+        const commentInput = document.getElementById("req-comment-input");
+        if (commentInput) {
+            commentInput.focus();
+        }
+    });
+}
+
+/**
+ * 💡 ランキング画面から「手元動画を登録する」ボタンを押したときのジャンプ処理（WE対応版）
+ */
+function jumpToVideoSupply(songTitle, diff) {
+    const rankingModal = document.getElementById('ranking-modal');
+    if (rankingModal) rankingModal.style.display = "none";
+
+    openVideoHubModal().then(() => {
+        // アップロード（サプライ）側のタブを開き、フォームをリセット
+        switchVideoTab('supply');
+        cancelSupplyEdit();
+
+        const supTitleInput = document.getElementById("sup-title-input");
+        const supDiffInput = document.getElementById("sup-diff-input");
+
+        // 曲名と難易度を自動注入
+        if (supTitleInput) supTitleInput.value = songTitle;
+        if (supDiffInput) {
+            let shortDiff = "MAS";
+            const upperDiff = diff.toUpperCase();
+            if (upperDiff.includes("EXP")) shortDiff = "EXP";
+            else if (upperDiff.includes("MAS")) shortDiff = "MAS";
+            else if (upperDiff.includes("ULT")) shortDiff = "ULT";
+            else if (upperDiff.includes("WE") || upperDiff.includes("WORLD")) shortDiff = "WE";
+
+            supDiffInput.value = shortDiff;
+        }
+
+        // 入力をスムーズにするため、URL入力欄に自動フォーカス
+        const urlInput = document.getElementById("sup-url-input");
+        if (urlInput) {
+            urlInput.focus();
+        }
+    });
+}
+
+// --- アップロードの登録 / 修正更新 ---
+async function submitVideoSupply() {
+    const titleInput = document.getElementById("sup-title-input");
+    const diffInput = document.getElementById("sup-diff-input");
+    const urlInput = document.getElementById("sup-url-input");
+    const nameInput = document.getElementById("sup-name-input");
+    const editIndexInput = document.getElementById("sup-edit-index");
+    const inputTitle = titleInput.value.trim();
+    const selectedDiff = diffInput.value;
+    const editIndex = parseInt(editIndexInput.value);
+
+    if (!inputTitle || !urlInput.value.trim()) return alert("曲名と動画URLは必須入力です。");
+
+    // 💡 アップロード側も元の綺麗な「厳密一致」をそのまま採用！
+    const targetData = (typeof myCurrentRecords !== 'undefined' ? myCurrentRecords : []);
+    const exactSongWithDiff = targetData.find(item =>
+        String(item.title || "").toLowerCase() === inputTitle.toLowerCase() &&
+        String(item.diff || "").toUpperCase() === selectedDiff.toUpperCase()
+    );
+
+    if (!exactSongWithDiff) {
+        const isSongExistOnly = targetData.some(item => String(item.title || "").toLowerCase() === inputTitle.toLowerCase());
+        if (isSongExistOnly) {
+            alert(`「${inputTitle}」は見つかりましたが、選択された難易度 [${selectedDiff === "WE" ? "WORLD'S END" : selectedDiff}] のプレイデータが存在しません。`);
+        } else {
+            alert("該当する楽曲が見つかりません。予測候補から正しい曲名を選択してください。");
+        }
+        return;
+    }
+
+    const finalTitle = exactSongWithDiff.title;
+    const videoTitle = nameInput.value.trim() ? nameInput.value.trim() : "手元動画";
+    const targetId = editIndex > -1 ? liveSupplies[editIndex].id : null;
+
+    try {
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+                mode: "add_video_supply",
+                id: targetId,
+                title: finalTitle,
+                diff: selectedDiff,
+                contributor: currentToolPlayerName,
+                videoUrl: urlInput.value.trim(),
+                videoTitle: videoTitle
+            })
+        });
+        const result = await response.json();
+        if (result.status === "success") {
+            alert(targetId ? "動画リンクを修正しました。" : "動画リンクを共有しました。");
+            cancelSupplyEdit();
+            titleInput.value = "";
+            urlInput.value = "";
+            nameInput.value = "";
+            await fetchVideoHubData();
+        } else {
+            alert("エラー: " + result.message);
+        }
+    } catch (e) {
+        alert("送信に失敗しました。");
+    }
+}
+
+// ==========================================
+// 4. 履歴テーブルの描画処理（曲名検索のみ・安定版）
+// ==========================================
+function renderVideoHubTables() {
+    const reqInput = document.getElementById("req-title-input");
+    const supInput = document.getElementById("sup-title-input");
+
+    const reqQuery = reqInput ? reqInput.value.toLowerCase().trim() : "";
+    const supQuery = supInput ? supInput.value.toLowerCase().trim() : "";
+
+    // --- ① リクエストテーブルの描画 ---
+    const reqTbody = document.getElementById("video-request-tbody");
+    if (reqTbody) {
+        reqTbody.innerHTML = "";
+
+        const filteredRequests = liveRequests.filter(req => {
+            return !reqQuery || String(req.title || "").toLowerCase().includes(reqQuery);
+        });
+
+        if (filteredRequests.length === 0) {
+            reqTbody.innerHTML = `<tr><td colspan='4' style='text-align:center; color:#888;'>条件に合うリクエストは見つかりません。</td></tr>`;
+        } else {
+            filteredRequests.forEach((req) => {
+                const globalIndex = liveRequests.findIndex(r => r.id === req.id);
+
+                let actionHtml = "<td style='text-align:center;'>-</td>";
+                if (req.user === currentToolPlayerName) {
+                    actionHtml = `
+                        <td style='text-align:center;'>
+                            <button class="btn-video-action edit" onclick="event.stopPropagation(); startRequestEdit(${globalIndex})">編集</button>
+                            <button class="btn-video-action delete" onclick="event.stopPropagation(); deleteVideoItem('${req.id}')">削除</button>
+                        </td>
+                    `;
+                }
+
+                let displayDate = req.date || "";
+                if (displayDate.includes("T")) {
+                    try {
+                        const d = new Date(displayDate);
+                        if (!isNaN(d.getTime())) {
+                            displayDate = `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                        }
+                    } catch (e) {
+                        displayDate = displayDate.replace("T", " ").substring(5, 16);
+                    }
+                } else {
+                    displayDate = displayDate.replace(/^\d{4}\//, "");
+                }
+
+                const displayDiffTxt = (String(req.diff).toUpperCase() === "WE") ? "WE" : req.diff;
+
+                const trBasic = document.createElement("tr");
+                trBasic.style.cursor = "pointer";
+                trBasic.innerHTML = `
+                    <td>
+                        <div style="font-weight: bold; font-size: 14px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${req.title}">
+                            ${req.title}
+                        </div>
+                        <div style="font-size: 11px; color: #777; margin-top: 3px;">
+                            難易度: <span style="font-weight: bold; color: #333;">${displayDiffTxt}</span>
+                        </div>
+                    </td>
+                    <td style="max-width: 65px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: top; padding-top: 12px;" title="${req.user}">${req.user}</td>
+                    <td style="font-size: 11px; color: #666; white-space: nowrap; vertical-align: top; padding-top: 12px;">${displayDate}</td>
+                    ${actionHtml}
+                `;
+
+                trBasic.onclick = () => { closeVideoHubModal(); openSongRankingDirectly(req.title, req.diff); };
+                reqTbody.appendChild(trBasic);
+
+                if (req.comment && req.comment.trim() !== "") {
+                    const trComment = document.createElement("tr");
+                    trComment.style.cursor = "pointer";
+                    trComment.style.backgroundColor = "#fffdf3";
+                    trComment.innerHTML = `
+                        <td colspan="4" style="padding: 6px 12px; border-top: none;">
+                            <div style="font-size: 12px; color: #856404; border-left: 3px solid #ffc107; padding-left: 8px; word-break: break-all; font-weight: normal;">
+                                 <strong>リクエスト内容:</strong> ${req.comment}
+                            </div>
+                        </td>
+                    `;
+                    trComment.onclick = () => { closeVideoHubModal(); openSongRankingDirectly(req.title, req.diff); };
+                    reqTbody.appendChild(trComment);
+                }
+            });
+        }
+    }
+
+    // --- ② アップロードテーブルの描画 ---
+    const supTbody = document.getElementById("video-supply-tbody");
+    if (supTbody) {
+        supTbody.innerHTML = "";
+
+        const filteredSupplies = liveSupplies.filter(sup => {
+            return !supQuery || String(sup.title || "").toLowerCase().includes(supQuery);
+        });
+
+        if (filteredSupplies.length === 0) {
+            supTbody.innerHTML = `<tr><td colspan='4' style='text-align:center; color:#888;'>条件に合う共有動画は見つかりません。</td></tr>`;
+        } else {
+            filteredSupplies.forEach((sup) => {
+                const globalIndex = liveSupplies.findIndex(s => s.id === sup.id);
+
+                let actionHtml = "<td style='text-align:center;'>-</td>";
+                if (sup.user === currentToolPlayerName) {
+                    actionHtml = `
+                        <td style='text-align:center;'>
+                            <button class="btn-video-action edit" onclick="event.stopPropagation(); startSupplyEdit(${globalIndex})">編集</button>
+                            <button class="btn-video-action delete" onclick="event.stopPropagation(); deleteVideoItem('${sup.id}')">削除</button>
+                        </td>
+                    `;
+                }
+
+                const displayDiffTxt = (String(sup.diff).toUpperCase() === "WE") ? "WE" : sup.diff;
+
+                const tr = document.createElement("tr");
+                tr.style.cursor = "pointer";
+                tr.innerHTML = `
+                    <td>
+                        <div style="font-weight: bold; font-size: 14px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${sup.title}">
+                            ${sup.title}
+                        </div>
+                        <div style="font-size: 11px; color: #777; margin-top: 3px;">
+                            難易度: <span style="font-weight: bold; color: #333;">${displayDiffTxt}</span>
+                        </div>
+                    </td>
+                    <td>
+                        <a href="${sup.url}" target="_blank" onclick="event.stopPropagation();" style="color: #3498db; text-decoration: underline; font-weight: bold;" title="${sup.videoTitle}">${sup.videoTitle}</a>
+                    </td>
+                    <td style="max-width: 55px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: top; padding-top: 12px;" title="${sup.user}">${sup.user}</td>
+                    ${actionHtml}
+                `;
+                tr.onclick = () => { closeVideoHubModal(); openSongRankingDirectly(sup.title, sup.diff); };
+                supTbody.appendChild(tr);
+            });
+        }
+    }
+}
+
+// ==========================================
+// 5. 編集・削除のコントロールと通信関数
+// ==========================================
+async function deleteVideoItem(id) {
+    if (!confirm("本当にこの投稿を削除しますか？")) return;
+    try {
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+                mode: "delete_video_item",
+                id: id,
+                playerName: currentToolPlayerName
+            })
+        });
+        const result = await response.json();
+        if (result.status === "success") {
+            alert("削除しました。");
+            await fetchVideoHubData();
+        } else {
+            alert("削除失敗: " + result.message);
+        }
+    } catch (e) {
+        alert("通信エラーにより削除できませんでした。");
+    }
+}
+
+function startRequestEdit(index) {
+    const req = liveRequests[index];
+    document.getElementById("req-title-input").value = req.title;
+    document.getElementById("req-diff-input").value = req.diff;
+    if (document.getElementById("req-comment-input")) {
+        document.getElementById("req-comment-input").value = req.comment || "";
+    }
+    document.getElementById("req-edit-index").value = index;
+    document.getElementById("req-form-title").innerText = "リクエストを編集する";
+    document.getElementById("btn-req-submit").innerText = "更新する";
+    document.getElementById("btn-req-cancel").style.display = "inline-block";
+}
+
+function cancelRequestEdit() {
+    document.getElementById("req-title-input").value = "";
+    document.getElementById("req-diff-input").value = "MAS";
+    if (document.getElementById("req-comment-input")) {
+        document.getElementById("req-comment-input").value = "";
+    }
+    document.getElementById("req-edit-index").value = "-1";
+    document.getElementById("req-form-title").innerText = "新しい手元動画をリクエストする";
+    document.getElementById("btn-req-submit").innerText = "リクエストを投稿";
+    document.getElementById("btn-req-cancel").style.display = "none";
+}
+
+function startSupplyEdit(index) {
+    const sup = liveSupplies[index];
+    document.getElementById("sup-title-input").value = sup.title;
+    document.getElementById("sup-diff-input").value = sup.diff;
+    document.getElementById("sup-url-input").value = sup.url;
+    document.getElementById("sup-name-input").value = sup.videoTitle === "手元動画" ? "" : sup.videoTitle;
+    document.getElementById("sup-edit-index").value = index;
+    document.getElementById("sup-form-title").innerText = "共有リンクを編集する";
+    document.getElementById("btn-sup-submit").innerText = "更新する";
+    document.getElementById("btn-sup-cancel").style.display = "inline-block";
+}
+
+function cancelSupplyEdit() {
+    document.getElementById("sup-title-input").value = "";
+    document.getElementById("sup-diff-input").value = "MAS";
+    document.getElementById("sup-url-input").value = "";
+    document.getElementById("sup-name-input").value = "";
+    document.getElementById("sup-edit-index").value = "-1";
+    document.getElementById("sup-form-title").innerText = "手元動画のリンクを共有する";
+    document.getElementById("btn-sup-submit").innerText = "動画リンクを登録";
+    document.getElementById("btn-sup-cancel").style.display = "none";
+}
+
+// ==========================================
+// 6. 頭文字（前方一致）最優先サジェストロジック
+// ==========================================
+function updateSongSuggestions(searchText = "") {
+    const datalist = document.getElementById("song-suggestions");
+    if (!datalist) return;
+
+    const targetData = (typeof myCurrentRecords !== 'undefined' ? myCurrentRecords : []);
+    if (targetData.length === 0) return;
+
+    const uniqueTitles = [...new Set(targetData.map(item => item.title))].filter(Boolean);
+
+    if (searchText.trim() !== "") {
+        const query = searchText.toLowerCase().trim();
+        uniqueTitles.sort((a, b) => {
+            const aStr = a.toLowerCase();
+            const bStr = b.toLowerCase();
+            const aStarts = aStr.startsWith(query);
+            const bStarts = bStr.startsWith(query);
+
+            if (aStarts && !bStarts) return -1;
+            if (!aStarts && bStarts) return 1;
+            return a.localeCompare(b, 'ja');
+        });
+    } else {
+        uniqueTitles.sort((a, b) => a.localeCompare(b, 'ja'));
+    }
+    datalist.innerHTML = uniqueTitles.map(title => `<option value="${title}"></option>`).join("");
+}
+
+function initSongSuggestionListeners() {
+    const reqInput = document.getElementById("req-title-input");
+    const supInput = document.getElementById("sup-title-input");
+
+    if (reqInput) {
+        reqInput.addEventListener("input", (e) => {
+            const val = e.target.value;
+            updateSongSuggestions(val);
+            renderVideoHubTables();
+        });
+    }
+    if (supInput) {
+        supInput.addEventListener("input", (e) => {
+            const val = e.target.value;
+            updateSongSuggestions(val);
+            renderVideoHubTables();
+        });
+    }
+}
+
+function openSongRankingDirectly(songTitle, diff) {
+    if (typeof loadRanking === "function") {
+        loadRanking(songTitle, diff, null);
+    }
+}
+
+// ==========================================
+// 7. ランキング最下部への動画・リクエスト連動描画（防御力最大・リクエスト空白対応版）
+// ==========================================
+function updateRankingVideoSection(songTitle, diff, directVideoList = null) {
+    const videoSection = document.getElementById("ranking-video-section");
+    const videoList = document.getElementById("ranking-video-list");
+    if (!videoSection || !videoList) return;
+
+    videoSection.style.display = "block";
+
+    const sectionHeader = videoSection.querySelector('h4');
+    if (sectionHeader) sectionHeader.style.display = 'none';
+
+    // 💡【原因解決の鍵】プレイヤー名を確実・安全に取得する
+    if (!window.currentToolPlayerName || window.currentToolPlayerName.trim() === "") {
+        window.currentToolPlayerName = localStorage.getItem('chunirec_player_name') || "";
+    }
+    const myPlayerName = window.currentToolPlayerName;
+
+    const isDataLoading = (!directVideoList && (!window.liveSupplies || window.liveSupplies.length === 0));
+
+    const rawSearchTitle = songTitle ? String(songTitle).trim().toLowerCase() : "";
+    const searchDiffUpper = diff ? String(diff).trim().toUpperCase() : "";
+    const isSearchWe = (searchDiffUpper === "WE" || searchDiffUpper.includes("WORLD") || searchDiffUpper.includes("END"));
+
+    const cleanWeTitle = (str) => {
+        return String(str || "").replace(/【[^】]+】/g, "").replace(/\s+/g, "").toLowerCase().trim();
+    };
+    const cleanSearchTitleWE = cleanWeTitle(songTitle);
+
+    // ==========================================
+    // 📦 A. リクエスト欄のデータ抽出
+    // ==========================================
+    let matchedRequests = [];
+    if (!isDataLoading && window.liveRequests && window.liveRequests.length > 0) {
+        matchedRequests = window.liveRequests.filter(req => {
+            if (!req || !req.title) return false;
+            const reqDiffUpper = req.diff ? String(req.diff).trim().toUpperCase() : "";
+            const isReqWe = (reqDiffUpper.startsWith("WE") || reqDiffUpper.includes("WORLD") || reqDiffUpper.includes("END"));
+
+            if (isSearchWe && isReqWe) {
+                return cleanWeTitle(req.title) === cleanSearchTitleWE;
+            }
+            if (!isSearchWe && !isReqWe) {
+                return (String(req.title).trim().toLowerCase() === rawSearchTitle) && (reqDiffUpper === searchDiffUpper);
+            }
+            return false;
+        });
+    }
+
+    // ==========================================
+    // 📦 B. 動画リンク欄のデータ抽出
+    // ==========================================
+    let matchedVideos = directVideoList;
+    if (!matchedVideos) {
+        if (isDataLoading) {
+            matchedVideos = [];
+        } else {
+            matchedVideos = window.liveSupplies.filter(sup => {
+                if (!sup || !sup.title) return false;
+                const videoDiffUpper = sup.diff ? String(sup.diff).trim().toUpperCase() : "";
+                const isVideoWe = (videoDiffUpper.startsWith("WE") || videoDiffUpper.includes("WORLD") || videoDiffUpper.includes("END"));
+
+                if (isSearchWe && isVideoWe) {
+                    const cleanVideoTitleWE = cleanWeTitle(sup.title);
+                    return (
+                        cleanVideoTitleWE === cleanSearchTitleWE ||
+                        cleanVideoTitleWE.includes(cleanSearchTitleWE) ||
+                        cleanSearchTitleWE.includes(cleanVideoTitleWE)
+                    );
+                }
+                if (!isSearchWe && !isVideoWe) {
+                    return (String(sup.title).trim().toLowerCase() === rawSearchTitle) && (videoDiffUpper === searchDiffUpper);
+                }
+                return false;
+            });
+        }
+    }
+
+    // ==========================================
+    // 🎨 C. HTMLの組み立て
+    // ==========================================
+    let htmlContent = "";
+
+    // ------------------------------------------
+    // 📌 【第1ブロック】この譜面の手元等に関するリクエスト
+    // ------------------------------------------
+    htmlContent += `
+        <div class="ranking-req-block" style="margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e67e22; padding-bottom: 6px; margin-bottom: 10px; gap: 10px; flex-wrap: wrap;">
+                <span style="margin: 0; font-size: 15px; font-weight: bold; color: #d35400; white-space: nowrap;">この譜面の手元等に関するリクエスト</span>
+                <button class="btn-video-jump-req" onclick="jumpToVideoRequest('${songTitle.replace(/'/g, "\\'")}', '${diff}')" 
+                    style="background: #e67e22; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; transition: 0.2s; white-space: nowrap;">
+                    ＋ 新しくリクエストする
+                </button>
+            </div>
+            <div class="ranking-req-list-inner">
+    `;
+
+    if (isDataLoading) {
+        htmlContent += `<div style="color: #e67e22; font-size: 12px; padding: 6px 0; font-style: italic;">データを読み込み中...</div>`;
+    } else if (matchedRequests.length > 0) {
+        const tempReqContainer = document.createElement("div");
+
+        matchedRequests.forEach(req => {
+            const reqUser = req.user || req.requester || req.playerName || req.contributor || "名無しプレイヤー";
+            const reqNote = req.note || req.comment || req.text || "";
+
+            const reqItem = document.createElement("div");
+            reqItem.style.cssText = "background: #fff5eb; border-left: 4px solid #e67e22; padding: 8px 10px; margin-bottom: 6px; border-radius: 0 4px 4px 0; font-size: 13px; position: relative; display: flex; justify-content: space-between; align-items: center; gap: 12px;";
+
+            // 💡 上部で安全に確保した myPlayerName と比較
+            const myNameClean = typeof myPlayerName === "string" ? myPlayerName.trim().toLowerCase() : "";
+            const reqUserClean = typeof reqUser === "string" ? reqUser.trim().toLowerCase() : "";
+            const isMyPost = (myNameClean !== "" && reqUserClean === myNameClean);
+
+            let inlineReqActionHtml = "";
+            if (isMyPost && req.id) {
+                const globalReqIndex = window.liveRequests.findIndex(r => r && String(r.id) === String(req.id));
+                if (globalReqIndex !== -1) {
+                    inlineReqActionHtml = `
+                        <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                            <button class="btn-video-action edit" onclick="event.stopPropagation(); jumpToVideoRequestEdit(${globalReqIndex})" style="background: #3498db; color: #ffffff; border: none; padding: 3px 6px; font-size: 11px; border-radius: 3px; cursor: pointer; transition: background 0.2s;">編集</button>
+                            <button class="btn-video-action delete" onclick="event.stopPropagation(); deleteRequestItemFromRanking('${req.id}', '${songTitle.replace(/'/g, "\\'")}', '${diff}')" style="background: #e74c3c; color: #ffffff; border: none; padding: 3px 6px; font-size: 11px; border-radius: 3px; cursor: pointer; transition: background 0.2s;">削除</button>
+                        </div>
+                    `;
+                }
+            }
+
+            const displayNote = reqNote.trim() !== "" ? `<strong style="color: #333; display: block; word-break: break-all; margin-bottom: 2px;">${reqNote}</strong>` : "";
+
+            reqItem.innerHTML = `
+                <div style="flex: 1; min-width: 0;">
+                    ${displayNote}
+                    <div style="font-size: 11px; color: #777;">リクエスト者: ${reqUser}</div>
+                </div>
+                ${inlineReqActionHtml}
+            `;
+            tempReqContainer.appendChild(reqItem);
+        });
+        htmlContent += tempReqContainer.innerHTML;
+    } else {
+        htmlContent += `<div style="color: #888; font-size: 12px; padding: 6px 0;">現在リクエストはありません。</div>`;
+    }
+
+    htmlContent += `
+            </div>
+        </div>
+    `;
+
+    // ------------------------------------------
+    // 📌 【第2ブロック】この譜面の手元動画等のリンク
+    // ------------------------------------------
+    htmlContent += `
+        <div class="ranking-video-block">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #2ecc71; padding-bottom: 6px; margin-bottom: 10px; gap: 10px; flex-wrap: wrap;">
+                <span style="margin: 0; font-size: 15px; font-weight: bold; color: #27ae60; white-space: nowrap;">この譜面の手元動画等のリンク</span>
+                <button class="btn-video-jump-sup" onclick="jumpToVideoSupply('${songTitle.replace(/'/g, "\\'")}', '${diff}')" 
+                    style="background: #2ecc71; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; transition: 0.2s; white-space: nowrap;">
+                    ＋ 新しくリンクを登録する
+                </button>
+            </div>
+            <div class="ranking-video-list-inner">
+    `;
+
+    if (isDataLoading) {
+        htmlContent += `<div style="color: #2ecc71; font-size: 12px; padding: 6px 0; font-style: italic;">データを読み込み中...</div>`;
+    } else if (matchedVideos.length > 0) {
+        const tempContainer = document.createElement("div");
+        matchedVideos.forEach(video => {
+            const videoUser = video.user || video.contributor || "名無しプレイヤー";
+            const videoUrl = video.url || video.videoUrl || "#";
+            const videoDisplayTitle = video.videoTitle || video.title || "手元動画";
+
+            const videoItem = document.createElement("div");
+            videoItem.className = "ranking-video-item";
+            videoItem.style.cssText = "position: relative; background: #f9f9f9; padding: 8px; margin-bottom: 6px; border-radius: 4px; border: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; gap: 12px;";
+
+            // 💡 上部で安全に確保した myPlayerName と比較
+            const myNameClean = typeof myPlayerName === "string" ? myPlayerName.trim().toLowerCase() : "";
+            const videoUserClean = typeof videoUser === "string" ? videoUser.trim().toLowerCase() : "";
+            const isMyVideo = (myNameClean !== "" && videoUserClean === myNameClean);
+
+            let inlineActionHtml = "";
+            if (isMyVideo && video.id) {
+                const globalIndex = window.liveSupplies.findIndex(s => s && s.id === video.id);
+                if (globalIndex !== -1) {
+                    inlineActionHtml = `
+                        <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                            <button class="btn-video-action edit" onclick="event.stopPropagation(); jumpToVideoSupplyEdit(${globalIndex})" style="background: #3498db; color: #ffffff; border: none; padding: 3px 6px; font-size: 11px; border-radius: 3px; cursor: pointer; transition: background 0.2s;">編集</button>
+                            <button class="btn-video-action delete" onclick="event.stopPropagation(); deleteVideoItemFromRanking('${video.id}', '${songTitle.replace(/'/g, "\\'")}', '${diff}')" style="background: #e74c3c; color: #ffffff; border: none; padding: 3px 6px; font-size: 11px; border-radius: 3px; cursor: pointer; transition: background 0.2s;">削除</button>
+                        </div>
+                    `;
+                }
+            }
+
+            videoItem.innerHTML = `
+                <div class="video-item-left" style="flex: 1; min-width: 0;">
+                    <a href="${videoUrl}" target="_blank" class="video-item-url" onclick="event.stopPropagation();" style="display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: bold; color: #3498db; font-size: 13px;">${videoDisplayTitle}</a>
+                    <span class="video-item-title" style="font-size: 11px; color: #777;">提供: ${videoUser}</span>
+                </div>
+                ${inlineActionHtml}
+            `;
+            tempContainer.appendChild(videoItem);
+        });
+        htmlContent += tempContainer.innerHTML;
+    } else {
+        htmlContent += `<div style="color: #888; font-size: 12px; padding: 6px 0;">現在登録されているリンクはありません。</div>`;
+    }
+
+    htmlContent += `
+            </div>
+        </div>
+    `;
+
+    videoList.innerHTML = htmlContent;
+}
+
+function jumpToVideoSupplyEdit(globalIndex) {
+    const rankingModal = document.getElementById('ranking-modal');
+    if (rankingModal) rankingModal.style.display = "none";
+
+    openVideoHubModal().then(() => {
+        switchVideoTab('supply');
+
+        if (typeof startSupplyEdit === 'function') {
+            startSupplyEdit(globalIndex);
+
+            const urlInput = document.getElementById("sup-url-input");
+            if (urlInput) urlInput.focus();
+        }
+    });
+}
+
+async function deleteVideoItemFromRanking(id, songTitle, diff) {
+    if (!confirm("この動画リンクを削除してもよろしいですか？")) return;
+
+    try {
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+                mode: "delete_video_item",
+                id: id,
+                user: currentToolPlayerName
+            })
+        });
+        const result = await response.json();
+        if (result.status === "success") {
+            alert("動画リンクを削除しました。");
+            await fetchVideoHubData();
+            updateRankingVideoSection(songTitle, diff);
+        } else {
+            alert("エラー: " + result.message);
+        }
+    } catch (e) {
+        alert("通信に失敗しました。");
+    }
+}
+
+/**
+ * 💡 ランキング画面から特定のリクエストの「編集」を押したときのジャンプ処理
+ */
+function jumpToVideoRequestEdit(globalReqIndex) {
+    const rankingModal = document.getElementById('ranking-modal');
+    if (rankingModal) rankingModal.style.display = "none";
+
+    openVideoHubModal().then(() => {
+        // リクエスト（求む）側のタブを開く
+        switchVideoTab('request');
+
+        // 動画ハブ側に元々あるリクエスト編集開始関数を呼び出す
+        if (typeof startRequestEdit === 'function') {
+            startRequestEdit(globalReqIndex);
+
+            // コメント入力欄に自動フォーカス
+            const noteInput = document.getElementById("req-note-input");
+            if (noteInput) noteInput.focus();
+        }
+    });
+}
+
+/**
+ * 💡 ランキング画面からダイレクトにリクエストを削除する処理
+ */
+async function deleteRequestItemFromRanking(id, songTitle, diff) {
+    if (!confirm("このリクエストを削除してもよろしいですか？")) return;
+
+    try {
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+                mode: "delete_video_item", // 💡 GAS側が共通化されている前提
+                id: id,
+                user: currentToolPlayerName
+            })
+        });
+        const result = await response.json();
+        if (result.status === "success") {
+            alert("リクエストを削除しました。");
+
+            // 最新データを再取得（グローバル変数の liveRequests が更新される）
+            await fetchVideoHubData();
+
+            // ランキング最下部を再描画
+            updateRankingVideoSection(songTitle, diff);
+        } else {
+            alert("エラー: " + result.message);
+        }
+    } catch (e) {
+        console.error(e);
+        alert("通信に失敗しました。");
+    }
+}
+
+window.openVideoHubModal = openVideoHubModal;
+window.closeVideoHubModal = closeVideoHubModal;
 
 
 
