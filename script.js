@@ -34,29 +34,55 @@ window.onload = function () {
     initFilters();
 };
 
-/** * キャッシュ（DOM読み込み完了時に実行）
+/**
+ * 強制ログアウト処理（端末のキャッシュを完全消去してログイン画面へ戻す）
+ */
+function clearUserCache() {
+    // ローカルストレージ内の全データを削除
+    localStorage.removeItem('chunirec_token');
+    localStorage.removeItem('chunirec_scores');
+    localStorage.removeItem('chunirec_player_name');
+    localStorage.removeItem('chunirec_cache_time');
+
+    // トークン入力フォームも空にする
+    const tokenInput = document.getElementById('token-input');
+    if (tokenInput) tokenInput.value = '';
+
+    // メイン画面を隠して、ログイン（トークン入力）画面を表示
+    const mainScreen = document.getElementById("main-screen");
+    const tokenScreen = document.getElementById("token-screen");
+    if (mainScreen) mainScreen.style.display = "none";
+    if (tokenScreen) tokenScreen.style.display = "block";
+}
+
+/**
+ * キャッシュ読み込み（DOM読み込み完了時）
  */
 window.addEventListener('DOMContentLoaded', () => {
     const savedToken = localStorage.getItem('chunirec_token');
     const cachedData = localStorage.getItem('chunirec_scores');
     const savedName = localStorage.getItem('chunirec_player_name');
 
-    // 正しいIDである token-input に統一してトークンを復元
+    // トークンフォームの復元
     if (savedToken) {
         const tokenInput = document.getElementById('token-input');
         if (tokenInput) tokenInput.value = savedToken;
     }
 
-    // ★24時間制限（isFresh）を完全に撤廃し、キャッシュがあれば無期限に自動表示
-    // ※ 過去の"undefined"という壊れたキャッシュによるエラーを防ぐ安全弁も追加
+    // キャッシュがあれば自動表示
     if (cachedData && cachedData !== "undefined" && savedName) {
-        myCurrentRecords = JSON.parse(cachedData);
+        try {
+            myCurrentRecords = JSON.parse(cachedData);
 
-        document.getElementById("token-screen").style.display = "none";
-        document.getElementById("main-screen").style.display = "block";
+            document.getElementById("token-screen").style.display = "none";
+            document.getElementById("main-screen").style.display = "block";
 
-        calculatechuniRate(savedName);
-        displayScores(myCurrentRecords);
+            calculatechuniRate(savedName);
+            displayScores(myCurrentRecords);
+        } catch (e) {
+            console.error("キャッシュ破損のため初期化します", e);
+            clearUserCache();
+        }
     }
 });
 
@@ -79,18 +105,23 @@ function toggleTokenVisibility() {
 }
 
 /**
- * スコア読み込み
+ * スコア読み込み（未承認時は強制ログアウト）
  */
 async function loadScores() {
     const tokenInput = document.getElementById("token-input");
     const loadBtn = document.getElementById("load-btn");
     const loadingMsg = document.getElementById("loading-msg");
     const errorMsg = document.getElementById("token-error");
-    const token = tokenInput.value.trim();
 
-    if (!token) return false;
+    const token = tokenInput ? tokenInput.value.trim() : "";
 
-    // 開始
+    if (!token) {
+        errorMsg.innerText = "エラー: トークンを入力してください。";
+        errorMsg.style.display = "block";
+        return false;
+    }
+
+    // 開始処理
     loadBtn.disabled = true;
     loadBtn.innerText = "同期中...";
     loadingMsg.style.display = "block";
@@ -100,34 +131,28 @@ async function loadScores() {
         const response = await fetch(GAS_URL, {
             method: "POST",
             headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({ mode: "checker", token: token })
+            body: JSON.stringify({ 
+                mode: "checker", 
+                token: token
+            })
         });
 
-        let result = await response.json();
-
-        if (result.status === "need_name") {
-            const name = prompt("新規ユーザーです。ユーザー名を入力してください（以後自分では変更不可）");
-            if (!name) throw new Error("登録をキャンセルしました");
-
-            const res2 = await fetch(GAS_URL, {
-                method: "POST",
-                headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify({ mode: "checker", token: token, playerName: name })
-            });
-            result = await res2.json();
-        }
+        const result = await response.json();
 
         if (result.status === "success") {
-            handleSuccess(result);
-            return true; // 成功
+            handleSuccess(result, token);
+            return true;
         } else {
-            throw new Error(result.message);
+            // ★未承認・認証失敗時はキャッシュを全削除して強制ログアウト！
+            clearUserCache();
+            throw new Error(result.message || "認証に失敗しました。");
         }
     } catch (e) {
         console.error(e);
+        // エラーメッセージを表示（強制ログアウト後、ログイン画面にエラーが表示される）
         errorMsg.innerText = "エラー: " + e.message;
         errorMsg.style.display = "block";
-        return false; // 失敗
+        return false;
     } finally {
         loadBtn.disabled = false;
         loadBtn.innerText = "スコアを表示";
@@ -170,34 +195,24 @@ async function refreshScores() {
 /**
  * 同期成功時の処理
  */
-function handleSuccess(result) {
+function handleSuccess(result, token) {
     console.log("成功ルート突入", result);
 
-    // 1. データの保存（GASの仕様に合わせて result.records を確実に代入）
     myCurrentRecords = result.records || [];
 
-    // 2. トークンの安全な取得と保存（IDを token-input に統一）
-    const tokenInput = document.getElementById('token-input');
-    if (tokenInput) {
-        localStorage.setItem('chunirec_token', tokenInput.value.trim());
-    }
-
-    // スコアと名前をキャッシュに保存（無期限ロード用）
+    // トークン・スコア・名前をローカルストレージへ保存
+    localStorage.setItem('chunirec_token', token);
     localStorage.setItem('chunirec_scores', JSON.stringify(myCurrentRecords));
     localStorage.setItem('chunirec_player_name', result.playerName);
     localStorage.setItem('chunirec_cache_time', Date.now().toString());
 
-    // 3. UIの切り替え
+    // 画面切り替え
     document.getElementById("token-screen").style.display = "none";
     document.getElementById("main-screen").style.display = "block";
 
-    // 4. レート計算と表示
     calculatechuniRate(result.playerName);
-
-    // 確実にデータを引き渡す
     displayScores(myCurrentRecords);
 
-    // 再同期ボタンを元に戻す
     const refreshBtn = document.querySelector('.refresh-btn');
     if (refreshBtn) {
         refreshBtn.disabled = false;
