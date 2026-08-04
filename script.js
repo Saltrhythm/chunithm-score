@@ -750,6 +750,9 @@ function calculatechuniRate(playerName) {
     attachRatingWrapperEvent(displayName);
 }
 
+let allPlayerNames = []; // 💡 ユーザー名一覧の保持用
+let allUsersRecords = {}; // 💡 取得済みデータのキャッシュ用
+
 /**
  * rating-wrapper クリック時のイベント割り当て
  */
@@ -778,6 +781,10 @@ function openRatingModal() {
 
     modal.style.display = 'flex';
     setupModalEvents();
+
+    // 💡 モーダルを開くタイミングで全プレイヤー一覧を取得・更新
+    fetchPlayerNames();
+
     renderTabContent(currentTab);
 }
 
@@ -807,13 +814,91 @@ function setupModalEvents() {
 }
 
 /**
- * タブ内容の生成（プレイヤー名、平均、左右2列リスト）
+ * 💡 ユーザー名一覧を取得して表示を更新（ローカル環境対応版）
+ */
+function fetchPlayerNames(retryCount = 0) {
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+        // 【GAS環境の場合】 スプレッドシート（UserMapシート）から取得
+        google.script.run
+            .withSuccessHandler((players) => {
+                console.log("取得できたユーザー一覧(GAS):", players);
+                if (Array.isArray(players) && players.length > 0) {
+                    allPlayerNames = players;
+                    if (document.getElementById('modal-tab-content')) {
+                        renderTabContent(currentTab);
+                    }
+                }
+            })
+            .withFailureHandler((err) => {
+                console.error("UserMapからのユーザー取得エラー:", err);
+            })
+            .getAllPlayerNames();
+    } else if (retryCount < 10) {
+        // GAS環境の読み込み遅延対策（約1秒間リトライ）
+        setTimeout(() => fetchPlayerNames(retryCount + 1), 100);
+    } else {
+        // 【ローカル環境の場合】 ダミーのユーザーリストを使用
+        console.warn("ローカル環境を検知しました。テスト用ダミーユーザーを使用します。");
+        allPlayerNames = ["自分", "テストユーザーA", "テストユーザーB", "テストユーザーC"];
+        if (document.getElementById('modal-tab-content')) {
+            renderTabContent(currentTab);
+        }
+    }
+}
+
+// 💡 画面ロード時に実行
+window.addEventListener("load", () => {
+    fetchPlayerNames();
+});
+
+/**
+ * 💡 プレイヤー選択ドロップダウン変更時の処理
+ */
+function handlePlayerChange(selectedName) {
+    currentModalPlayerName = selectedName;
+
+    const container = document.getElementById('modal-tab-content');
+    if (container) {
+        container.innerHTML = "<p style='text-align:center; padding: 20px;'>データを読み込み中...</p>";
+    }
+
+    // 既にローカルにデータがあればそれを使って描画
+    if (allUsersRecords[selectedName]) {
+        renderTabContent(currentTab);
+        return;
+    }
+
+    // GASを呼び出して該当シートのデータを検索・取得
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+            .withSuccessHandler((records) => {
+                allUsersRecords[selectedName] = records || [];
+                renderTabContent(currentTab);
+            })
+            .withFailureHandler((err) => {
+                alert("データの取得に失敗しました: " + (err.message || err));
+            })
+            .getPlayerDataByName(selectedName);
+    } else {
+        renderTabContent(currentTab);
+    }
+}
+
+/**
+ * タブ内容の生成（ドロップダウンでのプレイヤー切替、平均、左右2列リスト）
  */
 function renderTabContent(tabKey) {
     const container = document.getElementById('modal-tab-content');
     if (!container) return;
 
-    const targetData = (typeof allRecords !== 'undefined' ? allRecords : myCurrentRecords) || [];
+    // 💡 選択中のプレイヤーのデータがあればそれを優先、無ければ自分(allRecords)を使用
+    let targetData = [];
+    if (typeof allUsersRecords !== 'undefined' && allUsersRecords[currentModalPlayerName]) {
+        targetData = allUsersRecords[currentModalPlayerName];
+    } else {
+        targetData = (typeof allRecords !== 'undefined' ? allRecords : myCurrentRecords) || [];
+    }
+
     if (targetData.length === 0) {
         container.innerHTML = "<p style='text-align:center;'>データがありません。</p>";
         return;
@@ -824,7 +909,7 @@ function renderTabContent(tabKey) {
     let limit = 30;
     let colorClass = "";
     let tabTitle = "";
-    let columnHeader = "定数"; // 💡 デフォルトの見出し名
+    let columnHeader = "定数";
 
     switch (tabKey) {
         case 'best':
@@ -837,7 +922,7 @@ function renderTabContent(tabKey) {
                 .map(s => ({ 
                     ...s, 
                     calcVal: floorTo2nd(parseFloat(s.rating) || 0),
-                    displayConst: parseFloat(s.const || 0).toFixed(1) /* 💡 譜面定数(小数点1位) */
+                    displayConst: parseFloat(s.const || 0).toFixed(1)
                 }))
                 .sort((a, b) => b.calcVal - a.calcVal)
                 .slice(0, limit);
@@ -853,19 +938,18 @@ function renderTabContent(tabKey) {
                 .map(s => ({ 
                     ...s, 
                     calcVal: floorTo2nd(parseFloat(s.rating) || 0),
-                    displayConst: parseFloat(s.const || 0).toFixed(1) /* 💡 譜面定数(小数点1位) */
+                    displayConst: parseFloat(s.const || 0).toFixed(1)
                 }))
                 .sort((a, b) => b.calcVal - a.calcVal)
                 .slice(0, limit);
             break;
 
-case 'power':
+        case 'power':
             tabTitle = "POWER";
             colorClass = "color-power";
             columnHeader = "POWER";
             songs = getTopAbilitySongs(targetData, "tairyoku", 30).map(s => ({
                 ...s,
-                // 💡 GASで定義した rawTairyoku（補正前）を直接参照
                 displayConst: parseFloat(s.rawTairyoku || 0).toFixed(1)
             }));
             break;
@@ -916,9 +1000,37 @@ case 'power':
     const leftSongs = songs.slice(0, half);
     const rightSongs = songs.slice(half);
 
+    // 💡 取得済みの全プレイヤーリスト（allPlayerNames）とキャッシュのキーからドロップダウン選択肢を作成
+    const systemSheets = ["VideoRequests", "VideoSupplies", "MasterData", "Template"];
+    
+    let rawList = [];
+    if (typeof allPlayerNames !== 'undefined' && Array.isArray(allPlayerNames)) {
+        rawList = rawList.concat(allPlayerNames);
+    }
+    if (typeof allUsersRecords !== 'undefined') {
+        rawList = rawList.concat(Object.keys(allUsersRecords));
+    }
+
+    let playerList = Array.from(new Set(rawList)).filter(p => p && !systemSheets.includes(p));
+
+    if (playerList.length === 0) {
+        playerList = [currentModalPlayerName];
+    } else if (currentModalPlayerName && !playerList.includes(currentModalPlayerName)) {
+        playerList.unshift(currentModalPlayerName);
+    }
+
+    const selectOptionsHtml = playerList.map(name => `
+        <option value="${escapeHtml(name)}" ${name === currentModalPlayerName ? 'selected' : ''}>
+            ${escapeHtml(name)}
+        </option>
+    `).join('');
+
     let html = `
         <div class="modal-header-summary">
-            <span class="player-name">${escapeHtml(currentModalPlayerName)}</span>
+            <!-- 💡 プレイヤー選択ドロップダウン -->
+            <select class="player-select-dropdown" onchange="handlePlayerChange(this.value)">
+                ${selectOptionsHtml}
+            </select>
             <div class="tab-avg-box">
                 <span>${tabTitle} 平均:</span>
                 <span class="avg-val ${colorClass}">${avgDisplay}</span>
@@ -939,11 +1051,8 @@ case 'power':
 function buildTableHtml(songList, startRank, isRateMode, colorClass, columnHeader) {
     if (songList.length === 0) return '<div></div>';
 
-    // 💡 定数以外の見出し（POWERなど）の場合は文字サイズ調整用クラスを付与
     const isCostHeader = columnHeader !== '定数';
     const headerClass = isCostHeader ? 'cost-header' : '';
-    
-    // 💡 傾向コストの見出しに色をつけるため、colorClass（.color-power 等）を条件付きで追加
     const headerColorClass = isCostHeader ? colorClass : '';
 
     let html = `
@@ -961,7 +1070,6 @@ function buildTableHtml(songList, startRank, isRateMode, colorClass, columnHeade
                     <th style="text-align: center;">#</th>
                     <th style="text-align: left;">曲名</th>
                     <th style="text-align: center;"></th>
-                    <!-- 💡 色用クラスと小文字化用クラスを同時に付与 -->
                     <th style="text-align: center;" class="${headerClass} ${headerColorClass}">${columnHeader}</th>
                     <th style="text-align: center;">スコア</th>
                     <th style="text-align: center;">Rating</th>
@@ -993,7 +1101,6 @@ function buildTableHtml(songList, startRank, isRateMode, colorClass, columnHeade
     html += `</tbody></table>`;
     return html;
 }
-
 
 /**
  * 能力値ソート用ヘルパー
@@ -4196,7 +4303,7 @@ async function shareToDiscord(modalId = 'rating-modal') {
     if (!webhookUrl) {
         webhookUrl = prompt("DiscordのWebhook URLを入力してください。\n(このURLはブラウザに保存され、公開されることはありません)");
         if (webhookUrl) {
-            localStorage.setItem('discord_webhook_url', webhookUrl);
+            localStorage.setItem('discord_webhook_url', webhookUrl.trim());
         } else {
             return;
         }
@@ -4210,141 +4317,181 @@ async function shareToDiscord(modalId = 'rating-modal') {
 
     if (!modalContent || !sendBtn) return;
 
+    // UIを送信中状態に変更
     sendBtn.innerText = "送信中...";
     sendBtn.disabled = true;
     sendBtn.classList.add('sending');
 
-    // 💡 撮影専用クローンを一時生成
-    const clonedContainer = modalContent.cloneNode(true);
-
-    // 💡【キャンバスの複製】Chart.js等のcanvas描画内容をクローン側に手動でコピー
-    const originalCanvases = modalContent.querySelectorAll('canvas');
-    const clonedCanvases = clonedContainer.querySelectorAll('canvas');
-    originalCanvases.forEach((origCanvas, idx) => {
-        if (clonedCanvases[idx]) {
-            const destCtx = clonedCanvases[idx].getContext('2d');
-            destCtx.drawImage(origCanvas, 0, 0);
-        }
-    });
-
-    // 💡【フッター削除】
-    const clonedFooter = clonedContainer.querySelector('.modal-footer');
-    if (clonedFooter) clonedFooter.remove();
-
-    // 💡【指定エリアの非表示】手元動画セクションを完全に削除
-    const clonedVideoSection = clonedContainer.querySelector('#ranking-video-section, .ranking-video-box');
-    if (clonedVideoSection) clonedVideoSection.remove();
-
-    // 💡「この楽曲のデータを更新」等の不要な操作ボタンがあれば削除
-    const updateBtns = clonedContainer.querySelectorAll('.range-selector ~ button, header button');
-    updateBtns.forEach(btn => btn.remove());
-
-    // 撮影用のコンテナ設定
-    clonedContainer.style.position = 'absolute';
-    clonedContainer.style.top = '-9999px';
-    clonedContainer.style.left = '0';
-    clonedContainer.style.width = '1050px';
-    clonedContainer.style.maxWidth = '1050px';
-    clonedContainer.style.padding = '20px 24px';
-    clonedContainer.style.height = 'auto';
-    clonedContainer.style.maxHeight = 'none';
-    clonedContainer.style.overflow = 'visible';
-    clonedContainer.style.opacity = '1';
-    clonedContainer.style.visibility = 'visible';
-    clonedContainer.style.pointerEvents = 'none';
-
-    // スクロール領域の固定高さを解除
-    const clonedScrollAreas = clonedContainer.querySelectorAll('#modal-tab-content, .modal-body, .modal-scroll-area');
-    clonedScrollAreas.forEach(area => {
-        area.style.height = 'auto';
-        area.style.maxHeight = 'none';
-        area.style.overflow = 'visible';
-        area.style.flex = 'none';
-    });
-
-    // 2列グリッドの強製設定（rating-modal等で使用される場合）
-    const clonedGrid = clonedContainer.querySelector('.two-column-grid');
-    if (clonedGrid) {
-        clonedGrid.style.display = 'grid';
-        clonedGrid.style.gridTemplateColumns = 'minmax(0, 1fr) minmax(0, 1fr)';
-        clonedGrid.style.gap = '20px';
-    }
-
-    // thead の sticky（固定表示）を解除
-    const theads = clonedContainer.querySelectorAll('table thead');
-    theads.forEach(th => {
-        th.style.position = 'static';
-        th.style.display = 'table-header-group';
-    });
-
-    const thCells = clonedContainer.querySelectorAll('table th');
-    thCells.forEach(cell => {
-        cell.style.position = 'static';
-        cell.style.top = 'auto';
-    });
-
-    document.body.appendChild(clonedContainer);
+    let clonedContainer = null;
 
     try {
+        // 💡 撮影専用クローンを一時生成
+        clonedContainer = modalContent.cloneNode(true);
+
+        // 💡【キャンバスの複製】Chart.js等のcanvas描画内容をクローン側にコピー
+        const originalCanvases = modalContent.querySelectorAll('canvas');
+        const clonedCanvases = clonedContainer.querySelectorAll('canvas');
+        originalCanvases.forEach((origCanvas, idx) => {
+            if (clonedCanvases[idx]) {
+                const destCtx = clonedCanvases[idx].getContext('2d');
+                destCtx.drawImage(origCanvas, 0, 0);
+            }
+        });
+
+        // 💡【不要要素の削除】
+        const clonedFooter = clonedContainer.querySelector('.modal-footer');
+        if (clonedFooter) clonedFooter.remove();
+
+        const clonedVideoSection = clonedContainer.querySelector('#ranking-video-section, .ranking-video-box');
+        if (clonedVideoSection) clonedVideoSection.remove();
+
+        const updateBtns = clonedContainer.querySelectorAll('.range-selector ~ button, header button');
+        updateBtns.forEach(btn => btn.remove());
+
+        // 💡【余白対策】撮影用コンテナの設定（minHeightを0にして縦の伸びを解除）
+        Object.assign(clonedContainer.style, {
+            position: 'absolute',
+            top: '-9999px',
+            left: '0',
+            width: '1050px',
+            maxWidth: '1050px',
+            minWidth: '1050px',
+            padding: '20px 24px',
+            height: 'auto',
+            minHeight: '0',
+            maxHeight: 'none',
+            overflow: 'visible',
+            opacity: '1',
+            visibility: 'visible',
+            pointerEvents: 'none'
+        });
+
+        // 💡【余白対策】内部エリアの高さ・最小高さをリセット
+        const clonedScrollAreas = clonedContainer.querySelectorAll('#modal-tab-content, .modal-body, .modal-scroll-area');
+        clonedScrollAreas.forEach(area => {
+            area.style.height = 'auto';
+            area.style.minHeight = '0';
+            area.style.maxHeight = 'none';
+            area.style.overflow = 'visible';
+            area.style.flex = 'none';
+            area.style.margin = '0';
+            area.style.padding = '0';
+        });
+
+        const clonedGrid = clonedContainer.querySelector('.two-column-grid');
+        if (clonedGrid) {
+            clonedGrid.style.display = 'grid';
+            clonedGrid.style.gridTemplateColumns = 'minmax(0, 1fr) minmax(0, 1fr)';
+            clonedGrid.style.gap = '20px';
+            clonedGrid.style.height = 'auto';
+            clonedGrid.style.minHeight = '0';
+        }
+
+        // thead の sticky（固定表示）を解除
+        const theads = clonedContainer.querySelectorAll('table thead');
+        theads.forEach(th => {
+            th.style.position = 'static';
+            th.style.display = 'table-header-group';
+        });
+
+        const thCells = clonedContainer.querySelectorAll('table th');
+        thCells.forEach(cell => {
+            cell.style.position = 'static';
+            cell.style.top = 'auto';
+        });
+
+        document.body.appendChild(clonedContainer);
         sendBtn.innerText = "作成中...";
 
-        // レンダリング完了まで待機
         await new Promise(resolve => setTimeout(resolve, 200));
 
+        // 💡【余白対策】実寸高さ（scrollHeight）でキャプチャ範囲を正確に規定
         const targetWidth = clonedContainer.offsetWidth;
-        const targetHeight = clonedContainer.offsetHeight;
+        const targetHeight = clonedContainer.scrollHeight;
 
+        // html2canvas 実行
         const canvas = await html2canvas(clonedContainer, {
             backgroundColor: "#ffffff",
             scale: 2,
             useCORS: true,
+            allowTaint: true,
             width: targetWidth,
             height: targetHeight,
             windowWidth: targetWidth + 50,
             windowHeight: targetHeight,
             scrollY: 0,
             scrollX: 0
-            /* 💡 ignoreElements は削除し、SS〜などの range-btn ボタンを消さずに残します */
         });
 
-        // 撮影完了後にクローン削除
-        document.body.removeChild(clonedContainer);
+        // 💡 canvas.toBlob を Promise 化してエラー捕捉できるように調整
+        const blob = await new Promise((resolve, reject) => {
+            canvas.toBlob((b) => {
+                if (b) resolve(b);
+                else reject(new Error("画像の生成に失敗しました (Blob生成エラー)"));
+            }, "image/png");
+        });
 
-        canvas.toBlob(async (blob) => {
-            const formData = new FormData();
-            formData.append("file", blob, `share_${Date.now()}.png`);
-            formData.append("payload_json", JSON.stringify({ content: "みろよみろよ" }));
+        sendBtn.innerText = "送信中...";
 
-            const response = await fetch(webhookUrl, {
-                method: "POST",
-                body: formData
-            });
+        const formData = new FormData();
+        formData.append("file", blob, `share_${Date.now()}.png`);
+        formData.append("payload_json", JSON.stringify({ content: "みろよみろよ" }));
 
-            if (response.ok) {
-                alert("Discordに送信しました！");
-            } else {
-                if (confirm("送信に失敗しました。URLが間違っている可能性があります。設定をリセットしますか？")) {
-                    localStorage.removeItem('discord_webhook_url');
-                }
+        // 💡 15秒のタイムアウト制御
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+        const response = await fetch(webhookUrl, {
+            method: "POST",
+            body: formData,
+            signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        // 💡 レートリミット・ステータスコード別の判定を追加
+        if (response.ok) {
+            alert("Discordに送信しました！");
+        } else {
+            const status = response.status;
+            let errorMsg = `送信に失敗しました (ステータスコード: ${status})`;
+
+            if (status === 429) {
+                errorMsg = "連続送信の制限（レートリミット）がかかっています。数秒待ってから再試行してください。";
+            } else if (status === 404 || status === 401) {
+                errorMsg = "Webhook URLが無効または削除されています。";
+            } else if (status === 413) {
+                errorMsg = "画像ファイルサイズが大きすぎるためDiscordで受信できませんでした。";
             }
-            finishSending();
-        }, "image/png");
+
+            if (confirm(`${errorMsg}\n\n保存されているWebhook URLをクリアしてリセットしますか？`)) {
+                localStorage.removeItem('discord_webhook_url');
+            }
+        }
 
     } catch (err) {
-        console.error(err);
-        if (document.body.contains(clonedContainer)) {
+        console.error("Discord送信エラー:", err);
+
+        let alertMsg = "送信処理中にエラーが発生しました。";
+        if (err.name === 'AbortError') {
+            alertMsg = "タイムアウト: 通信に時間がかかりすぎたため処理を中断しました。";
+        } else if (err.message) {
+            alertMsg += `\n内容: ${err.message}`;
+        }
+
+        alert(alertMsg);
+
+    } finally {
+        // 💡 成功・失敗を問わず確実にクローン削除とボタン復元を実行
+        if (clonedContainer && document.body.contains(clonedContainer)) {
             document.body.removeChild(clonedContainer);
         }
-        alert("失敗しました。");
-        finishSending();
-    }
-
-    function finishSending() {
         sendBtn.innerText = "Discordに送信";
         sendBtn.disabled = false;
         sendBtn.classList.remove('sending');
     }
 }
+
 
 /**
  * ログアウト処理
