@@ -53,6 +53,31 @@
             </div>
         </div>
 
+        <!-- Rating & 能力値詳細モーダル -->
+        <div id="rating-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-content">
+                <!-- タブナビゲーション（英語表記のみ） -->
+                <div class="modal-tabs">
+                    <button class="tab-btn active" data-tab="best">BEST</button>
+                    <button class="tab-btn" data-tab="new">NEW</button>
+                    <button class="tab-btn" data-tab="power">POWER</button>
+                    <button class="tab-btn" data-tab="notes">NOTES</button>
+                    <button class="tab-btn" data-tab="chuni">CHUNI</button>
+                    <button class="tab-btn" data-tab="tricky">TRICKY</button>
+                </div>
+
+                <!-- タブコンテンツ表示領域 -->
+                <div class="modal-body" id="modal-tab-content">
+                    <!-- JavaScriptでここにプレイヤー名・平均・2列リストが描画されます -->
+                </div>
+
+                <div class="modal-footer">
+                    <button class="footer-btn discord-btn" onclick="shareToDiscord('rating-modal')">Discordに送信</button>
+                    <button id="modal-close-btn" class="footer-btn close-btn">閉じる</button>
+                </div>
+            </div>
+        </div>
+
 
         <div class="search-container">
             <div class="filter-controls">
@@ -271,9 +296,9 @@
                     </div>
                 </div>
 
-                <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
-                    <button id="discord-share-btn" onclick="shareToDiscord()">Discordに送信</button>
-                    <button class="modal-close-btn"
+                <div class="modal-footer">
+                    <button class="footer-btn discord-btn" onclick="shareToDiscord('ranking-modal')">Discordに送信</button>
+                    <button class="footer-btn close-btn"
                         onclick="document.getElementById('ranking-modal').style.display='none'">閉じる</button>
                 </div>
             </div>
@@ -329,8 +354,7 @@
             </div>
 
             <div class="vs-filter-section" style="margin-top: 15px; text-align: left;">
-                <label
-                    style="font-weight: bold; font-size: 14px; color: #333; display: block; margin-bottom: 8px;">難易度
+                <label style="font-weight: bold; font-size: 14px; color: #333; display: block; margin-bottom: 8px;">難易度
                     (複数選択可)</label>
                 <div id="vs-diff-buttons-container" style="display: flex; gap: 8px; flex-wrap: wrap;">
                     <button type="button" class="vs-btn-diff-filter" data-diff="EXP"

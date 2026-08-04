@@ -131,8 +131,8 @@ async function loadScores() {
         const response = await fetch(GAS_URL, {
             method: "POST",
             headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({ 
-                mode: "checker", 
+            body: JSON.stringify({
+                mode: "checker",
                 token: token
             })
         });
@@ -670,9 +670,28 @@ function sortData(data) {
 
 
 
+// --- 共通ヘルパー関数（先頭にまとめて定義） ---
+const floorTo2nd = (num) => (!num || isNaN(num)) ? 0 : Math.floor((num + 0.0000001) * 100) / 100;
+const floorTo4th = (num) => (!num || isNaN(num)) ? 0 : Math.floor((num + 0.0000001) * 10000) / 10000;
+
+function escapeHtml(str) {
+    return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+// 閾値保存用オブジェクトの初期化（未定義エラー防止）
+if (typeof rateThresholds === 'undefined') {
+    window.rateThresholds = { new20: 0, best30: 0 };
+}
+
+let currentTab = "best";
+let currentModalPlayerName = "";
+
 /**
  * 3. レート計算（新20 + 旧30）
- * 単曲Ratingを第3位切り捨てした状態で平均を算出
  */
 function calculatechuniRate(playerName) {
     const rateDisplay = document.getElementById('rating-average');
@@ -685,39 +704,17 @@ function calculatechuniRate(playerName) {
         return;
     }
 
-    // --- 切り捨て用ヘルパー関数 ---
-    // 第3位切り捨て (単曲Rating & トータルレート用)
-    const floorTo2nd = (num) => {
-        if (!num || isNaN(num)) return 0;
-        return Math.floor((num + 0.0000001) * 100) / 100;
-    };
-
-    // 第5位切り捨て (枠平均表示用)
-    const floorTo4th = (num) => {
-        if (!num || isNaN(num)) return 0;
-        return Math.floor((num + 0.0000001) * 10000) / 10000;
-    };
-
     const newSongs = targetData.filter(s => s.isNew);
     const bestSongs = targetData.filter(s => !s.isNew);
 
     const getTopData = (list, count) => {
         const sorted = list
-            .map(s => {
-                // 【重要】一曲ずつのRatingをまず第3位切り捨てにする
-                return floorTo2nd(parseFloat(s.rating) || 0);
-            })
+            .map(s => floorTo2nd(parseFloat(s.rating) || 0))
             .sort((a, b) => b - a);
 
         const top = sorted.slice(0, count);
-
-        // 切り捨て済みの数値を使って平均を算出
         const rawAvg = top.length > 0 ? top.reduce((a, b) => a + b, 0) / count : 0;
-
-        // 平均値そのものも第5位で切り捨て
         const avg = floorTo4th(rawAvg);
-
-        // 閾値（ハイライト用）も切り捨て済みの値から取得
         const threshold = sorted.length >= count ? sorted[count - 1] : (sorted[sorted.length - 1] || 0);
 
         return { avg, threshold };
@@ -726,10 +723,12 @@ function calculatechuniRate(playerName) {
     const newData = getTopData(newSongs, 20);
     const bestData = getTopData(bestSongs, 30);
 
-    rateThresholds.new20 = newData.threshold;
-    rateThresholds.best30 = bestData.threshold;
+    // 安全にプロパティへ代入
+    if (typeof rateThresholds !== 'undefined') {
+        rateThresholds.new20 = newData.threshold;
+        rateThresholds.best30 = bestData.threshold;
+    }
 
-    // トータルレート算出：切り捨て済みの枠平均から算出し、最後に第5位切り捨て
     const totalRate = floorTo4th((newData.avg * 20 + bestData.avg * 30) / 50);
 
     // --- HTML出力 ---
@@ -737,7 +736,7 @@ function calculatechuniRate(playerName) {
 
     rateDisplay.innerHTML = `
         <div class="rating-container">
-            <span class="user-name"><strong>${displayName}</strong></span>
+            <span class="user-name"><strong>${escapeHtml(displayName)}</strong></span>
             <span class="divider">|</span>
             <span class="rate-total">Rating: <span class="highlight-number main-rate">${totalRate.toFixed(4)}</span></span>
             <span class="divider">|</span>
@@ -746,7 +745,267 @@ function calculatechuniRate(playerName) {
             <span>NEW: <span class="highlight-number">${newData.avg.toFixed(4)}</span></span>
         </div>
     `;
+
+    // 💡 HTML出力直後にクリックイベントを有効化する
+    attachRatingWrapperEvent(displayName);
 }
+
+/**
+ * rating-wrapper クリック時のイベント割り当て
+ */
+function attachRatingWrapperEvent(playerName) {
+    currentModalPlayerName = playerName || "Player";
+
+    // class="rating-wrapper" または id="rating-wrapper" を取得
+    const wrapper = document.querySelector('.rating-wrapper') ||
+        document.getElementById('rating-wrapper') ||
+        document.querySelector('.rating-container');
+
+    if (wrapper) {
+        wrapper.style.cursor = 'pointer';
+        wrapper.title = 'クリックして枠データ詳細を表示';
+        // 登録済みのクリックイベントをクリアしてから新規割り当て
+        wrapper.onclick = () => openRatingModal();
+    }
+}
+
+/**
+ * モーダルを開く
+ */
+function openRatingModal() {
+    const modal = document.getElementById('rating-modal');
+    if (!modal) return;
+
+    modal.style.display = 'flex';
+    setupModalEvents();
+    renderTabContent(currentTab);
+}
+
+/**
+ * イベントの初期化（閉じる・タブ切替）
+ */
+function setupModalEvents() {
+    const closeBtn = document.getElementById('modal-close-btn');
+    const modal = document.getElementById('rating-modal');
+
+    if (closeBtn) closeBtn.onclick = () => modal.style.display = 'none';
+    if (modal) {
+        modal.onclick = (e) => {
+            if (e.target === modal) modal.style.display = 'none';
+        };
+    }
+
+    const tabBtns = document.querySelectorAll('#rating-modal .tab-btn');
+    tabBtns.forEach(btn => {
+        btn.onclick = () => {
+            tabBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentTab = btn.getAttribute('data-tab');
+            renderTabContent(currentTab);
+        };
+    });
+}
+
+/**
+ * タブ内容の生成（プレイヤー名、平均、左右2列リスト）
+ */
+function renderTabContent(tabKey) {
+    const container = document.getElementById('modal-tab-content');
+    if (!container) return;
+
+    const targetData = (typeof allRecords !== 'undefined' ? allRecords : myCurrentRecords) || [];
+    if (targetData.length === 0) {
+        container.innerHTML = "<p style='text-align:center;'>データがありません。</p>";
+        return;
+    }
+
+    let songs = [];
+    let isRateMode = false;
+    let limit = 30;
+    let colorClass = "";
+    let tabTitle = "";
+    let columnHeader = "定数"; // 💡 デフォルトの見出し名
+
+    switch (tabKey) {
+        case 'best':
+            tabTitle = "BEST";
+            limit = 30;
+            isRateMode = true;
+            colorClass = "color-best";
+            columnHeader = "定数";
+            songs = targetData.filter(s => !s.isNew)
+                .map(s => ({ 
+                    ...s, 
+                    calcVal: floorTo2nd(parseFloat(s.rating) || 0),
+                    displayConst: parseFloat(s.const || 0).toFixed(1) /* 💡 譜面定数(小数点1位) */
+                }))
+                .sort((a, b) => b.calcVal - a.calcVal)
+                .slice(0, limit);
+            break;
+
+        case 'new':
+            tabTitle = "NEW";
+            limit = 20;
+            isRateMode = true;
+            colorClass = "color-new";
+            columnHeader = "定数";
+            songs = targetData.filter(s => s.isNew)
+                .map(s => ({ 
+                    ...s, 
+                    calcVal: floorTo2nd(parseFloat(s.rating) || 0),
+                    displayConst: parseFloat(s.const || 0).toFixed(1) /* 💡 譜面定数(小数点1位) */
+                }))
+                .sort((a, b) => b.calcVal - a.calcVal)
+                .slice(0, limit);
+            break;
+
+case 'power':
+            tabTitle = "POWER";
+            colorClass = "color-power";
+            columnHeader = "POWER";
+            songs = getTopAbilitySongs(targetData, "tairyoku", 30).map(s => ({
+                ...s,
+                // 💡 GASで定義した rawTairyoku（補正前）を直接参照
+                displayConst: parseFloat(s.rawTairyoku || 0).toFixed(1)
+            }));
+            break;
+
+        case 'notes':
+            tabTitle = "NOTES";
+            colorClass = "color-notes";
+            columnHeader = "NOTES";
+            songs = getTopAbilitySongs(targetData, "kenban", 30).map(s => ({
+                ...s,
+                displayConst: parseFloat(s.rawKenban || 0).toFixed(1)
+            }));
+            break;
+
+        case 'chuni':
+            tabTitle = "CHUNI";
+            colorClass = "color-chuni";
+            columnHeader = "CHUNI";
+            songs = getTopAbilitySongs(targetData, "chuni", 30).map(s => ({
+                ...s,
+                displayConst: parseFloat(s.rawChuni || 0).toFixed(1)
+            }));
+            break;
+
+        case 'tricky':
+            tabTitle = "TRICKY";
+            colorClass = "color-tricky";
+            columnHeader = "TRICKY";
+            songs = getTopAbilitySongs(targetData, "kuse", 30).map(s => ({
+                ...s,
+                displayConst: parseFloat(s.rawKuse || 0).toFixed(1)
+            }));
+            break;
+    }
+
+    // 平均値の計算
+    let avgDisplay = "0.0000";
+    if (isRateMode) {
+        const rawAvg = songs.length > 0 ? songs.reduce((a, b) => a + b.calcVal, 0) / limit : 0;
+        avgDisplay = floorTo4th(rawAvg).toFixed(4);
+    } else {
+        const sum = songs.reduce((a, b) => a + (b.calcVal || 0), 0);
+        const avg = songs.length > 0 ? sum / songs.length : 0;
+        avgDisplay = avg.toFixed(2);
+    }
+
+    const half = Math.ceil(songs.length / 2);
+    const leftSongs = songs.slice(0, half);
+    const rightSongs = songs.slice(half);
+
+    let html = `
+        <div class="modal-header-summary">
+            <span class="player-name">${escapeHtml(currentModalPlayerName)}</span>
+            <div class="tab-avg-box">
+                <span>${tabTitle} 平均:</span>
+                <span class="avg-val ${colorClass}">${avgDisplay}</span>
+            </div>
+        </div>
+        <div class="two-column-grid">
+            ${buildTableHtml(leftSongs, 0, isRateMode, colorClass, columnHeader)}
+            ${buildTableHtml(rightSongs, half, isRateMode, colorClass, columnHeader)}
+        </div>
+    `;
+
+    container.innerHTML = html;
+}
+
+/**
+ * テーブル部分のHTMLを生成するヘルパー関数
+ */
+function buildTableHtml(songList, startRank, isRateMode, colorClass, columnHeader) {
+    if (songList.length === 0) return '<div></div>';
+
+    // 💡 定数以外の見出し（POWERなど）の場合は文字サイズ調整用クラスを付与
+    const isCostHeader = columnHeader !== '定数';
+    const headerClass = isCostHeader ? 'cost-header' : '';
+    
+    // 💡 傾向コストの見出しに色をつけるため、colorClass（.color-power 等）を条件付きで追加
+    const headerColorClass = isCostHeader ? colorClass : '';
+
+    let html = `
+        <table class="column-table">
+            <colgroup>
+                <col style="width: 28px;">  <!-- 順位 -->
+                <col style="width: auto;">  <!-- 曲名 -->
+                <col style="width: 42px;">  <!-- バッジ -->
+                <col style="width: 44px;">  <!-- 動的見出し列 -->
+                <col style="width: 78px;">  <!-- スコア -->
+                <col style="width: 52px;">  <!-- Rating -->
+            </colgroup>
+            <thead>
+                <tr>
+                    <th style="text-align: center;">#</th>
+                    <th style="text-align: left;">曲名</th>
+                    <th style="text-align: center;"></th>
+                    <!-- 💡 色用クラスと小文字化用クラスを同時に付与 -->
+                    <th style="text-align: center;" class="${headerClass} ${headerColorClass}">${columnHeader}</th>
+                    <th style="text-align: center;">スコア</th>
+                    <th style="text-align: center;">Rating</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    songList.forEach((s, idx) => {
+        const rank = startRank + idx + 1;
+        const constVal = s.displayConst || '0.0';
+        const scoreVal = (parseInt(s.score, 10) || 0).toLocaleString();
+        const displayVal = (s.calcVal || 0).toFixed(2);
+
+        html += `
+            <tr>
+                <td style="text-align: center;">${rank}</td>
+                <td class="title-col" title="${escapeHtml(s.title)}">
+                    <div class="title-cell">${escapeHtml(s.title)}</div>
+                </td>
+                <td style="text-align: center;"><span class="diff-badge ${s.diff}">${s.diff}</span></td>
+                <td style="text-align: center;">${constVal}</td>
+                <td style="text-align: center;">${scoreVal}</td>
+                <td class="${colorClass}" style="text-align: center;">${displayVal}</td>
+            </tr>
+        `;
+    });
+
+    html += `</tbody></table>`;
+    return html;
+}
+
+
+/**
+ * 能力値ソート用ヘルパー
+ */
+function getTopAbilitySongs(data, key, count) {
+    return data
+        .filter(s => (parseFloat(s[key]) || 0) > 0)
+        .map(s => ({ ...s, calcVal: parseFloat(s[key]) || 0 }))
+        .sort((a, b) => b.calcVal - a.calcVal)
+        .slice(0, count);
+}
+
 
 
 /**
@@ -3929,68 +4188,134 @@ window.closeVideoHubModal = closeVideoHubModal;
 
 /**
  * モーダルの内容を画像化してDiscordへ送信
+ * @param {string} modalId - 送信対象モーダルのID ('rating-modal' または 'ranking-modal')
  */
-async function shareToDiscord() {
-    // 保存されているURLを取得
+async function shareToDiscord(modalId = 'rating-modal') {
     let webhookUrl = localStorage.getItem('discord_webhook_url');
 
-    // 保存されていない場合は入力を求める
     if (!webhookUrl) {
         webhookUrl = prompt("DiscordのWebhook URLを入力してください。\n(このURLはブラウザに保存され、公開されることはありません)");
         if (webhookUrl) {
             localStorage.setItem('discord_webhook_url', webhookUrl);
         } else {
-            return; // キャンセルされた場合
+            return;
         }
     }
 
-    const modalContent = document.querySelector('#ranking-modal .modal-content');
-    const sendBtn = document.getElementById('discord-share-btn');
+    const targetModal = document.getElementById(modalId);
+    if (!targetModal) return;
 
-    // 送信中スタイル適用
+    const modalContent = targetModal.querySelector('.modal-content');
+    const sendBtn = targetModal.querySelector('.discord-btn');
+
+    if (!modalContent || !sendBtn) return;
+
     sendBtn.innerText = "送信中...";
     sendBtn.disabled = true;
     sendBtn.classList.add('sending');
 
+    // 💡 撮影専用クローンを一時生成
+    const clonedContainer = modalContent.cloneNode(true);
+
+    // 💡【キャンバスの複製】Chart.js等のcanvas描画内容をクローン側に手動でコピー
+    const originalCanvases = modalContent.querySelectorAll('canvas');
+    const clonedCanvases = clonedContainer.querySelectorAll('canvas');
+    originalCanvases.forEach((origCanvas, idx) => {
+        if (clonedCanvases[idx]) {
+            const destCtx = clonedCanvases[idx].getContext('2d');
+            destCtx.drawImage(origCanvas, 0, 0);
+        }
+    });
+
+    // 💡【フッター削除】
+    const clonedFooter = clonedContainer.querySelector('.modal-footer');
+    if (clonedFooter) clonedFooter.remove();
+
+    // 💡【指定エリアの非表示】手元動画セクションを完全に削除
+    const clonedVideoSection = clonedContainer.querySelector('#ranking-video-section, .ranking-video-box');
+    if (clonedVideoSection) clonedVideoSection.remove();
+
+    // 💡「この楽曲のデータを更新」等の不要な操作ボタンがあれば削除
+    const updateBtns = clonedContainer.querySelectorAll('.range-selector ~ button, header button');
+    updateBtns.forEach(btn => btn.remove());
+
+    // 撮影用のコンテナ設定
+    clonedContainer.style.position = 'absolute';
+    clonedContainer.style.top = '-9999px';
+    clonedContainer.style.left = '0';
+    clonedContainer.style.width = '1050px';
+    clonedContainer.style.maxWidth = '1050px';
+    clonedContainer.style.padding = '20px 24px';
+    clonedContainer.style.height = 'auto';
+    clonedContainer.style.maxHeight = 'none';
+    clonedContainer.style.overflow = 'visible';
+    clonedContainer.style.opacity = '1';
+    clonedContainer.style.visibility = 'visible';
+    clonedContainer.style.pointerEvents = 'none';
+
+    // スクロール領域の固定高さを解除
+    const clonedScrollAreas = clonedContainer.querySelectorAll('#modal-tab-content, .modal-body, .modal-scroll-area');
+    clonedScrollAreas.forEach(area => {
+        area.style.height = 'auto';
+        area.style.maxHeight = 'none';
+        area.style.overflow = 'visible';
+        area.style.flex = 'none';
+    });
+
+    // 2列グリッドの強製設定（rating-modal等で使用される場合）
+    const clonedGrid = clonedContainer.querySelector('.two-column-grid');
+    if (clonedGrid) {
+        clonedGrid.style.display = 'grid';
+        clonedGrid.style.gridTemplateColumns = 'minmax(0, 1fr) minmax(0, 1fr)';
+        clonedGrid.style.gap = '20px';
+    }
+
+    // thead の sticky（固定表示）を解除
+    const theads = clonedContainer.querySelectorAll('table thead');
+    theads.forEach(th => {
+        th.style.position = 'static';
+        th.style.display = 'table-header-group';
+    });
+
+    const thCells = clonedContainer.querySelectorAll('table th');
+    thCells.forEach(cell => {
+        cell.style.position = 'static';
+        cell.style.top = 'auto';
+    });
+
+    document.body.appendChild(clonedContainer);
+
     try {
         sendBtn.innerText = "作成中...";
-        sendBtn.disabled = true;
 
-        // ★ 見切れ防止の修正：画像化するターゲットのスタイルを一時的に調整
-        const originalWidth = modalContent.style.width;
-        const originalMaxHeight = modalContent.style.maxHeight;
-        const originalOverflow = modalContent.style.overflow;
+        // レンダリング完了まで待機
+        await new Promise(resolve => setTimeout(resolve, 200));
 
-        // 全体が入るように一時的に制限を解除
-        modalContent.style.width = "850px"; // グラフ(800px)が余裕を持って収まる幅
-        modalContent.style.maxHeight = "none";
-        modalContent.style.overflow = "visible";
+        const targetWidth = clonedContainer.offsetWidth;
+        const targetHeight = clonedContainer.offsetHeight;
 
-        const canvas = await html2canvas(modalContent, {
+        const canvas = await html2canvas(clonedContainer, {
             backgroundColor: "#ffffff",
-            scale: 2, // 高画質化
+            scale: 2,
             useCORS: true,
-            // 縦に長くなってもすべて収める設定
-            windowWidth: 850,
-            ignoreElements: (el) => el.tagName === 'BUTTON',
-            onclone: (clonedDoc) => {
-                // クローンされた方の要素だけさらに調整可能
-                const clonedContent = clonedDoc.querySelector('.modal-content');
-                clonedContent.style.padding = "20px";
-            }
+            width: targetWidth,
+            height: targetHeight,
+            windowWidth: targetWidth + 50,
+            windowHeight: targetHeight,
+            scrollY: 0,
+            scrollX: 0
+            /* 💡 ignoreElements は削除し、SS〜などの range-btn ボタンを消さずに残します */
         });
 
-        // 元に戻す
-        modalContent.style.width = originalWidth;
-        modalContent.style.maxHeight = originalMaxHeight;
-        modalContent.style.overflow = originalOverflow
+        // 撮影完了後にクローン削除
+        document.body.removeChild(clonedContainer);
 
         canvas.toBlob(async (blob) => {
             const formData = new FormData();
-            formData.append("file", blob, `ranking_${Date.now()}.png`);
+            formData.append("file", blob, `share_${Date.now()}.png`);
             formData.append("payload_json", JSON.stringify({ content: "みろよみろよ" }));
 
-            const response = await fetch(webhookUrl, { // 保存されたURLを使用
+            const response = await fetch(webhookUrl, {
                 method: "POST",
                 body: formData
             });
@@ -3998,7 +4323,6 @@ async function shareToDiscord() {
             if (response.ok) {
                 alert("Discordに送信しました！");
             } else {
-                // URLが間違っている可能性があるため、一度クリアする
                 if (confirm("送信に失敗しました。URLが間違っている可能性があります。設定をリセットしますか？")) {
                     localStorage.removeItem('discord_webhook_url');
                 }
@@ -4008,6 +4332,9 @@ async function shareToDiscord() {
 
     } catch (err) {
         console.error(err);
+        if (document.body.contains(clonedContainer)) {
+            document.body.removeChild(clonedContainer);
+        }
         alert("失敗しました。");
         finishSending();
     }

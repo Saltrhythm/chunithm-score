@@ -80,7 +80,7 @@ function doPost(e) {
             return createJsonResponse({ status: "success", data: comparisonData });
         }
 
-        // 4. 同期/認証モード (checker) 
+// 4. 同期/認証モード (checker) 
         if (mode === "checker") {
             const lock = LockService.getScriptLock();
             if (!lock.tryLock(15000)) {
@@ -88,42 +88,58 @@ function doPost(e) {
             }
 
             try {
-                const token = String(params.token || "");
-                let playerName = String(params.playerName || "");
-                
-                playerName = playerName.replace(/[\*＼\/\\\[\]\?：:]/g, "").trim();
+                const rawToken = String(params.token || "").trim();
 
-                // 認証トークンのハッシュ化処理
-                const hashedToken = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, token)
-                    .map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
-
-                let userMapSheet = ss.getSheetByName("UserMap") || ss.insertSheet("UserMap");
-                if (userMapSheet.getLastRow() === 0) userMapSheet.appendRow(["token_hash", "name"]);
-
-                const userMapData = userMapSheet.getDataRange().getValues();
-                let userRowIndex = userMapData.findIndex(row => row[0] === hashedToken);
-
-                if (userRowIndex === -1) {
-                    const sameNameIndex = userMapData.findIndex(row => row[1] === playerName);
-
-                    if (sameNameIndex !== -1) {
-                        userMapSheet.getRange(sameNameIndex + 1, 1).setValue(hashedToken);
-                        userRowIndex = sameNameIndex; 
-                    } else if (!playerName) {
-                        return createJsonResponse({ status: "need_name" });
-                    } else {
-                        userMapSheet.appendRow([hashedToken, playerName]);
-                    }
-                } else {
-                    playerName = userMapData[userRowIndex][1];
+                if (!rawToken) {
+                    return createJsonResponse({ status: "error", message: "トークンを入力してください。" });
                 }
 
-                // 💡【修正】プレイヤー名が確定したこのタイミングで、playerNameを第3引数に渡して実行！
-                // これにより、API停止時でも playerName のシートから既存データを安全に救出できます。
-                const records = fetchAndProcessFromApi(token, ss, playerName);
+                // 1. 認証トークンの SHA-256 ハッシュ化（エラー回避版）
+                const rawBytes = Utilities.newBlob(rawToken).getBytes();
+                const hashedToken = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, rawBytes)
+                    .map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('').toLowerCase();
 
+                // 2. UserMap シートの取得
+                const userMapSheet = ss.getSheetByName("UserMap");
+                if (!userMapSheet) {
+                    return createJsonResponse({ status: "error", message: "UserMapシートが見つかりません。管理者に問い合わせてください。" });
+                }
+
+                const userMapData = userMapSheet.getDataRange().getValues();
+                
+                // 3. UserMap 照合（ハッシュ化トークンで検索）
+                let matchedRow = null;
+                for (let i = 1; i < userMapData.length; i++) {
+                    const sheetHash = String(userMapData[i][0] || "").trim().toLowerCase();
+                    if (sheetHash === hashedToken) {
+                        matchedRow = userMapData[i];
+                        break;
+                    }
+                }
+
+                // UserMapに登録がない新規・不明なユーザーはすべて拒否メッセージを返す
+                if (!matchedRow) {
+                    return createJsonResponse({ 
+                        status: "error", 
+                        message: "未承認のユーザーです。ツールを利用するには管理者に承認（UserMapへの登録）を依頼してください。" 
+                    });
+                }
+
+                // 4. 承認済みユーザーのプレイヤー名を取得
+                const playerName = String(matchedRow[1] || "").trim();
+                if (!playerName) {
+                    return createJsonResponse({ status: "error", message: "UserMap内のユーザー名設定が不正です。" });
+                }
+
+                // 5. データ取得および更新処理
+                const records = fetchAndProcessFromApi(rawToken, ss, playerName);
                 updateUserSheet(ss, playerName, records);
-                return createJsonResponse({ status: "success", playerName: playerName, records: records });
+                
+                return createJsonResponse({ 
+                    status: "success", 
+                    playerName: playerName, 
+                    records: records 
+                });
 
             } finally {
                 lock.releaseLock();
@@ -1057,16 +1073,25 @@ function fetchAndProcessFromApi(token, ss, playerName) {
             diff: r.diff,
             const: c,
             score: r.score,
-            // 💡 補足：WEの場合、通常譜面用のレーティング計算を走らせると 0 になります（仕様通りでOK）
             rating: calculateChuniRating(r.score, c),
             lamp: lamp,
             isNew: isNewSong,
+            
+            // 💡 個人が獲得したスコア補正後のコスト（Rating計算用）
             tairyoku: Math.round(masterInfo.tairyoku * scoreMod * 100) / 100,
             kenban: Math.round(masterInfo.kenban * scoreMod * 100) / 100,
             chuni: Math.round(masterInfo.chuni * scoreMod * 100) / 100,
             kuse: Math.round(masterInfo.kuse * scoreMod * 100) / 100,
+            
+            // 💡 【追加】MasterDataそのままの譜面固有コスト（表・定数表示用）
+            rawTairyoku: masterInfo.tairyoku,
+            rawKenban: masterInfo.kenban,
+            rawChuni: masterInfo.chuni,
+            rawKuse: masterInfo.kuse,
+
             mainTrend: masterInfo.mainTrend 
         };
+        
     }).filter(r => {
         // 💡【重要・フィルター条件緩和】
         // 通常譜面は「定数13.5以上」、WORLD'S ENDは「難易度がWE（定数0）」のものを両方残す
@@ -1077,7 +1102,7 @@ function fetchAndProcessFromApi(token, ss, playerName) {
 }
 
 /**
- * 💡 カスタム補正値計算（100万点未満0.4 / 最終3.0倍 / ②強化・④マイルド版）
+ * 💡 スコア補正値計算（1,007,500〜1,009,000を上げ、1,009,000〜1,010,000の上昇を抑えた調整版）
  */
 function calculateScoreModifier(score, lamp) {
     // 1,000,000点（S）未満は一律 0.4
@@ -1085,45 +1110,31 @@ function calculateScoreModifier(score, lamp) {
     
     let modifier = 0.0;
     
-    // ① 1,000,000 〜 1,005,000点（倍率：0.4 から 0.55 までゆるやかに上昇）
+    // ① 1,000,000 〜 1,005,000点（倍率：0.40 から 0.65 へ）
     if (score >= 1000000 && score < 1005000) {
-        modifier = 0.4 + (score - 1000000) * (0.15 / 5000);
+        modifier = 0.40 + (score - 1000000) * (0.25 / 5000);
     }
-    // ② 1,005,000 〜 1,007,500点（倍率：0.55 から 1.85 まで【さらに最も激しく】上昇）
+    // ② 1,005,000 〜 1,007,500点（倍率：0.65 から 1.55 へ）
     else if (score >= 1005000 && score < 1007500) {
-        modifier = 0.55 + (score - 1005000) * (1.3 / 2500);
+        modifier = 0.65 + (score - 1005000) * (0.90 / 2500);
     }
-    // ③ 1,007,500 〜 1,009,000点（倍率：1.85 から 2.39 まで【2番目に激しく】上昇）
+    // ③ 1,007,500 〜 1,009,000点（倍率：1.55 から 2.35 へ【以前の2.15から+0.20底上げ】）
     else if (score >= 1007500 && score < 1009000) {
-        modifier = 1.85 + (score - 1007500) * (0.54 / 1500);
+        modifier = 1.55 + (score - 1007500) * (0.80 / 1500);
     }
-    // ④ 1,009,000 〜 1,010,000点（倍率：2.39 から 2.65 まで上昇、傾きを少しマイルドに減少）
-    // 💡 最終3.0倍(AJ込み)の帳尻を合わせるため、この区間の計算結果に調整値(+0.25)を加算しています
+    // ④ 1,009,000 〜 1,010,000点（倍率：2.35 から 2.90 へ【上昇量を0.75→0.55にマイルド化】）
     else {
-        modifier = 2.39 + (score - 1009000) * (0.26 / 1000) + 0.25;
+        modifier = 2.35 + (score - 1009000) * (0.55 / 1000);
     }
     
     // ⑤ ＋AJ（All Justice / AJC含む）の時にボーナス（+0.10倍）を与える
-    // 理論値（1,010,000点）の時は、2.65 + 0.25(上記) + 0.10 = ぴったり3.0倍になります
+    // 理論値（1,010,000点）＋ AJ の時は 2.90 + 0.10 = ぴったり 3.0倍 を維持します
     const currentLamp = String(lamp || "");
     if (currentLamp.includes("AJ") || currentLamp.includes("AJC")) {
         modifier += 0.10;
     }
     
     return modifier;
-}
-
-/**
- *  スコア補正値計算用のヘルパー関数（もしGAS内にまだ無ければ、fetchAndProcessFromApiの下辺りに貼り付けてください）
- */
-function calculateScoreModifier(score, lamp) {
-    if (score >= 1010000 || lamp === "AJC") return 1.0;
-    if (score >= 1007500) return 0.95;
-    if (score >= 1005000) return 0.9;
-    if (score >= 1000000) return 0.8;
-    if (score >= 990000) return 0.7;
-    if (score >= 975000) return 0.5;
-    return 0.0;
 }
 
 function calculateChuniRating(score, constant) {

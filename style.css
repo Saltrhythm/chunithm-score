@@ -229,9 +229,16 @@ button:hover {
     cursor: not-allowed;
 }
 
+
 .rating-wrapper {
     text-align: center;
     width: 100%;
+    cursor: pointer;
+    user-select: none; /* テキスト選択ではなくクリック扱いにする */
+}
+
+.rating-wrapper:hover {
+    opacity: 0.85; /* ホバー時に少し透明にしてクリック感を出す */
 }
 
 .rating-display-box {
@@ -270,6 +277,302 @@ button:hover {
     /* アクセントカラーと同色に */
     margin-left: 4px;
 }
+
+/* ==================================================
+ * モーダル全体の枠構造
+ * ================================================== */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    backdrop-filter: blur(3px);
+}
+
+/* モーダル本体 */
+.modal-overlay .modal-content {
+    background: #ffffff;
+    width: 95%;
+    max-width: 1000px;
+    max-height: 90vh;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+/* モーダル本文領域 */
+.modal-content #modal-tab-content,
+.modal-content .modal-body {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
+    z-index: 1;
+    background: #ffffff;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* ==================================================
+ * タブデザイン
+ * ================================================== */
+.modal-content .modal-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+    background-color: #ffffff;
+    position: relative;
+    z-index: 5;
+    flex-shrink: 0;
+}
+
+.modal-content .modal-tabs .tab-btn {
+    flex: 1;
+    padding: 8px 6px;
+    font-size: 0.85rem;
+    font-weight: bold;
+    text-align: center;
+    border: 1px solid #cbd5e1;
+    background-color: #f8fafc;
+    color: #475569;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+/* アクティブタブのアクセントカラー */
+.modal-content .modal-tabs .tab-btn.active { color: #ffffff; }
+.modal-content .modal-tabs .tab-btn.active[data-tab="power"]  { background-color: #36a2eb; border-color: #36a2eb; }
+.modal-content .modal-tabs .tab-btn.active[data-tab="notes"]  { background-color: #d7a62e; border-color: #d7a62e; }
+.modal-content .modal-tabs .tab-btn.active[data-tab="chuni"]  { background-color: #239898; border-color: #239898; }
+.modal-content .modal-tabs .tab-btn.active[data-tab="tricky"] { background-color: #9966ff; border-color: #9966ff; }
+.modal-content .modal-tabs .tab-btn.active[data-tab="best"]   { background-color: #d63384; border-color: #d63384; }
+.modal-content .modal-tabs .tab-btn.active[data-tab="new"]    { background-color: #ff9800; border-color: #ff9800; }
+
+/* ==================================================
+ * モーダル本文 & ヘッダーサマリー
+ * ================================================== */
+
+/* モーダルヘッダーサマリー（プレイヤー名・枠平均エリア） */
+.modal-content .modal-header-summary {
+    display: flex;
+    justify-content: center; /* 💡 左右中央寄せに変更 */
+    align-items: center;
+    gap: 24px;               /* 💡 名前と平均値の間の余白 */
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin-bottom: 12px;
+    border: 1px solid #e2e8f0;
+    text-align: center;
+}
+
+.modal-content .modal-header-summary .player-name {
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: #1e293b;
+}
+
+.modal-content .modal-header-summary .tab-avg-box {
+    font-size: 1.0rem;
+    font-weight: bold;
+}
+
+.modal-content .modal-header-summary .avg-val {
+    font-size: 1.2rem;
+    margin-left: 6px;
+}
+
+/* カラー定義 */
+.color-power  { color: #36a2eb; }
+.color-notes  { color: #d7a62e; }
+.color-chuni  { color: #239898; }
+.color-tricky { color: #9966ff; }
+.color-best   { color: #d63384; }
+.color-new    { color: #ff9800; }
+
+/* ==================================================
+ * モーダル内 2列リスト & テーブル幅調整（PC基本スタイル）
+ * ================================================== */
+
+/* 2列グリッド：左右均等幅 */
+.modal-content #modal-tab-content .two-column-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 20px;
+    width: 100%;
+    margin-top: 8px;
+    box-sizing: border-box;
+}
+
+/* テーブル全体 */
+.modal-content #modal-tab-content table.column-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    table-layout: fixed;
+}
+
+/* セル設定 */
+.modal-content #modal-tab-content .column-table th, 
+.modal-content #modal-tab-content .column-table td {
+    padding: 5px 4px;
+    border-bottom: 1px solid #f1f5f9;
+    box-sizing: border-box;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+/* 傾向コスト見出し（POWER, NOTES等）の文字サイズをやや小さく調整 */
+.column-table th.cost-header {
+    font-size: 0.70em;   /* 必要に応じて微調整してください */
+    letter-spacing: -0.5px;
+}
+
+/* 💡 列ごとの幅＆配置設定（スコア・Ratingを中央寄せ） */
+.modal-content #modal-tab-content .column-table tr > *:nth-child(1) { width: 28px; text-align: center; } /* 順位 */
+.modal-content #modal-tab-content .column-table tr > *:nth-child(2) { width: auto; text-align: left; }   /* 曲名 */
+.modal-content #modal-tab-content .column-table tr > *:nth-child(3) { width: 42px; text-align: center; } /* バッジ */
+.modal-content #modal-tab-content .column-table tr > *:nth-child(4) { width: 38px; text-align: center; } /* 定数 */
+.modal-content #modal-tab-content .column-table tr > *:nth-child(5) { width: 78px; text-align: center; } /* スコア（中央寄せ） */
+.modal-content #modal-tab-content .column-table tr > *:nth-child(6) { width: 52px; text-align: center; } /* Rating（中央寄せ） */
+
+/* 曲名「...」省略設定 */
+.modal-content #modal-tab-content .column-table td.title-col {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.modal-content #modal-tab-content .column-table td .title-cell {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Rating数値の装飾 */
+.modal-content #modal-tab-content .column-table td:nth-child(6) {
+    font-size: 0.88rem;
+    font-weight: 800;
+}
+
+/* ==================================================
+ * 📱 スマートフォン表示時（画面幅 768px 以下）
+ * ================================================== */
+@media (max-width: 768px) {
+    .modal-overlay .modal-content {
+        width: 98%;
+        padding: 10px 6px;
+    }
+
+    .modal-content .modal-tabs {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+    }
+
+    .modal-content .modal-tabs .tab-btn {
+        padding: 7px 4px;
+        font-size: 0.75rem;
+        width: 100%;
+    }
+
+    .modal-content .modal-header-summary {
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+    }
+
+    /* 💡 スマホ時は自動的に1列化 */
+    .modal-content #modal-tab-content .two-column-grid {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
+
+    /* 2個目のテーブルのヘッダーを非表示（連続感を出す場合） */
+    .modal-content #modal-tab-content .two-column-grid table:nth-child(2) thead {
+        display: none;
+    }
+}
+
+/* ==================================================
+ * 難易度バッジ
+ * ================================================== */
+.diff-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 16px;
+    padding: 0;
+    font-size: 0.62rem;
+    color: #ffffff;
+    border-radius: 3px;
+    font-weight: bold;
+    line-height: 1;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.diff-badge.EXP { background-color: #ff4d4d; box-shadow: 0 1px 3px rgba(255, 77, 77, 0.3); }
+.diff-badge.MAS { background-color: #9966ff; box-shadow: 0 1px 3px rgba(153, 102, 255, 0.3); }
+.diff-badge.ULT { background-color: #2b2b2b; box-shadow: 0 1px 3px rgba(43, 43, 43, 0.3); }
+.diff-badge.WE  { 
+    background: linear-gradient(45deg, #ff3366, #ff9933, #33cc66, #3399ff, #9933ff);
+    background-size: 200% 200%;
+    animation: rainbowShift 3s linear infinite;
+    box-shadow: 0 1px 4px rgba(153, 51, 255, 0.4);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+@keyframes rainbowShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* ==================================================
+ * フッターボタン
+ * ================================================== */
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 12px 16px;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    margin-top: 8px;
+}
+
+.footer-btn {
+    padding: 8px 18px;
+    border-radius: 6px;
+    font-weight: bold;
+    cursor: pointer;
+    border: none;
+    transition: background 0.2s;
+}
+
+.discord-btn { background-color: #5865F2; color: #ffffff; }
+.discord-btn:hover { background-color: #4752C4; }
+.discord-btn.sending { background-color: #94a3b8; cursor: not-allowed; }
+.close-btn { background-color: #e2e8f0; color: #475569; }
+.close-btn:hover { background-color: #cbd5e1; }
+
+
+
 
 /* =================================================================
    追加：適用中フィルターバッジのスタイル
