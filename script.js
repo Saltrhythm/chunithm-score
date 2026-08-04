@@ -814,51 +814,42 @@ function setupModalEvents() {
 }
 
 /**
- * 💡 ユーザー名一覧を取得して表示を更新（GAS初期化待機強化版）
+ * 💡 ユーザー名一覧を取得して表示を更新（fetch統一版）
  */
-function fetchPlayerNames(retryCount = 0) {
-    // 1. GAS環境の初期化チェック
-    if (typeof google !== 'undefined' && google && google.script && google.script.run) {
-        google.script.run
-            .withSuccessHandler((players) => {
-                console.log("取得できたユーザー一覧(GAS):", players);
-                if (Array.isArray(players) && players.length > 0) {
-                    allPlayerNames = players;
-                    if (document.getElementById('modal-tab-content')) {
-                        renderTabContent(currentTab);
-                    }
-                }
-            })
-            .withFailureHandler((err) => {
-                console.error("UserMapからのユーザー取得エラー:", err);
-            })
-            .getAllPlayerNames();
-        return; // 実行できたので終了
-    }
+async function fetchPlayerNames() {
+    try {
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ mode: "get_vs_players" }) // 既存のプレイヤー取得APIを共通利用
+        });
+        const result = await response.json();
 
-    // 2. まだ読み込み中の場合、最大50回（約5秒間）待機リトライ
-    if (retryCount < 50) {
-        setTimeout(() => fetchPlayerNames(retryCount + 1), 100);
-        return;
-    }
+        if (result.status === "success" && Array.isArray(result.players)) {
+            console.log("取得できたユーザー一覧:", result.players);
+            allPlayerNames = result.players;
 
-    // 3. 5秒待っても google.script.run が存在しない場合のみローカルと判定
-    console.warn("ローカル環境を検知しました（またはgoogle.script.runの読み込み失敗）。テスト用ダミーユーザーを使用します。");
-    allPlayerNames = ["自分", "テストユーザーA", "テストユーザーB", "テストユーザーC"];
-    if (document.getElementById('modal-tab-content')) {
-        renderTabContent(currentTab);
+            // モーダルが開いていれば再描画して選択肢を更新
+            if (document.getElementById('modal-tab-content')) {
+                renderTabContent(currentTab);
+            }
+        } else {
+            console.warn("ユーザー一覧の取得に失敗しました:", result.message);
+        }
+    } catch (e) {
+        console.error("ユーザー一覧取得の通信エラー:", e);
     }
 }
 
-// 💡 画面ロード時に実行
-window.addEventListener("load", () => {
+// 💡 画面読み込み完了時に実行
+document.addEventListener("DOMContentLoaded", () => {
     fetchPlayerNames();
 });
 
 /**
- * 💡 プレイヤー選択ドロップダウン変更時の処理
+ * 💡 プレイヤー選択ドロップダウン変更時の処理（fetch統一版）
  */
-function handlePlayerChange(selectedName) {
+async function handlePlayerChange(selectedName) {
     currentModalPlayerName = selectedName;
 
     const container = document.getElementById('modal-tab-content');
@@ -866,25 +857,30 @@ function handlePlayerChange(selectedName) {
         container.innerHTML = "<p style='text-align:center; padding: 20px;'>データを読み込み中...</p>";
     }
 
-    // 既にローカルにデータがあればそれを使って描画
+    // 既にキャッシュがあればそれを使用して再描画
     if (allUsersRecords[selectedName]) {
         renderTabContent(currentTab);
         return;
     }
 
-    // GASを呼び出して該当シートのデータを検索・取得
-    if (typeof google !== 'undefined' && google.script && google.script.run) {
-        google.script.run
-            .withSuccessHandler((records) => {
-                allUsersRecords[selectedName] = records || [];
-                renderTabContent(currentTab);
-            })
-            .withFailureHandler((err) => {
-                alert("データの取得に失敗しました: " + (err.message || err));
-            })
-            .getPlayerDataByName(selectedName);
-    } else {
-        renderTabContent(currentTab);
+    // GASへデータ取得リクエスト
+    try {
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ mode: "get_player_data", playerName: selectedName })
+        });
+        const result = await response.json();
+
+        if (result.status === "success") {
+            allUsersRecords[selectedName] = result.records || [];
+            renderTabContent(currentTab);
+        } else {
+            alert("データの取得に失敗しました: " + result.message);
+        }
+    } catch (e) {
+        console.error("通信エラー:", e);
+        alert("通信に失敗しました。");
     }
 }
 
