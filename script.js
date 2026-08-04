@@ -4348,44 +4348,45 @@ async function shareToDiscord(modalId = 'rating-modal') {
         const updateBtns = clonedContainer.querySelectorAll('.range-selector ~ button, header button');
         updateBtns.forEach(btn => btn.remove());
 
-        // 💡【スマホ余白対策】positionをfixedに変更し、高さの自動フィットを徹底設定
+        // 💡【強力余白対策1】クローン全体の高さを可変（fit-content）に強制固定
         Object.assign(clonedContainer.style, {
             position: 'fixed',
             top: '-9999px',
-            left: '-9999px',
+            left: '0',
             width: '1050px',
             maxWidth: '1050px',
             minWidth: '1050px',
             padding: '20px 24px',
-            height: 'auto',
-            minHeight: '0',
+            height: 'fit-content',
+            minHeight: '0px',
             maxHeight: 'none',
             overflow: 'hidden',
             boxSizing: 'border-box',
             opacity: '1',
             visibility: 'visible',
-            pointerEvents: 'none'
+            pointerEvents: 'none',
+            display: 'block' // flex構造を解除してブロック化
         });
 
-        // 💡【スマホ余白対策】子要素のフレックス高・最小高をリセット
-        const clonedScrollAreas = clonedContainer.querySelectorAll('#modal-tab-content, .modal-body, .modal-scroll-area');
-        clonedScrollAreas.forEach(area => {
-            area.style.height = 'auto';
-            area.style.minHeight = '0';
-            area.style.maxHeight = 'none';
-            area.style.overflow = 'visible';
-            area.style.flex = 'none';
-            area.style.margin = '0';
-            area.style.padding = '0';
+        // 💡【強力余白対策2】全配下要素の flex 伸ばし・最小高さをすべて強制リセット
+        const allElements = clonedContainer.querySelectorAll('*');
+        allElements.forEach(el => {
+            el.style.flex = '0 0 auto';
+            el.style.flexGrow = '0';
+            el.style.minHeight = '0px';
+            el.style.maxHeight = 'none';
+            if (el.tagName !== 'CANVAS' && el.tagName !== 'IMG') {
+                el.style.height = 'auto';
+            }
         });
 
+        // 💡 2カラムレイアウトの再適用（親がblock化されたため明示的に指定）
         const clonedGrid = clonedContainer.querySelector('.two-column-grid');
         if (clonedGrid) {
             clonedGrid.style.display = 'grid';
-            clonedGrid.style.gridTemplateColumns = 'minmax(0, 1fr) minmax(0, 1fr)';
+            clonedGrid.style.gridTemplateColumns = '1fr 1fr';
             clonedGrid.style.gap = '20px';
             clonedGrid.style.height = 'auto';
-            clonedGrid.style.minHeight = '0';
         }
 
         // thead の sticky（固定表示）を解除
@@ -4406,9 +4407,17 @@ async function shareToDiscord(modalId = 'rating-modal') {
 
         await new Promise(resolve => setTimeout(resolve, 200));
 
-        // 💡【スマホ余白対策】scrollHeightではなくgetBoundingClientRectで厳密な描画高を取得
+        // 💡【強力余白対策3】コンテンツの最下部要素の位置を算出して正確な描画高さを決める
         const targetWidth = clonedContainer.offsetWidth;
-        const targetHeight = Math.ceil(clonedContainer.getBoundingClientRect().height);
+        const lastChild = clonedContainer.lastElementChild;
+        let targetHeight = clonedContainer.offsetHeight;
+
+        if (lastChild) {
+            const containerRect = clonedContainer.getBoundingClientRect();
+            const lastChildRect = lastChild.getBoundingClientRect();
+            // 一番下の要素の下端 + パディング(20px)で正確な高さを求める
+            targetHeight = Math.ceil(lastChildRect.bottom - containerRect.top) + 20;
+        }
 
         // html2canvas 実行
         const canvas = await html2canvas(clonedContainer, {
@@ -4417,14 +4426,14 @@ async function shareToDiscord(modalId = 'rating-modal') {
             useCORS: true,
             allowTaint: true,
             width: targetWidth,
-            height: targetHeight,
-            windowWidth: 1200, // 💡 スマホの画面幅ではなくデスクトップ幅として計算させる
-            windowHeight: targetHeight + 50,
+            height: targetHeight, // 余白カット済みの正確な高さ
+            windowWidth: 1200,
+            windowHeight: targetHeight,
             scrollY: 0,
             scrollX: 0
         });
 
-        // 💡 canvas.toBlob を Promise 化してエラー捕捉できるように調整
+        // 💡 canvas.toBlob を Promise 化
         const blob = await new Promise((resolve, reject) => {
             canvas.toBlob((b) => {
                 if (b) resolve(b);
@@ -4450,7 +4459,6 @@ async function shareToDiscord(modalId = 'rating-modal') {
 
         clearTimeout(timeoutId);
 
-        // 💡 レートリミット・ステータスコード別の判定を追加
         if (response.ok) {
             alert("Discordに送信しました！");
         } else {
@@ -4483,7 +4491,6 @@ async function shareToDiscord(modalId = 'rating-modal') {
         alert(alertMsg);
 
     } finally {
-        // 💡 成功・失敗を問わず確実にクローン削除とボタン復元を実行
         if (clonedContainer && document.body.contains(clonedContainer)) {
             document.body.removeChild(clonedContainer);
         }
