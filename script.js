@@ -814,11 +814,11 @@ function setupModalEvents() {
 }
 
 /**
- * 💡 ユーザー名一覧を取得して表示を更新（ローカル環境対応版）
+ * 💡 ユーザー名一覧を取得して表示を更新（GAS初期化待機強化版）
  */
 function fetchPlayerNames(retryCount = 0) {
-    if (typeof google !== 'undefined' && google.script && google.script.run) {
-        // 【GAS環境の場合】 スプレッドシート（UserMapシート）から取得
+    // 1. GAS環境の初期化チェック
+    if (typeof google !== 'undefined' && google && google.script && google.script.run) {
         google.script.run
             .withSuccessHandler((players) => {
                 console.log("取得できたユーザー一覧(GAS):", players);
@@ -833,16 +833,20 @@ function fetchPlayerNames(retryCount = 0) {
                 console.error("UserMapからのユーザー取得エラー:", err);
             })
             .getAllPlayerNames();
-    } else if (retryCount < 10) {
-        // GAS環境の読み込み遅延対策（約1秒間リトライ）
+        return; // 実行できたので終了
+    }
+
+    // 2. まだ読み込み中の場合、最大50回（約5秒間）待機リトライ
+    if (retryCount < 50) {
         setTimeout(() => fetchPlayerNames(retryCount + 1), 100);
-    } else {
-        // 【ローカル環境の場合】 ダミーのユーザーリストを使用
-        console.warn("ローカル環境を検知しました。テスト用ダミーユーザーを使用します。");
-        allPlayerNames = ["自分", "テストユーザーA", "テストユーザーB", "テストユーザーC"];
-        if (document.getElementById('modal-tab-content')) {
-            renderTabContent(currentTab);
-        }
+        return;
+    }
+
+    // 3. 5秒待っても google.script.run が存在しない場合のみローカルと判定
+    console.warn("ローカル環境を検知しました（またはgoogle.script.runの読み込み失敗）。テスト用ダミーユーザーを使用します。");
+    allPlayerNames = ["自分", "テストユーザーA", "テストユーザーB", "テストユーザーC"];
+    if (document.getElementById('modal-tab-content')) {
+        renderTabContent(currentTab);
     }
 }
 
