@@ -4348,11 +4348,11 @@ async function shareToDiscord(modalId = 'rating-modal') {
         const updateBtns = clonedContainer.querySelectorAll('.range-selector ~ button, header button');
         updateBtns.forEach(btn => btn.remove());
 
-        // 💡【余白対策】撮影用コンテナの設定（minHeightを0にして縦の伸びを解除）
+        // 💡【スマホ余白対策】positionをfixedに変更し、高さの自動フィットを徹底設定
         Object.assign(clonedContainer.style, {
-            position: 'absolute',
+            position: 'fixed',
             top: '-9999px',
-            left: '0',
+            left: '-9999px',
             width: '1050px',
             maxWidth: '1050px',
             minWidth: '1050px',
@@ -4360,13 +4360,14 @@ async function shareToDiscord(modalId = 'rating-modal') {
             height: 'auto',
             minHeight: '0',
             maxHeight: 'none',
-            overflow: 'visible',
+            overflow: 'hidden',
+            boxSizing: 'border-box',
             opacity: '1',
             visibility: 'visible',
             pointerEvents: 'none'
         });
 
-        // 💡【余白対策】内部エリアの高さ・最小高さをリセット
+        // 💡【スマホ余白対策】子要素のフレックス高・最小高をリセット
         const clonedScrollAreas = clonedContainer.querySelectorAll('#modal-tab-content, .modal-body, .modal-scroll-area');
         clonedScrollAreas.forEach(area => {
             area.style.height = 'auto';
@@ -4405,9 +4406,9 @@ async function shareToDiscord(modalId = 'rating-modal') {
 
         await new Promise(resolve => setTimeout(resolve, 200));
 
-        // 💡【余白対策】実寸高さ（scrollHeight）でキャプチャ範囲を正確に規定
+        // 💡【スマホ余白対策】scrollHeightではなくgetBoundingClientRectで厳密な描画高を取得
         const targetWidth = clonedContainer.offsetWidth;
-        const targetHeight = clonedContainer.scrollHeight;
+        const targetHeight = Math.ceil(clonedContainer.getBoundingClientRect().height);
 
         // html2canvas 実行
         const canvas = await html2canvas(clonedContainer, {
@@ -4417,8 +4418,8 @@ async function shareToDiscord(modalId = 'rating-modal') {
             allowTaint: true,
             width: targetWidth,
             height: targetHeight,
-            windowWidth: targetWidth + 50,
-            windowHeight: targetHeight,
+            windowWidth: 1200, // 💡 スマホの画面幅ではなくデスクトップ幅として計算させる
+            windowHeight: targetHeight + 50,
             scrollY: 0,
             scrollX: 0
         });
