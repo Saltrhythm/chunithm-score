@@ -635,6 +635,198 @@ function initFilters() {
     }
 }
 
+// =================================================================
+// 💡 マイセットモーダル管理機能
+// =================================================================
+
+/**
+ * 現在のフィルター状態をオブジェクトとして取得
+ */
+function getCurrentFilterState() {
+    return {
+        searchText: document.getElementById('search-input')?.value || "",
+        minConst: document.getElementById('min-constant')?.value || "13.5",
+        maxConst: document.getElementById('max-constant')?.value || "16.0",
+        minRate: document.getElementById('min-rating')?.value || "",
+        maxRate: document.getElementById('max-rating')?.value || "",
+        lamp: document.getElementById('lamp-filter')?.value || "all",
+        filterMode: document.getElementById('filter-mode')?.value || "rank",
+        rankMin: document.getElementById('rank-min')?.value || "0",
+        rankMax: document.getElementById('rank-max')?.value || "1010000",
+        minScore: document.getElementById('min-score')?.value || "",
+        maxScore: document.getElementById('max-score')?.value || "",
+        typeFilter: typeof currentTypeFilter !== 'undefined' ? currentTypeFilter : 'all',
+        activeDiffs: Array.from(document.querySelectorAll('.btn-diff-filter.active')).map(btn => btn.getAttribute('data-diff')),
+        isTrendEnabled: document.getElementById('trend-enable-switch')?.checked || false,
+        activeTrends: Array.from(document.querySelectorAll('.btn-trend-filter.active')).map(btn => btn.getAttribute('data-trend'))
+    };
+}
+
+/**
+ * マイセットモーダルを開く
+ */
+function openMysetModal() {
+    renderMysetList();
+    const modal = document.getElementById('myset-modal');
+    if (modal) modal.style.display = 'flex';
+}
+
+/**
+ * マイセットモーダルを閉じる
+ */
+function closeMysetModal() {
+    const modal = document.getElementById('myset-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+/**
+ * モーダル内のマイセットスロット一覧を描画
+ */
+function renderMysetList() {
+    const container = document.getElementById('myset-list-container');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    [1, 2, 3, 4, 5].forEach(slotNum => {
+        const saved = localStorage.getItem(`filter_myset_${slotNum}`);
+        const mysetData = saved ? JSON.parse(saved) : null;
+
+        const row = document.createElement('div');
+        row.style.cssText = "display: flex; align-items: center; justify-content: space-between; background: #f5f5f5; padding: 10px; border-radius: 6px; gap: 8px;";
+
+        if (mysetData) {
+            row.innerHTML = `
+                <div style="flex: 1; overflow: hidden;">
+                    <div style="font-weight: bold; font-size: 14px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${mysetData.name}</div>
+                    <div style="font-size: 10px; color: #666;">スロット ${slotNum}</div>
+                </div>
+                <button type="button" onclick="applyMyset(${slotNum})" style="background: #2e7df0; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">適用</button>
+                <button type="button" onclick="saveMysetToSlot(${slotNum})" style="background: #e67e22; color: #fff; border: none; padding: 6px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;">上書き</button>
+                <button type="button" onclick="deleteMysetSlot(${slotNum})" style="background: #e74c3c; color: #fff; border: none; padding: 6px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;">削除</button>
+            `;
+        } else {
+            row.innerHTML = `
+                <div style="flex: 1; color: #aaa; font-size: 13px;">スロット ${slotNum} (未登録)</div>
+                <button type="button" onclick="saveMysetToSlot(${slotNum})" style="background: #27ae60; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">現在の条件を保存</button>
+            `;
+        }
+
+        container.appendChild(row);
+    });
+}
+
+/**
+ * 指定スロットへ現在の条件を保存
+ */
+function saveMysetToSlot(slotNum) {
+    const currentData = localStorage.getItem(`filter_myset_${slotNum}`);
+    const defaultName = currentData ? JSON.parse(currentData).name : `マイセット ${slotNum}`;
+
+    const setName = prompt(`スロット ${slotNum} の名前を入力してください:`, defaultName);
+    if (setName === null) return;
+
+    const filterState = getCurrentFilterState();
+    const mysetData = {
+        name: setName.trim() || `マイセット ${slotNum}`,
+        state: filterState
+    };
+
+    localStorage.setItem(`filter_myset_${slotNum}`, JSON.stringify(mysetData));
+    renderMysetList();
+}
+
+/**
+ * 指定スロットのマイセットを削除
+ */
+function deleteMysetSlot(slotNum) {
+    if (confirm(`スロット ${slotNum} のマイセットを削除しますか？`)) {
+        localStorage.removeItem(`filter_myset_${slotNum}`);
+        renderMysetList();
+    }
+}
+
+/**
+ * 指定スロットの条件を画面に反映
+ */
+function applyMyset(slotNum) {
+    const saved = localStorage.getItem(`filter_myset_${slotNum}`);
+    if (!saved) return;
+
+    const s = JSON.parse(saved).state;
+
+    // 各フォームへの読み込み
+    if (document.getElementById('search-input')) document.getElementById('search-input').value = s.searchText || "";
+    if (document.getElementById('min-constant')) document.getElementById('min-constant').value = s.minConst || "13.5";
+    if (document.getElementById('max-constant')) document.getElementById('max-constant').value = s.maxConst || "16.0";
+    if (document.getElementById('min-rating')) document.getElementById('min-rating').value = s.minRate || "";
+    if (document.getElementById('max-rating')) document.getElementById('max-rating').value = s.maxRate || "";
+    if (document.getElementById('lamp-filter')) document.getElementById('lamp-filter').value = s.lamp || "all";
+
+    if (document.getElementById('rank-min')) document.getElementById('rank-min').value = s.rankMin || "0";
+    if (document.getElementById('rank-max')) document.getElementById('rank-max').value = s.rankMax || "1010000";
+    if (document.getElementById('min-score')) document.getElementById('min-score').value = s.minScore || "";
+    if (document.getElementById('max-score')) document.getElementById('max-score').value = s.maxScore || "";
+
+    // モード切替
+    const filterModeSelect = document.getElementById('filter-mode');
+    if (filterModeSelect) {
+        filterModeSelect.value = s.filterMode || "rank";
+        filterModeSelect.dispatchEvent(new Event('change'));
+    }
+
+    // 対象ボタン (ALL / OLD / NEW)
+    currentTypeFilter = s.typeFilter || 'all';
+    document.querySelectorAll('.btn-filter').forEach(btn => {
+        btn.classList.remove('active');
+        if (
+            (currentTypeFilter === 'all' && btn.id === 'filter-all') ||
+            (currentTypeFilter === 'old' && btn.id === 'filter-old') ||
+            (currentTypeFilter === 'new' && btn.id === 'filter-new')
+        ) {
+            btn.classList.add('active');
+        }
+    });
+
+    // 難易度ボタン
+    document.querySelectorAll('.btn-diff-filter').forEach(btn => {
+        const diff = btn.getAttribute('data-diff');
+        if (s.activeDiffs && s.activeDiffs.includes(diff)) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    // トレンドスイッチ
+    const trendSwitch = document.getElementById('trend-enable-switch');
+    if (trendSwitch) {
+        trendSwitch.checked = !!s.isTrendEnabled;
+    }
+    document.querySelectorAll('.btn-trend-filter').forEach(btn => {
+        const trend = btn.getAttribute('data-trend');
+        if (s.isTrendEnabled) {
+            btn.classList.remove('trend-disabled');
+            if (s.activeTrends && s.activeTrends.includes(trend)) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        } else {
+            btn.classList.remove('active');
+            btn.classList.add('trend-disabled');
+        }
+    });
+
+    // フィルタ再適用 & モーダル全閉じ
+    updateFilters();
+    closeMysetModal();
+
+    // アコーディオン（details）を自動でたたむ（オプション）
+    const drawer = document.querySelector('.filter-drawer');
+    if (drawer) drawer.open = false;
+}
+
 /**
  * 補助関数：選択されたランク区分の「スコア上限」を返す
  * 範囲指定（rankMax）の判定に使用します
@@ -2518,7 +2710,13 @@ function showSubModal(row) {
 
     if (!subModal || !subTbody || !lastStatsResponse) return;
 
-    subTitle.innerText = row.title || "プレイヤー状況一覧";
+    // 💡 手元動画欄を確実に非表示にする
+    const videoSection = document.getElementById('ranking-video-section');
+    if (videoSection) videoSection.style.display = 'none';
+
+    // 難易度表記がある場合はタイトルに付与（例: "楽曲名 [MAS]"）
+    const diffSuffix = (row.diff && currentStatsMode === 'song') ? ` [${row.diff}]` : "";
+    subTitle.innerText = (row.title || "プレイヤー状況一覧") + diffSuffix;
     subTbody.innerHTML = "";
 
     if (thead) {

@@ -100,7 +100,16 @@
                 <details class="filter-drawer">
                     <summary class="drawer-toggle-btn">フィルター条件を表示 / 非表示</summary>
 
+
                     <div class="drawer-content">
+
+                        <!-- 💡【追加】マイセットボタン配置行 -->
+                        <div class="filter-row" style="margin-bottom: 8px;">
+                            <button type="button" class="btn-myset-open" onclick="openMysetModal()">
+                                マイセット呼び出し / 編集
+                            </button>
+                        </div>
+
                         <div class="filter-row">
                             <button id="clear-filter" class="btn-reset-horizontal">フィルターリセット</button>
                         </div>
@@ -215,6 +224,28 @@
                         </div>
                     </div>
                 </details>
+
+                <!-- マイセット管理用サブモーダル（5スロット対応・縦長対策版） -->
+                <div id="myset-modal" class="modal-overlay"
+                    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; justify-content: center; align-items: center;">
+                    <div class="modal-content"
+                        style="background: #fff; width: 90%; max-width: 400px; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+                        <h3
+                            style="margin-top: 0; margin-bottom: 15px; font-size: 16px; border-bottom: 2px solid #2e7df0; padding-bottom: 8px;">
+                            マイセット管理</h3>
+
+                        <!-- 💡 縦長対策：max-height と overflow-y を追加 -->
+                        <div id="myset-list-container"
+                            style="display: flex; flex-direction: column; gap: 10px; max-height: 60vh; overflow-y: auto; padding-right: 5px;">
+                            <!-- JavaScriptでここに1〜5の枠を生成 -->
+                        </div>
+
+                        <div style="margin-top: 20px; text-align: right;">
+                            <button type="button" onclick="closeMysetModal()"
+                                style="padding: 6px 16px; background: #888; color: #fff; border: none; border-radius: 4px; cursor: pointer;">閉じる</button>
+                        </div>
+                    </div>
+                </div>
 
             </div>
         </div>
