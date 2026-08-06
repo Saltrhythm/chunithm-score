@@ -4715,3 +4715,48 @@ function logout() {
         window.location.reload();
     }
 }
+
+/**
+ * 💡 ページ読み込み時に自動で実行される初期化処理
+ */
+document.addEventListener('DOMContentLoaded', async () => {
+    const savedToken = localStorage.getItem('chunirec_token');
+
+    // トークンがローカルストレージに保存されている場合のみ自動再同期を実行
+    if (savedToken) {
+        console.log(" トークンを検出しました。自動再同期を開始します...");
+
+        // UI（ボタン）の表示を「同期中...」に変更
+        const btn = document.querySelector('.refresh-btn');
+        let originalText = "";
+        if (btn) {
+            originalText = btn.innerText;
+            btn.disabled = true;
+            btn.innerText = "自動同期中...";
+        }
+
+        // スマホのUI描画更新待ち
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        // スコア読み込み・同期の実行
+        const isSuccess = await loadScores();
+
+        // ボタン表示の復元
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = originalText;
+        }
+
+        if (isSuccess) {
+            console.log(" 起動時自動同期が正常完了しました");
+        } else {
+            console.warn(" 起動時自動同期に失敗しました");
+        }
+    } else {
+        // トークンがない場合はトークン入力画面を表示
+        const tokenScreen = document.getElementById("token-screen");
+        const mainScreen = document.getElementById("main-screen");
+        if (tokenScreen) tokenScreen.style.display = "block";
+        if (mainScreen) mainScreen.style.display = "none";
+    }
+});
