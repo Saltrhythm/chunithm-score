@@ -1869,6 +1869,13 @@ tr.is-tricky-target {
     margin-left: 0;      /* ★左のズレをなくすため0にする */
 }
 
+/* ノーツ数表示用（.title-sub-info の文字色・サイズをそのまま継承） */
+.title-sub-info .notes-count-txt {
+    color: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+}
+
 /* --- スマホ専用の調整 (@media) --- */
 @media screen and (max-width: 768px) {
     .main-title-text {

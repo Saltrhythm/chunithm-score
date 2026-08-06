@@ -1956,7 +1956,7 @@ async function loadRanking(title, diff, songConst) {
     const now = Date.now();
     const CACHE_TIMEOUT = 5 * 60 * 1000;
 
-    if (window.rankingCache[cacheKey] && (now - window.rankingCache[cacheKey].timestamp < CACHE_TIMEOUT)) {
+    if (window.rankingCache && window.rankingCache[cacheKey] && (now - window.rankingCache[cacheKey].timestamp < CACHE_TIMEOUT)) {
         console.log("⚡ キャッシュからランキングを高速描画します:", title);
         const cachedResult = window.rankingCache[cacheKey].result;
 
@@ -1987,6 +1987,7 @@ async function loadRanking(title, diff, songConst) {
         const result = await rankingPromise;
 
         if (result.status === "success" && result.data) {
+            if (!window.rankingCache) window.rankingCache = {};
             window.rankingCache[cacheKey] = {
                 timestamp: now,
                 result: result
@@ -2097,31 +2098,35 @@ function renderRankingData(result, title, cleanDiff, songConst, originalDiff, is
         updateRankingVideoSection(finalTitle, isWE ? "WE" : originalDiff);
     }
 
-    const subInfoContainer = titleContainer.querySelector('.title-sub-info');
+const subInfoContainer = titleContainer.querySelector('.title-sub-info');
     if (subInfoContainer) {
         const props = result.songProps || {};
         const colorMap = { 'POWER': '#36a2eb', 'NOTES': '#d7a62e', 'CHUNI': '#239898', 'TRICKY': '#9966ff' };
 
+        // 💡 ノーツ数の取得（CSSクラス `.title-sub-info` のフォントサイズ・装飾に同調）
+        const notesCount = parseInt(props.notes || songNotes || 0, 10);
+        const notesHtml = notesCount > 0 ? `<span class="notes-count-txt"> / ${notesCount.toLocaleString()} notes</span>` : "";
+
         if (isWE) {
             const attr = props.weAttr || props.attribute || props.attr || "";
-            subInfoContainer.innerHTML = `<span class="diff-const-txt">WORLD'S END ${attr ? `【${attr}】` : ""}</span>`;
+            subInfoContainer.innerHTML = `<span class="diff-const-txt">WORLD'S END ${attr ? `【${attr}】` : ""}</span>${notesHtml}`;
         } else {
             const latestConst = props.constant ? result.songProps.constant : songConst;
             const finalConst = latestConst ? parseFloat(latestConst).toFixed(1) : "-";
 
-            let subHtml = `<span class="diff-const-txt">${displayDiff} ${finalConst}</span><span id="trend-container"></span>`;
+            let subHtml = `<span class="diff-const-txt">${displayDiff} ${finalConst}</span><span id="trend-container"></span>${notesHtml}`;
             subInfoContainer.innerHTML = subHtml;
 
             const trendContainer = document.getElementById('trend-container');
             if (trendContainer) {
                 let trendHtml = "";
                 if (props.mainTrend && props.mainTrend !== "None") {
-                    const mainColor = colorMap[props.mainTrend] || "#666";
-                    trendHtml += `<span style="color: ${mainColor}; font-weight: 900; margin-left: 12px;">${props.mainTrend}</span>`;
+                    const mainColor = colorMap[props.mainTrend] || "#888888";
+                    trendHtml += `<span style="color: ${mainColor}; margin-left: 8px;">${props.mainTrend}</span>`;
 
                     if (props.subTrend && props.subTrend !== "None" && props.subTrend !== props.mainTrend) {
-                        const subColor = colorMap[props.subTrend] || "#666";
-                        trendHtml += ` <span style="color: #888; font-weight: normal;">/</span> <span style="color: ${subColor}; font-weight: 900;">${props.subTrend}</span>`;
+                        const subColor = colorMap[props.subTrend] || "#888888";
+                        trendHtml += ` <span>/</span> <span style="color: ${subColor};">${props.subTrend}</span>`;
                     }
                 }
                 trendContainer.innerHTML = trendHtml;
