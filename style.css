@@ -1677,6 +1677,7 @@ td:nth-child(2) {
 }
 
 
+
 /* 虹色が流れるアニメーションの定義 */
 @keyframes rainbow-flow {
     0% {
@@ -1765,6 +1766,26 @@ td:nth-child(2) {
 .is-new-target td {
     border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
+
+/* 💡 傾向別の上位30曲ハイライト背景（適宜透明度を調整可能です） */
+tr.is-power-target {
+    background-color: rgba(73, 172, 238, 0.13) !important;
+}
+
+tr.is-notes-target {
+    background-color: rgba(215, 166, 46, 0.12) !important;
+}
+
+tr.is-chuni-target {
+    background-color: rgba(35, 152, 152, 0.12) !important;
+}
+
+tr.is-tricky-target {
+    background-color: rgba(153, 102, 255, 0.12) !important;
+}
+
+
+
 
 /* フィルター周り */
 .filter-container select {
