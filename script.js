@@ -333,6 +333,9 @@ function updateFilters() {
     // 10. 描画
     displayScores(filteredData);
 
+    // 💡 11. ソートボタンのラベル・色更新
+    updateSortButtonLabels();
+
     // =================================================================
     // 💡 適用中のフィルター条件をバッジでリアルタイム表示
     // =================================================================
@@ -599,11 +602,12 @@ function initFilters() {
             document.getElementById('sort-Rating')?.classList.add('active');
             document.getElementById('sort-score')?.classList.remove('active');
 
+            updateSortButtonLabels();
             updateFilters();
         });
     }
 
-    // ソート切り替えボタン
+// ソート切り替えボタン
     const sortRatingBtn = document.getElementById('sort-Rating');
     const sortScoreBtn = document.getElementById('sort-score');
     if (sortRatingBtn) {
@@ -611,6 +615,7 @@ function initFilters() {
             currentSortKey = 'rating';
             sortRatingBtn.classList.add('active');
             sortScoreBtn.classList.remove('active');
+            updateSortButtonLabels(); 
             updateFilters();
         });
     }
@@ -619,9 +624,135 @@ function initFilters() {
             currentSortKey = 'techScore';
             sortScoreBtn.classList.add('active');
             sortRatingBtn.classList.remove('active');
+            updateSortButtonLabels(); 
             updateFilters();
         });
     }
+}
+
+/**
+ * 💡 ソートボタンのラベルおよび背景スタイルを動的に切り替える関数
+ */
+function updateSortButtonLabels() {
+    const sortRatingBtn = document.getElementById('sort-Rating');
+    const sortScoreBtn = document.getElementById('sort-score');
+    if (!sortRatingBtn || !sortScoreBtn) return;
+
+    // 色定義マップ
+    const colorMap = {
+        'POWER': '#36a2eb',
+        'NOTES': '#d7a62e',
+        'CHUNI': '#239898',
+        'TRICKY': '#9966ff'
+    };
+
+    const trendSwitch = document.getElementById('trend-enable-switch');
+    const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
+    const activeTrendBtn = isTrendEnabled ? document.querySelector('.btn-trend-filter.active') : null;
+    const selectedTrend = activeTrendBtn ? activeTrendBtn.getAttribute('data-trend') : null;
+
+    if (selectedTrend && colorMap[selectedTrend]) {
+        // 💡 傾向ON時：ラベルを変更
+        sortRatingBtn.textContent = `${selectedTrend}レート順`;
+        sortScoreBtn.textContent = `${selectedTrend}定数順`;
+
+        const activeColor = colorMap[selectedTrend];
+
+        // 💡 アクティブな方に指定色背景＋白文字を付与
+        if (sortRatingBtn.classList.contains('active')) {
+            sortRatingBtn.style.backgroundColor = activeColor;
+            sortRatingBtn.style.color = '#ffffff';
+            sortRatingBtn.style.borderColor = activeColor;
+
+            sortScoreBtn.style.backgroundColor = '';
+            sortScoreBtn.style.color = '';
+            sortScoreBtn.style.borderColor = '';
+        } else if (sortScoreBtn.classList.contains('active')) {
+            sortScoreBtn.style.backgroundColor = activeColor;
+            sortScoreBtn.style.color = '#ffffff';
+            sortScoreBtn.style.borderColor = activeColor;
+
+            sortRatingBtn.style.backgroundColor = '';
+            sortRatingBtn.style.color = '';
+            sortRatingBtn.style.borderColor = '';
+        }
+    } else {
+        // 💡 傾向OFF時：通常ラベルへ戻し、インラインCSSをクリア（デフォルトの黒背景/白文字に戻る）
+        sortRatingBtn.textContent = "レート順";
+        sortScoreBtn.textContent = "スコア順";
+
+        [sortRatingBtn, sortScoreBtn].forEach(btn => {
+            btn.style.backgroundColor = '';
+            btn.style.color = '';
+            btn.style.borderColor = '';
+        });
+    }
+}
+
+/**
+ * Rating、テクニカルスコア、または傾向（POWER/NOTES/CHUNI/TRICKY）でのソート処理
+ */
+function sortData(data) {
+    if (!data || data.length === 0) return;
+
+    // 1. 現在アクティブな傾向（POWER, NOTES, CHUNI, TRICKY）を取得
+    const trendSwitch = document.getElementById('trend-enable-switch');
+    const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
+    const activeTrendBtn = isTrendEnabled ? document.querySelector('.btn-trend-filter.active') : null;
+    const selectedTrend = activeTrendBtn ? activeTrendBtn.getAttribute('data-trend') : null;
+
+    // 2. ソート実行
+    data.sort((a, b) => {
+        // 💡 傾向フィルターがON（傾向が選択されている）の場合
+        if (selectedTrend) {
+            if (currentSortKey === 'rating') {
+                // 【POWERレート順】スコア補正後の値（tairyoku等）で比較
+                const getRatingVal = (item) => {
+                    if (selectedTrend === 'POWER') return parseFloat(item.tairyoku ?? item.rawTairyoku ?? 0);
+                    if (selectedTrend === 'NOTES') return parseFloat(item.kenban ?? item.rawKenban ?? 0);
+                    if (selectedTrend === 'CHUNI') return parseFloat(item.chuni ?? item.rawChuni ?? 0);
+                    if (selectedTrend === 'TRICKY') return parseFloat(item.kuse ?? item.rawKuse ?? 0);
+                    return 0;
+                };
+
+                const valA = getRatingVal(a);
+                const valB = getRatingVal(b);
+                if (valB !== valA) return valB - valA; // 降順
+
+            } else {
+                // 【POWER定数順】生コスト値（rawTairyoku等）で比較
+                const getCostVal = (item) => {
+                    if (selectedTrend === 'POWER') return parseFloat(item.rawTairyoku ?? item.tairyoku ?? 0);
+                    if (selectedTrend === 'NOTES') return parseFloat(item.rawKenban ?? item.kenban ?? 0);
+                    if (selectedTrend === 'CHUNI') return parseFloat(item.rawChuni ?? item.chuni ?? 0);
+                    if (selectedTrend === 'TRICKY') return parseFloat(item.rawKuse ?? item.kuse ?? 0);
+                    return 0;
+                };
+
+                const valA = getCostVal(a);
+                const valB = getCostVal(b);
+                if (valB !== valA) return valB - valA; // 降順
+            }
+        } else {
+            // 💡 傾向フィルターがOFFの場合（今まで通り）
+            if (currentSortKey === 'rating') {
+                // 【単曲レート順】
+                const ratingA = parseFloat(a.rating) || 0;
+                const ratingB = parseFloat(b.rating) || 0;
+                if (ratingB !== ratingA) return ratingB - ratingA;
+            } else {
+                // 【テクニカルスコア順】
+                const scoreA = parseFloat(a.score) || 0;
+                const scoreB = parseFloat(b.score) || 0;
+                if (scoreB !== scoreA) return scoreB - scoreA;
+            }
+        }
+
+        // 同点時のフォールバック：常にテクニカルスコアが高い順
+        const scoreA = parseFloat(a.score) || 0;
+        const scoreB = parseFloat(b.score) || 0;
+        return scoreB - scoreA;
+    });
 }
 
 // =================================================================
@@ -833,56 +964,7 @@ function getUpperLimit(score) {
     return 969999; // それ未満
 }
 
-/**
- * Rating、テクニカルスコア、または傾向（POWER/NOTES/CHUNI/TRICKY）でのソート処理
- */
-function sortData(data) {
-    if (!data || data.length === 0) return;
 
-    // 1. 現在アクティブな傾向（POWER, NOTES, CHUNI, TRICKY）を取得
-    const trendSwitch = document.getElementById('trend-enable-switch');
-    const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
-    const activeTrendBtn = isTrendEnabled ? document.querySelector('.btn-trend-filter.active') : null;
-    const selectedTrend = activeTrendBtn ? activeTrendBtn.getAttribute('data-trend') : null;
-
-    // 2. ソート実行
-    data.sort((a, b) => {
-        // ① Ratingソート指定時
-        if (currentSortKey === 'rating') {
-            if (selectedTrend) {
-                // 選択されている傾向に応じて、比較するプロパティを動的に指定
-                let valA = 0;
-                let valB = 0;
-
-                if (selectedTrend === 'POWER') {
-                    valA = parseFloat(a.tairyoku ?? a.rawTairyoku ?? 0);
-                    valB = parseFloat(b.tairyoku ?? b.rawTairyoku ?? 0);
-                } else if (selectedTrend === 'NOTES') {
-                    valA = parseFloat(a.kenban ?? a.rawKenban ?? 0);
-                    valB = parseFloat(b.kenban ?? b.rawKenban ?? 0);
-                } else if (selectedTrend === 'CHUNI') {
-                    valA = parseFloat(a.chuni ?? a.rawChuni ?? 0);
-                    valB = parseFloat(b.chuni ?? b.rawChuni ?? 0);
-                } else if (selectedTrend === 'TRICKY') {
-                    valA = parseFloat(a.kuse ?? a.rawKuse ?? 0);
-                    valB = parseFloat(b.kuse ?? b.rawKuse ?? 0);
-                }
-
-                if (valB !== valA) return valB - valA; // 該当能力値が高い順
-            } else {
-                // トレンドOFF時は、通常の「単曲Rating」が高い順
-                const ratingA = parseFloat(a.rating) || 0;
-                const ratingB = parseFloat(b.rating) || 0;
-                if (ratingB !== ratingA) return ratingB - ratingA;
-            }
-        }
-
-        // ② スコアソート指定時（または同点時）は、常にテクニカルスコアが高い順
-        const scoreA = parseFloat(a.score) || 0;
-        const scoreB = parseFloat(b.score) || 0;
-        return scoreB - scoreA;
-    });
-}
 
 
 
@@ -1332,10 +1414,11 @@ function getTopAbilitySongs(data, key, count) {
 
 
 /**
- * 画面にスコアを表示する（傾向選択時の動的表示切替・文字色付け・ヘッダー切替・上位30曲ハイライト対応版）
+ * 画面にスコアを表示する（全曲中上位30曲ハイライト対応 ＆ 判定失点数完全対応版）
  */
 function displayScores(data) {
     console.log("--- displayScores開始 ---");
+    console.trace(); // どこからこの関数が呼び出されたかスタックトレースを表示
 
     const body = document.getElementById('score-body');
     if (!body) return;
@@ -1373,6 +1456,34 @@ function displayScores(data) {
     if (!data || data.length === 0) {
         body.innerHTML = "<tr><td colspan='5'>表示できるデータがありません</td></tr>";
         return;
+    }
+
+    // =================================================================
+    // 💡 【全曲中（フィルタ前）上位30曲の判定用セット作成】
+    // =================================================================
+    const top30Set = new Set();
+    if (selectedTrend) {
+        const sourceData = (typeof myCurrentRecords !== "undefined" && Array.isArray(myCurrentRecords) && myCurrentRecords.length > 0)
+            ? myCurrentRecords 
+            : data;
+
+        const getVal = (item) => {
+            if (selectedTrend === 'POWER') return parseFloat(item.tairyoku ?? item.rawTairyoku ?? 0);
+            if (selectedTrend === 'NOTES') return parseFloat(item.kenban ?? item.rawKenban ?? 0);
+            if (selectedTrend === 'CHUNI') return parseFloat(item.chuni ?? item.rawChuni ?? 0);
+            if (selectedTrend === 'TRICKY') return parseFloat(item.kuse ?? item.rawKuse ?? 0);
+            return 0;
+        };
+
+        [...sourceData]
+            .sort((a, b) => getVal(b) - getVal(a))
+            .slice(0, 30)
+            .forEach(item => {
+                if (item && item.title && item.diff) {
+                    const key = `${item.title}_${item.diff}`;
+                    top30Set.add(key);
+                }
+            });
     }
 
     body.innerHTML = "";
@@ -1439,29 +1550,43 @@ function displayScores(data) {
             RatingHtml = ratingStr;
         }
 
+        // 💡 ランプおよび各種内訳（AJ:橙-N / FC:緑-1 / ランプなし:灰-1）の描画ロジック
         let lampHtml = "";
-        if (item.lamp) {
-            let comboClass = "";
-            if (item.lamp === "AJC") comboClass = "ajc-badge";
-            else if (item.lamp === "AJ") comboClass = "aj-badge";
-            else if (item.lamp === "FC") comboClass = "fc-badge";
+        const totalNotes = parseInt(item.notes ?? item.totalNotes ?? item.combo ?? (item.songProps ? item.songProps.notes : 0) ?? 0, 10);
+        const currentScore = parseInt(item.score || 0, 10);
+        const lampText = item.lamp || "";
 
-            lampHtml = `<span class="${comboClass}">${item.lamp}</span>`;
+        let comboClass = "";
+        if (lampText === "AJC") comboClass = "ajc-badge";
+        else if (lampText === "AJ") comboClass = "aj-badge";
+        else if (lampText === "FC") comboClass = "fc-badge";
 
-            if (item.lamp === "AJ") {
-                const totalNotes = parseInt(item.notes ?? item.totalNotes ?? item.combo ?? 0, 10);
-                const currentScore = parseInt(item.score || 0, 10);
+        if (totalNotes > 0 && currentScore > 0 && currentScore < 1010000) {
+            const jTotal = ((1010000 - currentScore) * totalNotes) / 10000;
 
-                if (totalNotes > 0 && currentScore < 1010000) {
-                    const lostScore = 1010000 - currentScore;
-                    const jPenaltyPerNote = 10000 / totalNotes;
-                    const jCount = Math.round(lostScore / jPenaltyPerNote);
-
-                    if (jCount > 0) {
-                        lampHtml += `<div class="justice-count" style="font-size: 0.75rem; color: #ff9500; font-weight: bold; margin-top: 2px;">-${jCount}</div>`;
-                    }
+            if (lampText.includes("AJ")) {
+                // 🟡 1. AJ時: JUSTICE数を確定表示
+                lampHtml = `<span class="${comboClass}">${lampText}</span>`;
+                const jCount = Math.round(jTotal);
+                if (!lampText.includes("AJC") && jCount > 0) {
+                    lampHtml += `<div class="justice-count" style="font-size: 0.75rem; color: #ff9500; font-weight: bold; margin-top: 2px;">-${jCount}</div>`;
+                }
+            } else if (lampText.includes("FC")) {
+                // 🟢 2. FC時: ATTACK 1個 確定（51 <= jTotal <= 101 / JUSTICE 0〜50個）
+                lampHtml = `<span class="${comboClass}">${lampText}</span>`;
+                if (jTotal >= 51 && jTotal <= 101) {
+                    lampHtml += `<div class="attack-count" style="font-size: 0.75rem; color: #2ecc71; font-weight: bold; margin-top: 2px;">-1</div>`;
+                }
+            } else {
+                // ⚪ 3. ランプなし時: MISS 1個 / ATTACK 0個 確定（101 <= jTotal <= 151 / JUSTICE 0〜50個）
+                if (jTotal >= 101 && jTotal <= 151) {
+                    lampHtml = `<span style="color: #888888; font-weight: bold; font-size: 0.85rem;">-1</span>`;
+                } else {
+                    lampHtml = "-";
                 }
             }
+        } else if (lampText) {
+            lampHtml = `<span class="${comboClass}">${lampText}</span>`;
         }
 
         const newBadge = item.isNew ? `<span class="new-song-label">NEW</span>` : "";
@@ -1482,15 +1607,13 @@ function displayScores(data) {
             }
         };
 
-        // 💡 ハイライトの判定処理
         if (selectedTrend) {
-            // 傾向ON時: 上位30曲（index < 30）の場合に各傾向ごとのターゲットクラスを付与
-            if (index < 30) {
+            const itemKey = `${item.title}_${item.diff}`;
+            if (top30Set.has(itemKey)) {
                 const trendClass = `is-${selectedTrend.toLowerCase()}-target`;
                 tr.classList.add(trendClass);
             }
         } else if (!isWE && RatingNum > 0) {
-            // 傾向OFF時: 通常のベスト枠・ニュー枠ハイライト
             if (item.isNew && RatingNum >= rateThresholds.new20) {
                 tr.classList.add('is-new-target');
             } else if (!item.isNew && RatingNum >= rateThresholds.best30) {
@@ -1887,21 +2010,18 @@ function renderRankingData(result, title, cleanDiff, songConst, originalDiff, is
     const rankingBody = document.getElementById('ranking-body');
     const titleContainer = document.getElementById('ranking-title-container');
 
+    const songNotes = parseInt((result.songProps ? result.songProps.notes : 0) || (result.data && result.data[0] ? result.data[0].notes : 0) || 0, 10);
+
     rankingBody.innerHTML = "";
     result.data.forEach((row, index) => {
         const tr = document.createElement('tr');
         tr.style.cursor = "pointer";
         tr.dataset.playerName = row.playerName;
 
-        // 💡 行クリックで非表示＆チャート再描画のロジックは綺麗に残します
         tr.onclick = function (e) {
-            // 🛑 誤動作防止：行の中のリンクやボタン（もしあれば）が押された時は非表示にしない
             if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
-
-            // クリックされた行を非表示にする
             this.style.display = 'none';
 
-            // 📊 行が消えた最新の状態を反映して、チャートを再描画する
             if (typeof drawRankingChart === "function") {
                 drawRankingChart();
             }
@@ -1911,6 +2031,7 @@ function renderRankingData(result, title, cleanDiff, songConst, originalDiff, is
         if (row.playerName === myName) tr.classList.add('my-rank');
 
         let scoreVal = row.score;
+        const currentScore = parseInt(scoreVal || 0, 10);
         const displayScore = (typeof scoreVal === 'number') ? scoreVal.toLocaleString() : scoreVal;
 
         const lampText = row.lamp || "";
@@ -1919,13 +2040,44 @@ function renderRankingData(result, title, cleanDiff, songConst, originalDiff, is
         else if (lampText.includes("AJ")) badgeClass = "aj-badge";
         else if (lampText.includes("FC")) badgeClass = "fc-badge";
 
-        // 💡 ランキングテーブル側は余計なボタンを入れず、元のシンプルな状態に戻します
+        // 💡 ランプおよび各種内訳（AJ:橙-N / FC:緑-1 / ランプなし:灰-1）の描画ロジック
+        let lampHtml = "-";
+        const totalNotes = parseInt(row.notes || songNotes || 0, 10);
+
+        if (totalNotes > 0 && currentScore > 0 && currentScore < 1010000) {
+            const jTotal = ((1010000 - currentScore) * totalNotes) / 10000;
+
+            if (lampText.includes("AJ")) {
+                // 🟡 1. AJ時: JUSTICE数を確定表示
+                lampHtml = `<span class="${badgeClass}">${lampText}</span>`;
+                const jCount = Math.round(jTotal);
+                if (!lampText.includes("AJC") && jCount > 0) {
+                    lampHtml += `<div class="justice-count" style="font-size: 0.75rem; color: #ff9500; font-weight: bold; margin-top: 2px;">-${jCount}</div>`;
+                }
+            } else if (lampText.includes("FC")) {
+                // 🟢 2. FC時: ATTACK 1個 確定（51 <= jTotal <= 101 / JUSTICE 0〜50個）
+                lampHtml = `<span class="${badgeClass}">${lampText}</span>`;
+                if (jTotal >= 51 && jTotal <= 101) {
+                    lampHtml += `<div class="attack-count" style="font-size: 0.75rem; color: #2ecc71; font-weight: bold; margin-top: 2px;">-1</div>`;
+                }
+            } else {
+                // ⚪ 3. ランプなし時: MISS 1個 / ATTACK 0個 確定（101 <= jTotal <= 151 / JUSTICE 0〜50個）
+                if (jTotal >= 101 && jTotal <= 151) {
+                    lampHtml = `<span style="color: #888888; font-weight: bold; font-size: 0.85rem;">-1</span>`;
+                } else {
+                    lampHtml = "-";
+                }
+            }
+        } else if (lampText) {
+            lampHtml = `<span class="${badgeClass}">${lampText}</span>`;
+        }
+
         tr.innerHTML = `
             <td class="rank-cell">${index + 1}</td>
             <td>${row.playerName}</td>
             <td>${displayScore}</td> 
-            <td style="text-align: center;">
-             <span class="${badgeClass}">${lampText}</span>
+            <td class="lamp-cell" style="text-align: center;">
+             ${lampHtml}
             </td>
         `;
         rankingBody.appendChild(tr);
@@ -2472,6 +2624,10 @@ async function fetchStats(mode) {
 
             const controls = document.getElementById('ranking-controls');
             if (controls) controls.style.display = 'none';
+
+            // 💡【追加】手元動画セクションを非表示にする
+            const videoSection = document.getElementById("ranking-video-section");
+            if (videoSection) videoSection.style.display = "none";
 
             const statsControlArea = document.getElementById('stats-control-area');
             if (statsControlArea) statsControlArea.style.display = 'block';

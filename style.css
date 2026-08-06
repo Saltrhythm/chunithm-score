@@ -1707,6 +1707,24 @@ td:nth-child(2) {
     /* 文字の間隔を少し空けて視認性を向上 */
 }
 
+.lamp-cell {
+    text-align: center;
+    vertical-align: middle;
+}
+.justice-count {
+    font-size: 0.75rem;
+    color: #ff9500;
+    font-weight: bold;
+    line-height: 1;
+    margin-top: 2px;
+}
+.attack-count {
+    font-size: 0.75rem;
+    color: #2ecc71;
+    font-weight: bold;
+    line-height: 1;
+    margin-top: 2px;
+}
 
 /* テクニカルスコアの列 */
 .t-score-cell {
