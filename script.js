@@ -1376,7 +1376,7 @@ function renderTabContent(tabKey) {
             columnHeader = "POWER";
             songs = getTopAbilitySongs(targetData, "tairyoku", 30).map(s => ({
                 ...s,
-                displayConst: parseFloat(s.rawTairyoku || 0).toFixed(1)
+                displayConst: getRawConstant(s, "rawTairyoku", "tairyoku")
             }));
             break;
 
@@ -1386,7 +1386,7 @@ function renderTabContent(tabKey) {
             columnHeader = "NOTES";
             songs = getTopAbilitySongs(targetData, "kenban", 30).map(s => ({
                 ...s,
-                displayConst: parseFloat(s.rawKenban || 0).toFixed(1)
+                displayConst: getRawConstant(s, "rawKenban", "kenban")
             }));
             break;
 
@@ -1396,7 +1396,7 @@ function renderTabContent(tabKey) {
             columnHeader = "CHUNI";
             songs = getTopAbilitySongs(targetData, "chuni", 30).map(s => ({
                 ...s,
-                displayConst: parseFloat(s.rawChuni || 0).toFixed(1)
+                displayConst: getRawConstant(s, "rawChuni", "chuni")
             }));
             break;
 
@@ -1406,7 +1406,7 @@ function renderTabContent(tabKey) {
             columnHeader = "TRICKY";
             songs = getTopAbilitySongs(targetData, "kuse", 30).map(s => ({
                 ...s,
-                displayConst: parseFloat(s.rawKuse || 0).toFixed(1)
+                displayConst: getRawConstant(s, "rawKuse", "kuse")
             }));
             break;
     }
@@ -1539,6 +1539,31 @@ function getTopAbilitySongs(data, key, count) {
         .slice(0, count);
 }
 
+/**
+ * 💡 生定数を安全に取得（0.0の場合は補正値とスコアから逆算、それも不可能な場合は定数を代用）
+ */
+function getRawConstant(item, rawKey, modifiedKey) {
+    // 1. すでに raw 値が存在すればそれを使用
+    const rawVal = parseFloat(item[rawKey] || 0);
+    if (rawVal > 0) return rawVal.toFixed(1);
+
+    // 2. 補正後値とスコアが存在すれば逆算する
+    const modifiedVal = parseFloat(item[modifiedKey] || 0);
+    const score = parseInt(item.score || 0, 10);
+    const lamp = String(item.lamp || "");
+
+    if (modifiedVal > 0 && score > 0 && typeof calculateScoreModifier === "function") {
+        const mod = calculateScoreModifier(score, lamp);
+        if (mod > 0) {
+            const calculatedRaw = modifiedVal / mod;
+            return calculatedRaw.toFixed(1);
+        }
+    }
+
+    // 3. 逆算も不可能な場合は曲の譜面定数(const)をフォールバックとして表示
+    const fallbackConst = parseFloat(item.const || 0);
+    return fallbackConst > 0 ? fallbackConst.toFixed(1) : "0.0";
+}
 
 
 /**
