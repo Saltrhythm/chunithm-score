@@ -108,10 +108,10 @@ button:hover {
 .button-group {
     display: flex;
     gap: 10px;
-    margin-bottom: 20px;
+    margin-bottom: 5px;
     justify-content: center;
     width: 100%;
-    margin: 20px auto;
+    margin: 7px auto;
 }
 
 /* ログアウトボタンのデザイン */
@@ -227,6 +227,45 @@ button:hover {
     transform: none !important;
     box-shadow: none !important;
     cursor: not-allowed;
+}
+
+/* 手元動画プラットフォーム起動ボタン：カプセルデザイン */
+.survey-link-btn {
+    background: linear-gradient(135deg, #ff9500, #e67e22);
+    color: #ffffff;
+    border-radius: 999px;
+    
+    /* ボタン自体の太さ（再同期ボタンと同等のサイズ感） */
+    padding: 12px 35px;
+    height: auto;
+    
+    /* 文字の太さと装飾 */
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    
+    border: none;
+    box-shadow: 0 4px 15px rgba(26, 115, 232, 0.4);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* PC（マウス環境）のみhoverアニメーション */
+@media (hover: hover) {
+    .survey-link-btn:hover {
+        background: linear-gradient(135deg, #ff9500, #e67e22);
+        transform: translateY(-3px); /* 再同期ボタンと同じ浮き上がり量 */
+        box-shadow: 0 8px 20px rgba(255, 149, 0, 0.5);
+    }
+}
+
+/* クリック時の押し込みエフェクト */
+.survey-link-btn:active {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(255, 149, 0, 0.3);
 }
 
 

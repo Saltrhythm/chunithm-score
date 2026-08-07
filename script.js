@@ -56,34 +56,121 @@ function clearUserCache() {
 }
 
 /**
- * キャッシュ読み込み（DOM読み込み完了時）
+ * 💡 ページ読み込み完了時の初期化・統合処理
  */
-window.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    // 1. プレイヤー選択用セレクトボックス一覧の取得
+    if (typeof fetchPlayerNames === 'function') {
+        await fetchPlayerNames();
+    }
+
+    // 2. URLパラメータのチェック（ブックマークレットからの自動遷移時: ?player=〇〇）
+    const urlParams = new URLSearchParams(window.location.search);
+    const targetPlayerFromUrl = urlParams.get("player");
+
+    // 保存されているトークンとキャッシュの取得
     const savedToken = localStorage.getItem('chunirec_token');
     const cachedData = localStorage.getItem('chunirec_scores');
     const savedName = localStorage.getItem('chunirec_player_name');
 
-    // トークンフォームの復元
-    if (savedToken) {
-        const tokenInput = document.getElementById('token-input');
-        if (tokenInput) tokenInput.value = savedToken;
+    // トークンフォームの初期値復元
+    const tokenInput = document.getElementById('token-input');
+    if (tokenInput && savedToken) {
+        tokenInput.value = savedToken;
     }
 
-    // キャッシュがあれば自動表示
+    // =========================================================================
+    // パターンA: ブックマークレットから遷移してきた場合 (?player=〇〇)
+    // =========================================================================
+    if (targetPlayerFromUrl) {
+        console.log(`ブックマークレットからの遷移を検出: ${targetPlayerFromUrl}`);
+
+        // 古い画面キャッシュを削除
+        localStorage.removeItem('chunirec_scores');
+        localStorage.setItem('chunirec_player_name', targetPlayerFromUrl);
+
+        // 画面切り替え（トークン画面を隠してメイン画面を表示）
+        const tokenScreen = document.getElementById("token-screen");
+        const mainScreen = document.getElementById("main-screen");
+        if (tokenScreen) tokenScreen.style.display = "none";
+        if (mainScreen) mainScreen.style.display = "block";
+
+        // URLパラメータを削除してアドレスバーを整形（?player=〇〇 を消す）
+        window.history.replaceState({}, document.title, window.location.pathname);
+
+        // 💡 新設した関数で対象プレイヤーの最新データを取得して描画
+        if (typeof loadPlayerDataByName === 'function') {
+            await loadPlayerDataByName(targetPlayerFromUrl);
+        } else if (typeof getPlayerDataByName === 'function') {
+            await getPlayerDataByName(targetPlayerFromUrl);
+        } else if (typeof loadScores === 'function') {
+            await loadScores();
+        }
+        return;
+    }
+
+    // =========================================================================
+    // パターンB: 通常アクセス（トークンあり → 自動再同期）
+    // =========================================================================
+    if (savedToken) {
+        console.log("トークンを検出しました。自動再同期を開始します...");
+
+        const btn = document.querySelector('.refresh-btn');
+        let originalText = "";
+        if (btn) {
+            originalText = btn.innerText;
+            btn.disabled = true;
+            btn.innerText = "自動同期中...";
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        let isSuccess = false;
+        if (typeof loadScores === 'function') {
+            isSuccess = await loadScores();
+        }
+
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = originalText;
+        }
+
+        if (isSuccess) {
+            console.log("起動時自動同期が正常完了しました");
+        } else {
+            console.warn("起動時自動同期に失敗しました");
+        }
+        return;
+    }
+
+    // =========================================================================
+    // パターンC: トークンなし ＋ キャッシュありの場合のローカル表示
+    // =========================================================================
     if (cachedData && cachedData !== "undefined" && savedName) {
         try {
             myCurrentRecords = JSON.parse(cachedData);
 
-            document.getElementById("token-screen").style.display = "none";
-            document.getElementById("main-screen").style.display = "block";
+            const tokenScreen = document.getElementById("token-screen");
+            const mainScreen = document.getElementById("main-screen");
+            if (tokenScreen) tokenScreen.style.display = "none";
+            if (mainScreen) mainScreen.style.display = "block";
 
-            calculatechuniRate(savedName);
-            displayScores(myCurrentRecords);
+            if (typeof calculatechuniRate === 'function') calculatechuniRate(savedName);
+            if (typeof displayScores === 'function') displayScores(myCurrentRecords);
         } catch (e) {
             console.error("キャッシュ破損のため初期化します", e);
-            clearUserCache();
+            if (typeof clearUserCache === 'function') clearUserCache();
         }
+        return;
     }
+
+    // =========================================================================
+    // パターンD: 初回アクセス（トークンもキャッシュもなし）
+    // =========================================================================
+    const tokenScreen = document.getElementById("token-screen");
+    const mainScreen = document.getElementById("main-screen");
+    if (tokenScreen) tokenScreen.style.display = "block";
+    if (mainScreen) mainScreen.style.display = "none";
 });
 
 function toggleTokenVisibility() {
@@ -105,7 +192,7 @@ function toggleTokenVisibility() {
 }
 
 /**
- * スコア読み込み（未承認時は強制ログアウト）
+ * 💡 スコア読み込み（トークンによる全同期）
  */
 async function loadScores() {
     const tokenInput = document.getElementById("token-input");
@@ -116,16 +203,19 @@ async function loadScores() {
     const token = tokenInput ? tokenInput.value.trim() : "";
 
     if (!token) {
-        errorMsg.innerText = "エラー: トークンを入力してください。";
-        errorMsg.style.display = "block";
+        if (errorMsg) {
+            errorMsg.innerText = "エラー: トークンを入力してください。";
+            errorMsg.style.display = "block";
+        }
         return false;
     }
 
-    // 開始処理
-    loadBtn.disabled = true;
-    loadBtn.innerText = "同期中...";
-    loadingMsg.style.display = "block";
-    errorMsg.style.display = "none";
+    if (loadBtn) {
+        loadBtn.disabled = true;
+        loadBtn.innerText = "同期中...";
+    }
+    if (loadingMsg) loadingMsg.style.display = "block";
+    if (errorMsg) errorMsg.style.display = "none";
 
     try {
         const response = await fetch(GAS_URL, {
@@ -143,26 +233,60 @@ async function loadScores() {
             handleSuccess(result, token);
             return true;
         } else {
-            // ★未承認・認証失敗時はキャッシュを全削除して強制ログアウト！
             clearUserCache();
             throw new Error(result.message || "認証に失敗しました。");
         }
     } catch (e) {
         console.error(e);
-        // エラーメッセージを表示（強制ログアウト後、ログイン画面にエラーが表示される）
-        errorMsg.innerText = "エラー: " + e.message;
-        errorMsg.style.display = "block";
+        if (errorMsg) {
+            errorMsg.innerText = "エラー: " + e.message;
+            errorMsg.style.display = "block";
+        }
         return false;
     } finally {
-        loadBtn.disabled = false;
-        loadBtn.innerText = "スコアを表示";
-        loadingMsg.style.display = "none";
+        if (loadBtn) {
+            loadBtn.disabled = false;
+            loadBtn.innerText = "スコアを表示";
+        }
+        if (loadingMsg) loadingMsg.style.display = "none";
     }
 }
 
 /**
- * データを再同期する（ボタン用）
- * スマホでの「同期中...」描画対策、完了/エラーメッセージのポップアップを追加
+ * 💡【新設】プレイヤー名指定でのデータ取得（ブックマークレット遷移時用）
+ */
+async function loadPlayerDataByName(playerName) {
+    if (!playerName) return false;
+
+    try {
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+                mode: "get_player_data",
+                playerName: playerName
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.status === "success" && result.records) {
+            // トークンは既存のものを維持して成功処理へ
+            const currentToken = localStorage.getItem('chunirec_token') || "";
+            handleSuccess(result, currentToken);
+            return true;
+        } else {
+            throw new Error(result.message || "プレイヤーデータの取得に失敗しました。");
+        }
+    } catch (e) {
+        console.error(e);
+        alert("データ読み込みエラー: " + e.message);
+        return false;
+    }
+}
+
+/**
+ * 💡 データを再同期する（ボタン用）
  */
 async function refreshScores() {
     const btn = document.querySelector('.refresh-btn');
@@ -172,52 +296,51 @@ async function refreshScores() {
     btn.disabled = true;
     btn.innerText = "同期中...";
 
-    // スマホの画面更新時間を確保するため50ミリ秒だけわざと待つ
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    // 同期処理を実行
     const isSuccess = await loadScores();
 
     btn.disabled = false;
     btn.innerText = originalText;
-
     btn.blur();
 
     if (isSuccess) {
         alert("データの再同期が正常に完了しました！");
     } else {
         const errorMsgEl = document.getElementById("token-error");
-        const errMsg = errorMsgEl ? errorMsgEl.innerText : "原因不明のエラー";
+        const errMsg = errorMsgEl ? errorMsgEl.innerText : "認証・同期エラー";
         alert("同期に失敗しました。\n" + errMsg);
     }
 }
 
 /**
- * 同期成功時の処理
+ * 💡 同期・データ取得成功時の共通処理
  */
 function handleSuccess(result, token) {
-    console.log("成功ルート突入", result);
+    console.log("データ取得成功", result);
 
     myCurrentRecords = result.records || [];
 
-    // トークン・スコア・名前をローカルストレージへ保存
-    localStorage.setItem('chunirec_token', token);
+    // ローカルストレージへの保存
+    if (token) localStorage.setItem('chunirec_token', token);
     localStorage.setItem('chunirec_scores', JSON.stringify(myCurrentRecords));
     localStorage.setItem('chunirec_player_name', result.playerName);
     localStorage.setItem('chunirec_cache_time', Date.now().toString());
 
     // 画面切り替え
-    document.getElementById("token-screen").style.display = "none";
-    document.getElementById("main-screen").style.display = "block";
+    const tokenScreen = document.getElementById("token-screen");
+    const mainScreen = document.getElementById("main-screen");
+    if (tokenScreen) tokenScreen.style.display = "none";
+    if (mainScreen) mainScreen.style.display = "block";
 
-    calculatechuniRate(result.playerName);
-    displayScores(myCurrentRecords);
-
-    const refreshBtn = document.querySelector('.refresh-btn');
-    if (refreshBtn) {
-        refreshBtn.disabled = false;
-        refreshBtn.innerText = "データを再同期";
+    // プレイヤー選択セレクトボックスの表示合わせ（存在する場合）
+    const playerSelect = document.getElementById("playerSelect");
+    if (playerSelect) {
+        playerSelect.value = result.playerName;
     }
+
+    if (typeof calculatechuniRate === 'function') calculatechuniRate(result.playerName);
+    if (typeof displayScores === 'function') displayScores(myCurrentRecords);
 }
 
 
@@ -980,13 +1103,24 @@ function escapeHtml(str) {
         .replace(/"/g, '&quot;');
 }
 
-// 閾値保存用オブジェクトの初期化（未定義エラー防止）
-if (typeof rateThresholds === 'undefined') {
-    window.rateThresholds = { new20: 0, best30: 0 };
-}
-
 let currentTab = "best";
 let currentModalPlayerName = "";
+
+// 💡 グローバル変数として安全に初期化
+window.rateThresholds = window.rateThresholds || { new20: 0, best30: 0 };
+
+/**
+ * 💡 isNew（新曲判別）を安全にboolean化するヘルパー関数
+ */
+function isNewSongCheck(isNewVal) {
+    if (typeof isNewVal === 'boolean') return isNewVal;
+    if (typeof isNewVal === 'number') return isNewVal === 1;
+    if (typeof isNewVal === 'string') {
+        const s = isNewVal.trim().toLowerCase();
+        return s === 'true' || s === '1' || s === 'new';
+    }
+    return false;
+}
 
 /**
  * 3. レート計算（新20 + 旧30）
@@ -1002,8 +1136,9 @@ function calculatechuniRate(playerName) {
         return;
     }
 
-    const newSongs = targetData.filter(s => s.isNew);
-    const bestSongs = targetData.filter(s => !s.isNew);
+    // 💡 isNewSongCheckで安全に判定
+    const newSongs = targetData.filter(s => isNewSongCheck(s.isNew));
+    const bestSongs = targetData.filter(s => !isNewSongCheck(s.isNew));
 
     const getTopData = (list, count) => {
         const sorted = list
@@ -1021,11 +1156,9 @@ function calculatechuniRate(playerName) {
     const newData = getTopData(newSongs, 20);
     const bestData = getTopData(bestSongs, 30);
 
-    // 安全にプロパティへ代入
-    if (typeof rateThresholds !== 'undefined') {
-        rateThresholds.new20 = newData.threshold;
-        rateThresholds.best30 = bestData.threshold;
-    }
+    // 安全に代入
+    window.rateThresholds.new20 = newData.threshold;
+    window.rateThresholds.best30 = bestData.threshold;
 
     const totalRate = floorTo4th((newData.avg * 20 + bestData.avg * 30) / 50);
 
@@ -1044,7 +1177,6 @@ function calculatechuniRate(playerName) {
         </div>
     `;
 
-    // 💡 HTML出力直後にクリックイベントを有効化する
     attachRatingWrapperEvent(displayName);
 }
 
@@ -1139,10 +1271,6 @@ async function fetchPlayerNames() {
     }
 }
 
-// 💡 画面読み込み完了時に実行
-document.addEventListener("DOMContentLoaded", () => {
-    fetchPlayerNames();
-});
 
 /**
  * 💡 プレイヤー選択ドロップダウン変更時の処理（fetch統一版）
@@ -1418,12 +1546,10 @@ function getTopAbilitySongs(data, key, count) {
  */
 function displayScores(data) {
     console.log("--- displayScores開始 ---");
-    console.trace(); // どこからこの関数が呼び出されたかスタックトレースを表示
 
     const body = document.getElementById('score-body');
     if (!body) return;
 
-    // 💡 色定義マップ
     const colorMap = {
         'POWER': '#36a2eb',
         'NOTES': '#d7a62e',
@@ -1436,7 +1562,6 @@ function displayScores(data) {
     const activeTrendBtn = isTrendEnabled ? document.querySelector('.btn-trend-filter.active') : null;
     const selectedTrend = activeTrendBtn ? activeTrendBtn.getAttribute('data-trend') : null;
 
-    // 💡 ID指定でテーブルヘッダーを取得
     const ratingHeader = document.getElementById('rating-header') || document.querySelector('thead th:last-child');
 
     if (ratingHeader) {
@@ -1458,9 +1583,6 @@ function displayScores(data) {
         return;
     }
 
-    // =================================================================
-    // 💡 【全曲中（フィルタ前）上位30曲の判定用セット作成】
-    // =================================================================
     const top30Set = new Set();
     if (selectedTrend) {
         const sourceData = (typeof myCurrentRecords !== "undefined" && Array.isArray(myCurrentRecords) && myCurrentRecords.length > 0)
@@ -1494,6 +1616,7 @@ function displayScores(data) {
         const diffRaw = String(item.diff || "");
         const diffLower = diffRaw.toLowerCase();
         const isWE = (diffRaw.toUpperCase() === "WE");
+        const isNew = isNewSongCheck(item.isNew); // 💡 安全にboolean化
 
         const currentConst = parseFloat(item.const) || 0;
         const tScore = parseFloat(item.score) || 0;
@@ -1521,7 +1644,6 @@ function displayScores(data) {
             }
 
             const activeColor = colorMap[selectedTrend] || "#007aff";
-
             const displayCostStr = costVal > 0 ? costVal.toFixed(1) : "-";
             const coloredCostHtml = `<span style="color: ${activeColor}; font-weight: bold;">${displayCostStr}</span>`;
 
@@ -1550,7 +1672,7 @@ function displayScores(data) {
             RatingHtml = ratingStr;
         }
 
-        // 💡 ランプおよび各種内訳（AJ:橙-N / FC:緑-1 / ランプなし:灰-1）の描画ロジック
+        // ランプおよび内訳描画
         let lampHtml = "";
         const totalNotes = parseInt(item.notes ?? item.totalNotes ?? item.combo ?? (item.songProps ? item.songProps.notes : 0) ?? 0, 10);
         const currentScore = parseInt(item.score || 0, 10);
@@ -1565,20 +1687,17 @@ function displayScores(data) {
             const jTotal = ((1010000 - currentScore) * totalNotes) / 10000;
 
             if (lampText.includes("AJ")) {
-                // 🟡 1. AJ時: JUSTICE数を確定表示
                 lampHtml = `<span class="${comboClass}">${lampText}</span>`;
                 const jCount = Math.round(jTotal);
                 if (!lampText.includes("AJC") && jCount > 0) {
                     lampHtml += `<div class="justice-count" style="font-size: 0.75rem; color: #ff9500; font-weight: bold; margin-top: 2px;">-${jCount}</div>`;
                 }
             } else if (lampText.includes("FC")) {
-                // 🟢 2. FC時: ATTACK 1個 確定（51 <= jTotal <= 101 / JUSTICE 0〜50個）
                 lampHtml = `<span class="${comboClass}">${lampText}</span>`;
                 if (jTotal >= 51 && jTotal <= 101) {
                     lampHtml += `<div class="attack-count" style="font-size: 0.75rem; color: #2ecc71; font-weight: bold; margin-top: 2px;">-1</div>`;
                 }
             } else {
-                // ⚪ 3. ランプなし時: MISS 1個 / ATTACK 0個 確定（101 <= jTotal <= 151 / JUSTICE 0〜50個）
                 if (jTotal >= 101 && jTotal <= 151) {
                     lampHtml = `<span style="color: #888888; font-weight: bold; font-size: 0.85rem;">-1</span>`;
                 } else {
@@ -1589,7 +1708,7 @@ function displayScores(data) {
             lampHtml = `<span class="${comboClass}">${lampText}</span>`;
         }
 
-        const newBadge = item.isNew ? `<span class="new-song-label">NEW</span>` : "";
+        const newBadge = isNew ? `<span class="new-song-label">NEW</span>` : "";
 
         let trendHtml = "";
         if (!selectedTrend && item.mainTrend && item.mainTrend !== "None") {
@@ -1614,9 +1733,10 @@ function displayScores(data) {
                 tr.classList.add(trendClass);
             }
         } else if (!isWE && RatingNum > 0) {
-            if (item.isNew && RatingNum >= rateThresholds.new20) {
+            // 💡 安全に型チェックしたisNewとwindow.rateThresholdsで判定
+            if (isNew && RatingNum >= window.rateThresholds.new20) {
                 tr.classList.add('is-new-target');
-            } else if (!item.isNew && RatingNum >= rateThresholds.best30) {
+            } else if (!isNew && RatingNum >= window.rateThresholds.best30) {
                 tr.classList.add('is-best-target');
             }
         }
@@ -4962,48 +5082,3 @@ function logout() {
         window.location.reload();
     }
 }
-
-/**
- * 💡 ページ読み込み時に自動で実行される初期化処理
- */
-document.addEventListener('DOMContentLoaded', async () => {
-    const savedToken = localStorage.getItem('chunirec_token');
-
-    // トークンがローカルストレージに保存されている場合のみ自動再同期を実行
-    if (savedToken) {
-        console.log(" トークンを検出しました。自動再同期を開始します...");
-
-        // UI（ボタン）の表示を「同期中...」に変更
-        const btn = document.querySelector('.refresh-btn');
-        let originalText = "";
-        if (btn) {
-            originalText = btn.innerText;
-            btn.disabled = true;
-            btn.innerText = "自動同期中...";
-        }
-
-        // スマホのUI描画更新待ち
-        await new Promise(resolve => setTimeout(resolve, 50));
-
-        // スコア読み込み・同期の実行
-        const isSuccess = await loadScores();
-
-        // ボタン表示の復元
-        if (btn) {
-            btn.disabled = false;
-            btn.innerText = originalText;
-        }
-
-        if (isSuccess) {
-            console.log(" 起動時自動同期が正常完了しました");
-        } else {
-            console.warn(" 起動時自動同期に失敗しました");
-        }
-    } else {
-        // トークンがない場合はトークン入力画面を表示
-        const tokenScreen = document.getElementById("token-screen");
-        const mainScreen = document.getElementById("main-screen");
-        if (tokenScreen) tokenScreen.style.display = "block";
-        if (mainScreen) mainScreen.style.display = "none";
-    }
-});
