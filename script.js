@@ -1379,40 +1379,28 @@ function renderTabContent(tabKey) {
             tabTitle = "POWER";
             colorClass = "color-power";
             columnHeader = "POWER";
-            songs = getTopAbilitySongs(targetData, "tairyoku", 30).map(s => ({
-                ...s,
-                displayConst: getRawConstant(s, "rawTairyoku", "tairyoku")
-            }));
+            songs = getTopAbilitySongs(targetData, "tairyoku", "rawTairyoku", 30);
             break;
 
         case 'notes':
             tabTitle = "NOTES";
             colorClass = "color-notes";
             columnHeader = "NOTES";
-            songs = getTopAbilitySongs(targetData, "kenban", 30).map(s => ({
-                ...s,
-                displayConst: getRawConstant(s, "rawKenban", "kenban")
-            }));
+            songs = getTopAbilitySongs(targetData, "kenban", "rawKenban", 30);
             break;
 
         case 'chuni':
             tabTitle = "CHUNI";
             colorClass = "color-chuni";
             columnHeader = "CHUNI";
-            songs = getTopAbilitySongs(targetData, "chuni", 30).map(s => ({
-                ...s,
-                displayConst: getRawConstant(s, "rawChuni", "chuni")
-            }));
+            songs = getTopAbilitySongs(targetData, "chuni", "rawChuni", 30);
             break;
 
         case 'tricky':
             tabTitle = "TRICKY";
             colorClass = "color-tricky";
             columnHeader = "TRICKY";
-            songs = getTopAbilitySongs(targetData, "kuse", 30).map(s => ({
-                ...s,
-                displayConst: getRawConstant(s, "rawKuse", "kuse")
-            }));
+            songs = getTopAbilitySongs(targetData, "kuse", "rawKuse", 30);
             break;
     }
 
@@ -1431,7 +1419,7 @@ function renderTabContent(tabKey) {
     const leftSongs = songs.slice(0, half);
     const rightSongs = songs.slice(half);
 
-    // 💡 取得済みの全プレイヤーリスト（allPlayerNames）とキャッシュのキーからドロップダウン選択肢を作成
+    // ドロップダウン選択肢の生成
     const systemSheets = ["VideoRequests", "VideoSupplies", "MasterData", "Template"];
     
     let rawList = [];
@@ -1458,7 +1446,6 @@ function renderTabContent(tabKey) {
 
     let html = `
         <div class="modal-header-summary">
-            <!-- 💡 プレイヤー選択ドロップダウン -->
             <select class="player-select-dropdown" onchange="handlePlayerChange(this.value)">
                 ${selectOptionsHtml}
             </select>
@@ -1474,6 +1461,54 @@ function renderTabContent(tabKey) {
     `;
 
     container.innerHTML = html;
+}
+
+/**
+ * 💡 能力値ソート用ヘルパー
+ * 他プレイヤーのデータ参照時でも、MasterData (または myCurrentRecords) から生定数を直接補完する
+ */
+function getTopAbilitySongs(data, modKey, rawKey, count) {
+    // 💡 参照用マップの構築
+    const masterMap = new Map();
+    
+    // myCurrentRecords や masterDataCache から生定数をキー保持
+    if (typeof myCurrentRecords !== 'undefined' && Array.isArray(myCurrentRecords)) {
+        myCurrentRecords.forEach(item => {
+            if (item.title && item.diff) {
+                masterMap.set(`${item.title}_${item.diff}`, item[rawKey]);
+            }
+        });
+    }
+
+    return data
+        .map(s => {
+            // 補正後能力値（ソート用）
+            const calcVal = parseFloat(s[modKey] || 0);
+
+            // 1. 本人のデータから生定数を取得
+            let rawVal = (s[rawKey] !== undefined && s[rawKey] !== null) ? parseFloat(s[rawKey]) : 0;
+
+            // 2. 存在しない場合、作成したマップから純粋な生定数(rawKey)のみを取得
+            if (rawVal === 0) {
+                const key = `${s.title}_${s.diff}`;
+                const fallbackRaw = masterMap.get(key);
+                if (fallbackRaw) {
+                    rawVal = parseFloat(fallbackRaw || 0);
+                }
+            }
+
+            // 3. 表示用の生定数文字列を作成（0の場合は補正後値ではなく 0.0 や 譜面定数）
+            const finalDisplayConst = rawVal > 0 ? rawVal.toFixed(1) : parseFloat(s.const || 0).toFixed(1);
+
+            return {
+                ...s,
+                calcVal: calcVal,
+                displayConst: finalDisplayConst
+            };
+        })
+        .filter(s => s.calcVal > 0)
+        .sort((a, b) => b.calcVal - a.calcVal)
+        .slice(0, count);
 }
 
 /**
@@ -1531,43 +1566,6 @@ function buildTableHtml(songList, startRank, isRateMode, colorClass, columnHeade
 
     html += `</tbody></table>`;
     return html;
-}
-
-/**
- * 能力値ソート用ヘルパー
- */
-function getTopAbilitySongs(data, key, count) {
-    return data
-        .filter(s => (parseFloat(s[key]) || 0) > 0)
-        .map(s => ({ ...s, calcVal: parseFloat(s[key]) || 0 }))
-        .sort((a, b) => b.calcVal - a.calcVal)
-        .slice(0, count);
-}
-
-/**
- * 💡 生定数を安全に取得（0.0の場合は補正値とスコアから逆算、それも不可能な場合は定数を代用）
- */
-function getRawConstant(item, rawKey, modifiedKey) {
-    // 1. すでに raw 値が存在すればそれを使用
-    const rawVal = parseFloat(item[rawKey] || 0);
-    if (rawVal > 0) return rawVal.toFixed(1);
-
-    // 2. 補正後値とスコアが存在すれば逆算する
-    const modifiedVal = parseFloat(item[modifiedKey] || 0);
-    const score = parseInt(item.score || 0, 10);
-    const lamp = String(item.lamp || "");
-
-    if (modifiedVal > 0 && score > 0 && typeof calculateScoreModifier === "function") {
-        const mod = calculateScoreModifier(score, lamp);
-        if (mod > 0) {
-            const calculatedRaw = modifiedVal / mod;
-            return calculatedRaw.toFixed(1);
-        }
-    }
-
-    // 3. 逆算も不可能な場合は曲の譜面定数(const)をフォールバックとして表示
-    const fallbackConst = parseFloat(item.const || 0);
-    return fallbackConst > 0 ? fallbackConst.toFixed(1) : "0.0";
 }
 
 
