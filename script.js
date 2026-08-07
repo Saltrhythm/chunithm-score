@@ -64,7 +64,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         await fetchPlayerNames();
     }
 
-    // 2. URLパラメータのチェック（ブックマークレットからの自動遷移時: ?player=〇〇）
+    // URLパラメータのチェック（ブックマークレットからの自動遷移時: ?player=〇〇）
     const urlParams = new URLSearchParams(window.location.search);
     const targetPlayerFromUrl = urlParams.get("player");
 
@@ -77,6 +77,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     const tokenInput = document.getElementById('token-input');
     if (tokenInput && savedToken) {
         tokenInput.value = savedToken;
+    }
+
+    // -------------------------------------------------------------------------
+    // ⚠️ 安全ガード：トークンが未登録の場合は完全ブロック
+    // -------------------------------------------------------------------------
+    if (!savedToken) {
+        console.warn("トークン未登録のため利用をブロックしました。");
+
+        // アドレスバーのパラメータ削除
+        if (targetPlayerFromUrl) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
+        // 画面初期化（トークン入力画面を表示、メイン画面を非表示）
+        const tokenScreen = document.getElementById("token-screen");
+        const mainScreen = document.getElementById("main-screen");
+        if (tokenScreen) tokenScreen.style.display = "block";
+        if (mainScreen) mainScreen.style.display = "none";
+
+        // エラーメッセージダイアログを表示
+        alert("【エラー】トークンが設定されていません。\n本ツールの利用には管理者による「UserMap」への承認登録が必要です。\n管理者に承認を依頼のうえ、トークンを設定してご利用ください。");
+        return;
     }
 
     // =========================================================================
@@ -98,13 +120,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         // URLパラメータを削除してアドレスバーを整形（?player=〇〇 を消す）
         window.history.replaceState({}, document.title, window.location.pathname);
 
-        // 💡 新設した関数で対象プレイヤーの最新データを取得して描画
-        if (typeof loadPlayerDataByName === 'function') {
-            await loadPlayerDataByName(targetPlayerFromUrl);
-        } else if (typeof getPlayerDataByName === 'function') {
-            await getPlayerDataByName(targetPlayerFromUrl);
-        } else if (typeof loadScores === 'function') {
-            await loadScores();
+        // 💡 トークンが存在するため自動で完全再同期を実行
+        if (typeof loadScores === 'function') {
+            console.log("全データの自動再同期を開始します...");
+
+            const btn = document.querySelector('.refresh-btn');
+            let originalText = "";
+            if (btn) {
+                originalText = btn.innerText;
+                btn.disabled = true;
+                btn.innerText = "自動同期中...";
+            }
+
+            const isSuccess = await loadScores();
+
+            if (btn) {
+                btn.disabled = false;
+                btn.innerText = originalText;
+            }
+
+            if (!isSuccess) {
+                alert("自動同期に失敗しました。トークンがUserMapに登録されているか確認してください。");
+            }
         }
         return;
     }
@@ -112,65 +149,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     // =========================================================================
     // パターンB: 通常アクセス（トークンあり → 自動再同期）
     // =========================================================================
-    if (savedToken) {
-        console.log("トークンを検出しました。自動再同期を開始します...");
+    console.log("トークンを検出しました。自動再同期を開始します...");
 
-        const btn = document.querySelector('.refresh-btn');
-        let originalText = "";
-        if (btn) {
-            originalText = btn.innerText;
-            btn.disabled = true;
-            btn.innerText = "自動同期中...";
-        }
-
-        await new Promise(resolve => setTimeout(resolve, 50));
-
-        let isSuccess = false;
-        if (typeof loadScores === 'function') {
-            isSuccess = await loadScores();
-        }
-
-        if (btn) {
-            btn.disabled = false;
-            btn.innerText = originalText;
-        }
-
-        if (isSuccess) {
-            console.log("起動時自動同期が正常完了しました");
-        } else {
-            console.warn("起動時自動同期に失敗しました");
-        }
-        return;
+    const btn = document.querySelector('.refresh-btn');
+    let originalText = "";
+    if (btn) {
+        originalText = btn.innerText;
+        btn.disabled = true;
+        btn.innerText = "自動同期中...";
     }
 
-    // =========================================================================
-    // パターンC: トークンなし ＋ キャッシュありの場合のローカル表示
-    // =========================================================================
-    if (cachedData && cachedData !== "undefined" && savedName) {
-        try {
-            myCurrentRecords = JSON.parse(cachedData);
+    await new Promise(resolve => setTimeout(resolve, 50));
 
-            const tokenScreen = document.getElementById("token-screen");
-            const mainScreen = document.getElementById("main-screen");
-            if (tokenScreen) tokenScreen.style.display = "none";
-            if (mainScreen) mainScreen.style.display = "block";
-
-            if (typeof calculatechuniRate === 'function') calculatechuniRate(savedName);
-            if (typeof displayScores === 'function') displayScores(myCurrentRecords);
-        } catch (e) {
-            console.error("キャッシュ破損のため初期化します", e);
-            if (typeof clearUserCache === 'function') clearUserCache();
-        }
-        return;
+    let isSuccess = false;
+    if (typeof loadScores === 'function') {
+        isSuccess = await loadScores();
     }
 
-    // =========================================================================
-    // パターンD: 初回アクセス（トークンもキャッシュもなし）
-    // =========================================================================
-    const tokenScreen = document.getElementById("token-screen");
-    const mainScreen = document.getElementById("main-screen");
-    if (tokenScreen) tokenScreen.style.display = "block";
-    if (mainScreen) mainScreen.style.display = "none";
+    if (btn) {
+        btn.disabled = false;
+        btn.innerText = originalText;
+    }
+
+    if (isSuccess) {
+        console.log("起動時自動同期が正常完了しました");
+    } else {
+        console.warn("起動時自動同期に失敗しました");
+    }
 });
 
 function toggleTokenVisibility() {
