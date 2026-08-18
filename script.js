@@ -255,6 +255,7 @@ async function loadScores() {
         }
         if (loadingMsg) loadingMsg.style.display = "none";
     }
+
 }
 
 /**
@@ -360,7 +361,6 @@ function updateFilters() {
     const maxRateInput = document.getElementById('max-rating');
     const lampSelect = document.getElementById('lamp-filter');
 
-    // Rank / スコア切り替え用
     const filterModeSelect = document.getElementById('filter-mode');
     const rankMinSelect = document.getElementById('rank-min');
     const rankMaxSelect = document.getElementById('rank-max');
@@ -369,16 +369,17 @@ function updateFilters() {
 
     if (!searchInput || !minConstSelect || !maxConstSelect || !rankMinSelect || !rankMaxSelect || !lampSelect) return;
 
+    // 💡 フィルター更新のたびにLocalStorageへ設定を保存
+    saveFilterSettings();
+
     const searchText = searchInput.value.toLowerCase().trim();
     const minConst = parseFloat(minConstSelect.value);
     const maxConst = parseFloat(maxConstSelect.value);
 
-    // 切り替えモード（"rank" または "score"）を取得
     const filterMode = filterModeSelect ? filterModeSelect.value : 'rank';
     const rankMin = parseFloat(rankMinSelect.value);
     const rankMax = parseFloat(rankMaxSelect.value);
 
-    // スコア入力の値を取得
     const minScoreVal = minScoreInput ? minScoreInput.value : "";
     const maxScoreVal = maxScoreInput ? maxScoreInput.value : "";
     const minScore = minScoreVal !== "" ? parseFloat(minScoreVal) : 0;
@@ -392,44 +393,37 @@ function updateFilters() {
 
     const lampValue = lampSelect.value;
 
-    // トレンド有効化スイッチの状態およびアクティブな傾向を取得
     const trendSwitch = document.getElementById('trend-enable-switch');
     const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
     const activeTrends = Array.from(document.querySelectorAll('.btn-trend-filter.active')).map(btn => btn.getAttribute('data-trend'));
-
-    // アクティブな難易度（diff）を取得
     const activeDiffs = Array.from(document.querySelectorAll('.btn-diff-filter.active')).map(btn => btn.getAttribute('data-diff'));
 
-    // フィルタリング実行
-    const filteredData = myCurrentRecords.filter(item => {
-        // 1. 曲名で絞り込み
+    const sourceRecords = (typeof myCurrentRecords !== 'undefined' && Array.isArray(myCurrentRecords)) ? myCurrentRecords : [];
+
+    const filteredData = sourceRecords.filter(item => {
         const title = String(item.title || "").toLowerCase();
         const matchesTitle = title.includes(searchText);
 
-        // 2. Ratingで絞り込み
         const currentRate = parseFloat(item.rating) || 0;
         const matchesRating = (currentRate >= minRate && currentRate <= maxRate);
 
-        // 3. 難易度（diff）で絞り込み
         const itemDiff = String(item.diff || "").toUpperCase();
         const matchesDiff = activeDiffs.includes(itemDiff);
 
-        // 4. 定数で絞り込み
         const constant = parseFloat(item.const) || 0;
         const isWeExempt = (itemDiff === "WE" && activeDiffs.includes("WE"));
         const matchesConstant = isWeExempt || (constant >= minConst && constant <= maxConst);
 
-        // 5. Rank または スコア で絞り込み
         const tScore = parseFloat(item.score) || 0;
         let matchesRankOrScore = true;
 
         if (filterMode === 'rank') {
-            matchesRankOrScore = (tScore >= rankMin && tScore <= getUpperLimit(rankMax));
+            const upperLimit = typeof getUpperLimit === 'function' ? getUpperLimit(rankMax) : 1010000;
+            matchesRankOrScore = (tScore >= rankMin && tScore <= upperLimit);
         } else {
             matchesRankOrScore = (tScore >= minScore && tScore <= maxScore);
         }
 
-        // 6. ランプで絞り込み
         const itemLamp = item.lamp || "None";
         let matchesLamp = true;
 
@@ -444,29 +438,26 @@ function updateFilters() {
             }
         }
 
-        // 7. 表示対象（全曲/旧曲/新曲）判定
         let matchesType = true;
-        if (currentTypeFilter === 'old') matchesType = !item.isNew;
-        if (currentTypeFilter === 'new') matchesType = item.isNew;
+        const isNew = typeof isNewSongCheck === 'function' ? isNewSongCheck(item.isNew) : Boolean(item.isNew);
+        if (currentTypeFilter === 'old') matchesType = !isNew;
+        if (currentTypeFilter === 'new') matchesType = isNew;
 
-        // 💡 8. トレンド判定（絞り込みは行わず、全楽曲を通す）
         const matchesTrend = true;
 
         return matchesTitle && matchesRating && matchesDiff && matchesConstant && matchesRankOrScore && matchesLamp && matchesType && matchesTrend;
     });
 
-    // 9. ソートの実行（POWER等の数値順含む）
-    sortData(filteredData);
-
-    // 10. 描画
+    if (typeof sortData === 'function') {
+        sortData(filteredData);
+    }
     displayScores(filteredData);
+    
+    if (typeof updateSortButtonLabels === 'function') {
+        updateSortButtonLabels();
+    }
 
-    // 💡 11. ソートボタンのラベル・色更新
-    updateSortButtonLabels();
-
-    // =================================================================
-    // 💡 適用中のフィルター条件をバッジでリアルタイム表示
-    // =================================================================
+    // 適用条件バッジ表示更新
     const activeContainer = document.getElementById('active-filters-container');
     const activeList = document.getElementById('active-filters-list');
 
@@ -526,21 +517,16 @@ function updateFilters() {
             addBadge(`対象: ${targetText}`);
         }
 
-        // 💡 トレンドバッジ表記を「表示切替中」へ調整
         if (isTrendEnabled && activeTrends.length > 0) {
             addBadge(`表示切替: ${activeTrends[0]}`);
         }
 
-        if (hasActiveFilter) {
-            activeContainer.style.display = 'flex';
-        } else {
-            activeContainer.style.display = 'none';
-        }
+        activeContainer.style.display = hasActiveFilter ? 'flex' : 'none';
     }
 }
 
 /**
- * フィルター初期化（傾向フィルターの単一選択化を追加）
+ * フィルター初期化（イベントリスナー登録 ＆ 復元処理）
  */
 function initFilters() {
     const minConstSelect = document.getElementById('min-constant');
@@ -573,6 +559,7 @@ function initFilters() {
     minConstSelect.value = "13.5";
     maxConstSelect.value = "16.0";
 
+    // イベントリスナーの登録
     [minConstSelect, maxConstSelect, lampSelect, rankMinSelect, rankMaxSelect].forEach(el => {
         if (el) el.addEventListener('change', updateFilters);
     });
@@ -632,7 +619,6 @@ function initFilters() {
                     });
                 }
             }
-
             updateFilters();
         });
     });
@@ -650,7 +636,7 @@ function initFilters() {
         trendSwitch.addEventListener('change', (e) => {
             const isEnabled = e.target.checked;
             document.querySelectorAll('.btn-trend-filter').forEach(btn => {
-                btn.classList.remove('active'); // トグルON時も最初は非選択
+                btn.classList.remove('active');
                 if (isEnabled) {
                     btn.classList.remove('trend-disabled');
                 } else {
@@ -661,7 +647,7 @@ function initFilters() {
         });
     }
 
-    // 💡【修正】傾向フィルターの単一選択（ラジオボタン挙動）クリックイベント
+    // 傾向フィルタークリックイベント
     document.querySelectorAll('.btn-trend-filter').forEach(btn => {
         btn.addEventListener('click', (e) => {
             if (trendSwitch && !trendSwitch.checked) return;
@@ -669,22 +655,21 @@ function initFilters() {
             const targetBtn = e.target;
             const isAlreadyActive = targetBtn.classList.contains('active');
 
-            // 一旦すべての傾向ボタンのactiveを解除
             document.querySelectorAll('.btn-trend-filter').forEach(b => b.classList.remove('active'));
 
-            // 既に選択されていたボタンでなければactiveを付与（トグル解除も可能）
             if (!isAlreadyActive) {
                 targetBtn.classList.add('active');
             }
-
             updateFilters();
         });
     });
 
-    // リセットボタン
+    // リセットボタン（LocalStorage の保存データも消去）
     const clearBtn = document.getElementById('clear-filter');
     if (clearBtn) {
         clearBtn.addEventListener('click', () => {
+            localStorage.removeItem(FILTER_STORAGE_KEY); // 保存したフィルター条件をクリア
+
             if (searchInput) searchInput.value = "";
             if (minConstSelect) minConstSelect.value = "13.5";
             if (maxConstSelect) maxConstSelect.value = "16.0";
@@ -708,7 +693,7 @@ function initFilters() {
             if (scoreContainer) scoreContainer.style.display = 'none';
 
             document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
-            document.getElementById('filter-all').classList.add('active');
+            document.getElementById('filter-all')?.classList.add('active');
             currentTypeFilter = 'all';
 
             if (trendSwitch) trendSwitch.checked = false;
@@ -730,31 +715,144 @@ function initFilters() {
             document.getElementById('sort-Rating')?.classList.add('active');
             document.getElementById('sort-score')?.classList.remove('active');
 
-            updateSortButtonLabels();
+            if (typeof updateSortButtonLabels === 'function') {
+                updateSortButtonLabels();
+            }
             updateFilters();
         });
     }
 
-// ソート切り替えボタン
+    // ソート切り替えボタン
     const sortRatingBtn = document.getElementById('sort-Rating');
     const sortScoreBtn = document.getElementById('sort-score');
     if (sortRatingBtn) {
         sortRatingBtn.addEventListener('click', () => {
             currentSortKey = 'rating';
-            sortRatingBtn.classList.add('active');
-            sortScoreBtn.classList.remove('active');
-            updateSortButtonLabels(); 
+            if (typeof updateSortButtonLabels === 'function') updateSortButtonLabels(); 
             updateFilters();
         });
     }
     if (sortScoreBtn) {
         sortScoreBtn.addEventListener('click', () => {
             currentSortKey = 'techScore';
-            sortScoreBtn.classList.add('active');
-            sortRatingBtn.classList.remove('active');
-            updateSortButtonLabels(); 
+            if (typeof updateSortButtonLabels === 'function') updateSortButtonLabels(); 
             updateFilters();
         });
+    }
+
+    // 💡 保存されていた設定情報を呼び出して復元
+    loadFilterSettings();
+}
+// LocalStorage のキー名
+const FILTER_STORAGE_KEY = 'chunirec_filter_settings';
+
+/**
+ * 💡 フィルター設定を LocalStorage に保存する関数
+ */
+function saveFilterSettings() {
+    const settings = {
+        searchText: document.getElementById('search-input')?.value || '',
+        minConst: document.getElementById('min-constant')?.value || '13.5',
+        maxConst: document.getElementById('max-constant')?.value || '16.0',
+        minRate: document.getElementById('min-rating')?.value || '',
+        maxRate: document.getElementById('max-rating')?.value || '',
+        lamp: document.getElementById('lamp-filter')?.value || 'all',
+        filterMode: document.getElementById('filter-mode')?.value || 'rank',
+        rankMin: document.getElementById('rank-min')?.value || '0',
+        rankMax: document.getElementById('rank-max')?.value || '1010000',
+        minScore: document.getElementById('min-score')?.value || '',
+        maxScore: document.getElementById('max-score')?.value || '',
+        currentTypeFilter: typeof currentTypeFilter !== 'undefined' ? currentTypeFilter : 'all',
+        currentSortKey: typeof currentSortKey !== 'undefined' ? currentSortKey : 'rating',
+        activeDiffs: Array.from(document.querySelectorAll('.btn-diff-filter.active')).map(btn => btn.getAttribute('data-diff')),
+        isTrendEnabled: document.getElementById('trend-enable-switch')?.checked || false,
+        activeTrend: document.querySelector('.btn-trend-filter.active')?.getAttribute('data-trend') || null
+    };
+
+    localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(settings));
+}
+
+/**
+ * 💡 LocalStorage からフィルター設定を読み込んでUIに復元する関数
+ */
+function loadFilterSettings() {
+    const saved = localStorage.getItem(FILTER_STORAGE_KEY);
+    if (!saved) return;
+
+    try {
+        const settings = JSON.parse(saved);
+
+        if (settings.searchText !== undefined) document.getElementById('search-input').value = settings.searchText;
+        if (settings.minConst !== undefined) document.getElementById('min-constant').value = settings.minConst;
+        if (settings.maxConst !== undefined) document.getElementById('max-constant').value = settings.maxConst;
+        if (settings.minRate !== undefined) document.getElementById('min-rating').value = settings.minRate;
+        if (settings.maxRate !== undefined) document.getElementById('max-rating').value = settings.maxRate;
+        if (settings.lamp !== undefined) document.getElementById('lamp-filter').value = settings.lamp;
+
+        if (settings.filterMode !== undefined) {
+            const filterModeSelect = document.getElementById('filter-mode');
+            if (filterModeSelect) {
+                filterModeSelect.value = settings.filterMode;
+                const rankContainer = document.getElementById('rank-filter-container');
+                const scoreContainer = document.getElementById('score-filter-container');
+                if (settings.filterMode === 'rank') {
+                    filterModeSelect.classList.add('mode-rank');
+                    filterModeSelect.classList.remove('mode-score');
+                    if (rankContainer) rankContainer.style.display = 'flex';
+                    if (scoreContainer) scoreContainer.style.display = 'none';
+                } else {
+                    filterModeSelect.classList.add('mode-score');
+                    filterModeSelect.classList.remove('mode-rank');
+                    if (rankContainer) rankContainer.style.display = 'none';
+                    if (scoreContainer) scoreContainer.style.display = 'flex';
+                }
+            }
+        }
+
+        if (settings.rankMin !== undefined) document.getElementById('rank-min').value = settings.rankMin;
+        if (settings.rankMax !== undefined) document.getElementById('rank-max').value = settings.rankMax;
+        if (settings.minScore !== undefined) document.getElementById('min-score').value = settings.minScore;
+        if (settings.maxScore !== undefined) document.getElementById('max-score').value = settings.maxScore;
+
+        if (settings.currentTypeFilter !== undefined) {
+            currentTypeFilter = settings.currentTypeFilter;
+            document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
+            const activeTypeBtn = document.getElementById(`filter-${settings.currentTypeFilter}`);
+            if (activeTypeBtn) activeTypeBtn.classList.add('active');
+        }
+
+        if (settings.currentSortKey !== undefined) {
+            currentSortKey = settings.currentSortKey;
+        }
+
+        if (Array.isArray(settings.activeDiffs)) {
+            document.querySelectorAll('.btn-diff-filter').forEach(b => {
+                const diff = b.getAttribute('data-diff');
+                if (settings.activeDiffs.includes(diff)) {
+                    b.classList.add('active');
+                } else {
+                    b.classList.remove('active');
+                }
+            });
+        }
+
+        const trendSwitch = document.getElementById('trend-enable-switch');
+        if (trendSwitch && settings.isTrendEnabled !== undefined) {
+            trendSwitch.checked = settings.isTrendEnabled;
+            document.querySelectorAll('.btn-trend-filter').forEach(btn => {
+                btn.classList.remove('active');
+                if (settings.isTrendEnabled) {
+                    btn.classList.remove('trend-disabled');
+                    if (settings.activeTrend && btn.getAttribute('data-trend') === settings.activeTrend) {
+                        btn.classList.add('active');
+                    }
+                } else {
+                    btn.classList.add('trend-disabled');
+                }
+            });
+        }
+    } catch (e) {
+        console.error("フィルター設定の復元に失敗しました:", e);
     }
 }
 
@@ -1570,7 +1668,7 @@ function buildTableHtml(songList, startRank, isRateMode, colorClass, columnHeade
 
 
 /**
- * 画面にスコアを表示する（全曲中上位30曲ハイライト対応 ＆ 判定失点数完全対応版）
+ * 画面にスコアを表示する
  */
 function displayScores(data) {
     console.log("--- displayScores開始 ---");
@@ -1640,11 +1738,15 @@ function displayScores(data) {
     const fragment = document.createDocumentFragment();
     const limitedData = data.slice(0, 200);
 
+    const thresholds = window.rateThresholds || {};
+    const new20Thresh = thresholds.new20 ?? Infinity;
+    const best30Thresh = thresholds.best30 ?? Infinity;
+
     limitedData.forEach((item, index) => {
         const diffRaw = String(item.diff || "");
         const diffLower = diffRaw.toLowerCase();
         const isWE = (diffRaw.toUpperCase() === "WE");
-        const isNew = isNewSongCheck(item.isNew); // 💡 安全にboolean化
+        const isNew = typeof isNewSongCheck === 'function' ? isNewSongCheck(item.isNew) : Boolean(item.isNew);
 
         const currentConst = parseFloat(item.const) || 0;
         const tScore = parseFloat(item.score) || 0;
@@ -1700,7 +1802,6 @@ function displayScores(data) {
             RatingHtml = ratingStr;
         }
 
-        // ランプおよび内訳描画
         let lampHtml = "";
         const totalNotes = parseInt(item.notes ?? item.totalNotes ?? item.combo ?? (item.songProps ? item.songProps.notes : 0) ?? 0, 10);
         const currentScore = parseInt(item.score || 0, 10);
@@ -1761,10 +1862,9 @@ function displayScores(data) {
                 tr.classList.add(trendClass);
             }
         } else if (!isWE && RatingNum > 0) {
-            // 💡 安全に型チェックしたisNewとwindow.rateThresholdsで判定
-            if (isNew && RatingNum >= window.rateThresholds.new20) {
+            if (isNew && RatingNum >= new20Thresh) {
                 tr.classList.add('is-new-target');
-            } else if (!isNew && RatingNum >= window.rateThresholds.best30) {
+            } else if (!isNew && RatingNum >= best30Thresh) {
                 tr.classList.add('is-best-target');
             }
         }
@@ -4893,10 +4993,28 @@ window.closeVideoHubModal = closeVideoHubModal;
 async function shareToDiscord(modalId = 'rating-modal') {
     let webhookUrl = localStorage.getItem('discord_webhook_url');
 
+    // 💡 Webhook URL の簡易検証関数
+    const isValidDiscordUrl = (url) => {
+        if (!url || typeof url !== 'string') return false;
+        const trimmed = url.trim();
+        return trimmed.startsWith('https://discord.com/api/webhooks/') || 
+               trimmed.startsWith('https://canary.discord.com/api/webhooks/');
+    };
+
+    // 保存されているURLが無効な形式の場合はクリア
+    if (webhookUrl && !isValidDiscordUrl(webhookUrl)) {
+        localStorage.removeItem('discord_webhook_url');
+        webhookUrl = null;
+    }
+
     if (!webhookUrl) {
-        webhookUrl = prompt("DiscordのWebhook URLを入力してください。\n(このURLはブラウザに保存され、公開されることはありません)");
-        if (webhookUrl) {
-            localStorage.setItem('discord_webhook_url', webhookUrl.trim());
+        webhookUrl = prompt("DiscordのWebhook URLを入力してください。\n(https://discord.com/api/webhooks/... で始まるURL)");
+        if (webhookUrl && isValidDiscordUrl(webhookUrl)) {
+            webhookUrl = webhookUrl.trim();
+            localStorage.setItem('discord_webhook_url', webhookUrl);
+        } else if (webhookUrl) {
+            alert("入力されたURLの形式が正しくありません。\nhttps://discord.com/api/webhooks/ から始まるURLを入力してください。");
+            return;
         } else {
             return;
         }
@@ -5008,7 +5126,6 @@ async function shareToDiscord(modalId = 'rating-modal') {
         if (lastChild) {
             const containerRect = clonedContainer.getBoundingClientRect();
             const lastChildRect = lastChild.getBoundingClientRect();
-            // 一番下の要素の下端 + パディング(20px)で正確な高さを求める
             targetHeight = Math.ceil(lastChildRect.bottom - containerRect.top) + 20;
         }
 
@@ -5019,7 +5136,7 @@ async function shareToDiscord(modalId = 'rating-modal') {
             useCORS: true,
             allowTaint: true,
             width: targetWidth,
-            height: targetHeight, // 余白カット済みの正確な高さ
+            height: targetHeight,
             windowWidth: 1200,
             windowHeight: targetHeight,
             scrollY: 0,
@@ -5077,11 +5194,16 @@ async function shareToDiscord(modalId = 'rating-modal') {
         let alertMsg = "送信処理中にエラーが発生しました。";
         if (err.name === 'AbortError') {
             alertMsg = "タイムアウト: 通信に時間がかかりすぎたため処理を中断しました。";
+        } else if (err.name === 'TypeError' && err.message.includes('fetch')) {
+            alertMsg = "【通信エラー (Failed to fetch)】\nWebhook URLが間違っているか、ネットワーク/ブラウザによって通信が遮断されました。";
         } else if (err.message) {
             alertMsg += `\n内容: ${err.message}`;
         }
 
-        alert(alertMsg);
+        // 💡 catch 時にも URL のリセット機会を提供する
+        if (confirm(`${alertMsg}\n\n登録されているWebhook URLをクリアしてリセットしますか？`)) {
+            localStorage.removeItem('discord_webhook_url');
+        }
 
     } finally {
         if (clonedContainer && document.body.contains(clonedContainer)) {
