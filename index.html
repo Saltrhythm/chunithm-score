@@ -2,10 +2,10 @@
 <html lang="ja">
 
 <head>
-    <meta charset="UTF=8">
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>チュウニズムスコア管理ツール</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=1.1">
 </head>
 
 <body>
@@ -43,21 +43,21 @@
             <button class="logout-btn" onclick="logout()">ログアウト</button>
         </div>
 
-    
-        <div class="button-group">
-        <div class="video-hub-trigger-area" style="margin: 10px 0 15px 0; text-align: center;">
-            <button id="open-video-hub-btn" class="btn-video-hub" onclick="openVideoHubModal()">
-                手元動画掲示板
-            </button>
-        </div>
 
-         <!-- 💡 投票所へのリンクを追加 -->
-        <div class="survey-link-area" style="margin: 10px 0 15px 0; text-align: center;">
-            <a href="https://saltrhythm.github.io/chuni-trend/" target="_blank" rel="noopener noreferrer"
-                class="survey-link-btn">
-                投票所
-            </a>
-        </div>
+        <div class="button-group">
+            <div class="video-hub-trigger-area" style="margin: 10px 0 15px 0; text-align: center;">
+                <button id="open-video-hub-btn" class="btn-video-hub" onclick="openVideoHubModal()">
+                    手元動画掲示板
+                </button>
+            </div>
+
+            <!-- 💡 投票所へのリンクを追加 -->
+            <div class="survey-link-area" style="margin: 10px 0 15px 0; text-align: center;">
+                <a href="https://saltrhythm.github.io/chuni-trend/" target="_blank" rel="noopener noreferrer"
+                    class="survey-link-btn">
+                    投票所
+                </a>
+            </div>
         </div>
 
         <div class="rating-wrapper">
@@ -433,6 +433,16 @@
                 </div>
             </div>
 
+            <div class="vs-form-group" style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <label style="font-weight: bold; margin: 0; font-size: 14px; color: #333;">全員プレイ済みの曲のみ表示</label>
+                    <label class="vs-switch">
+                        <input type="checkbox" id="vs-hide-unplayed-switch">
+                        <span class="vs-slider"></span>
+                    </label>
+                </div>
+            </div>
+
             <div class="vs-btn-container" style="margin-top: 20px;">
                 <button id="vs-start-btn" class="btn-stats"
                     style="background:#2e7df0; color:#fff; border:none; padding:10px 20px; border-radius:4px; cursor:pointer; font-weight:bold;"
@@ -586,7 +596,9 @@
     <datalist id="song-suggestions"></datalist>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="script.js"></script>
+    <!-- 例: ?v=1.1 のようにバージョン番号を付けて保存・Pushする -->
+    <script src="script.js?v=1.1"></script>
+    
 </body>
 
 </html>
