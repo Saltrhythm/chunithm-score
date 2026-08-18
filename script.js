@@ -3433,7 +3433,7 @@ function showPlayerDetailModal(playerData) {
 
 /**
  * ==========================================================================
- * VS機能 フロントエンド処理 JavaScript（WE排他＆定数動的高速非表示版）
+ * VS機能 フロントエンド処理 JavaScript（未プレイ除外スイッチ完全対応版）
  * ==========================================================================
  */
 
@@ -3523,7 +3523,7 @@ async function openVsModal() {
                 }
             });
 
-            // 💡 初期同期時にWEと通常難易度が混ざっていた場合のセーフティ排他
+            // 初期同期時にWEと通常難易度が混ざっていた場合のセーフティ排他
             sanitizeVsDiffSelection();
 
             renderVsOpponents();
@@ -3569,12 +3569,11 @@ function closeVsSetupModal() { document.getElementById('vs-setup-modal').style.d
 function closeVsResultModal() { document.getElementById('vs-result-modal').style.display = "none"; }
 
 /**
- * 💡【修正】VS専用 難易度フィルターボタンの排他選択ロジック
+ * VS専用 難易度フィルターボタンの排他選択ロジック
  */
 function toggleVsDiffButton(buttonElement) {
     const clickedDiff = buttonElement.getAttribute('data-diff');
 
-    // まずクリックされたボタン自身をトグル
     buttonElement.classList.toggle('active');
 
     const container = document.getElementById('vs-diff-buttons-container');
@@ -3583,17 +3582,15 @@ function toggleVsDiffButton(buttonElement) {
 
     if (buttonElement.classList.contains('active')) {
         if (clickedDiff === "WE") {
-            // WEがアクティブになったら、通常難易度（EXP, MAS, ULT）をすべて非アクティブにする
             normalDiffButtons.forEach(btn => btn.classList.remove('active'));
         } else {
-            // 通常難易度がアクティブになったら、WEを非アクティブにする
             if (weButton) weButton.classList.remove('active');
         }
     }
 }
 
 /**
- * 💡 初期化時用の排他セーフティ関数
+ * 初期化時用の排他セーフティ関数
  */
 function sanitizeVsDiffSelection() {
     const container = document.getElementById('vs-diff-buttons-container');
@@ -3601,7 +3598,6 @@ function sanitizeVsDiffSelection() {
     const weButton = container.querySelector('.vs-btn-diff-filter[data-diff="WE"]');
     const normalActive = container.querySelectorAll('.vs-btn-diff-filter:not([data-diff="WE"]).active');
 
-    // もしWEと通常難易度が両方アクティブなら、通常難易度を優先（WEを解除）する
     if (weButton && weButton.classList.contains('active') && normalActive.length > 0) {
         weButton.classList.remove('active');
     }
@@ -3666,7 +3662,16 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 /**
- * 比較実行・データ受信
+ * スコアが有効（0より大きい数値）であるかを判定するヘルパー関数
+ */
+function isValidScore(score) {
+    if (score === null || score === undefined) return false;
+    const num = Number(score);
+    return !isNaN(num) && num > 0;
+}
+
+/**
+ * スコア比較実行
  */
 async function startVsCompare() {
     const myName = getLoggedInPlayerName();
@@ -3694,6 +3699,10 @@ async function startVsCompare() {
         return;
     }
 
+    // 💡 HTML内の未プレイ除外スイッチ（vs-hide-unplayed-switch）の状態を取得
+    const hideUnplayedSwitch = document.getElementById('vs-hide-unplayed-switch');
+    const hideUnplayed = hideUnplayedSwitch ? hideUnplayedSwitch.checked : false;
+
     const startBtn = document.getElementById('vs-start-btn');
     if (startBtn) { startBtn.disabled = true; startBtn.innerText = "比較中..."; }
 
@@ -3716,7 +3725,45 @@ async function startVsCompare() {
 
         if (result.status === "success") {
             closeVsSetupModal();
-            lastVsResponseData = result.data;
+
+            let vsData = result.data;
+
+            // 💡【未プレイ除外処理】スイッチがONの場合、自分＋選択された相手全員のスコアが > 0 の楽曲のみ残す
+            if (hideUnplayed && vsData && vsData.vsRows) {
+                vsData.vsRows = vsData.vsRows.filter(row => {
+                    // 1. 自分のスコアチェック
+                    if (!isValidScore(row.myScore)) return false;
+
+                    // 2. 選択対戦相手全員のスコアチェック
+                    return opponents.every(oppName => {
+                        const oppData = row.rankList?.find(p => p.name === oppName);
+                        return oppData && isValidScore(oppData.score);
+                    });
+                });
+
+                // 1対1比較時の勝敗数（WIN / DRAW / LOSE）を除外後のデータで再計算
+                if (vsData.opponents.length === 1) {
+                    const oppName = vsData.opponents[0];
+                    let win = 0, draw = 0, lose = 0;
+
+                    vsData.vsRows.forEach(row => {
+                        const oppScore = row.rankList?.find(p => p.name === oppName)?.score || 0;
+                        if (row.myScore > oppScore) {
+                            row.matchResult = "WIN";
+                            win++;
+                        } else if (row.myScore < oppScore) {
+                            row.matchResult = "LOSE";
+                            lose++;
+                        } else {
+                            row.matchResult = "DRAW";
+                            draw++;
+                        }
+                    });
+                    vsData.summary = { win, draw, lose };
+                }
+            }
+
+            lastVsResponseData = vsData;
             renderVsResult();
         } else {
             alert("エラー: " + result.message);
@@ -3766,17 +3813,15 @@ function getVsTitleAndBadgeHtml(fullTitle) {
 }
 
 /**
- * 💡【修正版】全件がWORLD'S END(WE)楽曲のみであるかを判定する関数
- * GAS側から返ってくる row.title は「曲名 [難易度]」の形式（例: "看板娘のちょこっとサンバ [WE]"）になっています。
+ * 全件がWORLD'S END(WE)楽曲のみであるかを判定する関数
  */
 function isAllSongsWe(vsRows) {
     if (!vsRows || vsRows.length === 0) return false;
-    // 末尾が [WE] で終わっているかを正規表現で確実にキャッチします
     return vsRows.every(row => /\[WE\]$/i.test(row.title));
 }
 
 /**
- * 結果画面のメイン描画（💡 WEの定数非表示対応）
+ * 結果画面のメイン描画
  */
 function renderVsResult(forcedBasePlayer) {
     const container = document.getElementById('vs-result-dynamic-container');
@@ -3788,7 +3833,6 @@ function renderVsResult(forcedBasePlayer) {
     const totalPlayersCount = oppCount + 1;
     const formatScore = (sc) => sc === 0 ? `<span style="color:#aaa;">-</span>` : sc.toLocaleString();
 
-    // 💡【追加】取得された楽曲データが「すべてWE」であるかチェック
     const isWeMode = isAllSongsWe(data.vsRows);
 
     let trendHtml = "";
@@ -3823,7 +3867,7 @@ function renderVsResult(forcedBasePlayer) {
                 設定画面に戻る
             </button>
             <button class="vs-btn-close-modal" 
-                    onclick="document.getElementById('vs-result-modal').style.display='none';" 
+                    onclick="closeVsResultModal()" 
                     style="padding: 10px 16px; font-size: 14px; font-weight: bold; background-color: #8e8e93; color: #fff; border: none; border-radius: 6px; cursor: pointer; flex: 1; max-width: 120px; white-space: nowrap;">
                 閉じる
             </button>
@@ -3835,7 +3879,6 @@ function renderVsResult(forcedBasePlayer) {
         const vsRows = [...data.vsRows];
         const totalSongs = vsRows.length;
 
-        // 💡 WEモードのときは定数のテキスト表示を隠す
         let html = `
             <div class="vs-header-left" style="line-height: 1.6; margin-bottom: 10px;">
                 ${isWeMode ? '<strong>難易度タイプ:</strong> WORLD\'S END' : '<strong>定数:</strong> ' + data.minConst + ' ～ ' + data.maxConst}${trendHtml} （全 ${totalSongs} 曲）<br>
@@ -3860,17 +3903,15 @@ function renderVsResult(forcedBasePlayer) {
             const pB = resPriority[b.matchResult] || 99;
             if (pA !== pB) return pA - pB;
 
-            const oppScoreA = a.rankList.find(p => p.name === oppName)?.score || 0;
+            const oppScoreA = a.rankList?.find(p => p.name === oppName)?.score || 0;
             const diffA = a.myScore - oppScoreA;
-            const oppScoreB = b.rankList.find(p => p.name === oppName)?.score || 0;
+            const oppScoreB = b.rankList?.find(p => p.name === oppName)?.score || 0;
             const diffB = b.myScore - oppScoreB;
 
-            if (a.matchResult === "WIN") return diffB - diffA;
-            if (a.matchResult === "LOSE") return diffB - diffA;
+            if (a.matchResult === "WIN" || a.matchResult === "LOSE") return diffB - diffA;
             return isWeMode ? a.title.localeCompare(b.title) : b.constant - a.constant;
         });
 
-        // 💡 テーブルヘッダーから「定数」列を条件分岐で除外
         html += `
             <div class="vs-table-scroll-container">
                 <table class="vs-table-single">
@@ -3888,12 +3929,12 @@ function renderVsResult(forcedBasePlayer) {
 
         if (totalSongs === 0) {
             const colspanVal = isWeMode ? 4 : 5;
-            html += `<tr><td colspan="${colspanVal}" style="text-align:center; padding:20px; color:#999;">対象データがありません。</td></tr>`;
+            html += `<tr><td colspan="${colspanVal}" style="text-align:center; padding:20px; color:#999;">該当する楽曲がありません。</td></tr>`;
         }
 
         vsRows.forEach(row => {
             const myScore = row.myScore;
-            const oppScore = row.rankList.find(p => p.name === oppName)?.score || 0;
+            const oppScore = row.rankList?.find(p => p.name === oppName)?.score || 0;
             const diff = myScore - oppScore;
 
             let diffStr = "0";
@@ -3908,11 +3949,10 @@ function renderVsResult(forcedBasePlayer) {
 
             const titleContent = getVsTitleAndBadgeHtml(row.title);
 
-            // 💡 データ行(td)からも定数列を非表示に
             html += `
                 <tr>
                     <td class="vs-col-title">${titleContent}</td>
-                    ${isWeMode ? '' : '<td class="vs-col-const">' + row.constant.toFixed(1) + '</td>'}
+                    ${isWeMode ? '' : '<td class="vs-col-const">' + (row.constant ? row.constant.toFixed(1) : '-') + '</td>'}
                     <td class="vs-col-score">${formatScore(myScore)}</td>
                     <td class="vs-col-diff ${diffClass}">${diffStr}</td>
                     <td class="vs-col-score">${formatScore(oppScore)}</td>
@@ -3953,15 +3993,15 @@ function renderVsResult(forcedBasePlayer) {
         for (let r = 1; r <= totalPlayersCount; r++) { buckets[r] = []; }
 
         vsRows.forEach(row => {
-            const baseScore = row.rankList.find(p => p.name === basePlayer)?.score || 0;
+            const baseScore = row.rankList?.find(p => p.name === basePlayer)?.score || 0;
             let exactRank = 1;
-            row.rankList.forEach(p => {
+            (row.rankList || []).forEach(p => {
                 if (p.name !== basePlayer && p.score > baseScore) { exactRank++; }
             });
 
             if (exactRank > totalPlayersCount) exactRank = totalPlayersCount;
 
-            const othersSorted = row.rankList
+            const othersSorted = (row.rankList || [])
                 .filter(p => p.name !== basePlayer)
                 .sort((a, b) => b.score - a.score);
 
@@ -3984,9 +4024,8 @@ function renderVsResult(forcedBasePlayer) {
         for (let dRank = 1; dRank <= totalPlayersCount; dRank++) {
             const songList = buckets[dRank];
 
-            // WEモードの時は曲名でソート、それ以外は定数でソート
             if (isWeMode) {
-                songList.sort((a, b) => a.title.localeCompare(b.title));
+                songList.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
             } else {
                 songList.sort((a, b) => b.constant - a.constant);
             }
@@ -4028,7 +4067,7 @@ function renderVsResult(forcedBasePlayer) {
                 html += `
                     <tr>
                         <td class="vs-col-title">${titleContent}</td>
-                        ${isWeMode ? '' : '<td class="vs-col-const">' + song.constant.toFixed(1) + '</td>'}
+                        ${isWeMode ? '' : '<td class="vs-col-const">' + (song.constant ? song.constant.toFixed(1) : '-') + '</td>'}
                 `;
 
                 for (let idx = 1; idx <= totalPlayersCount; idx++) {
