@@ -460,7 +460,7 @@ function updateFilters() {
     if (typeof displayScores === 'function') {
         displayScores(filteredData);
     }
-    
+
     if (typeof updateSortButtonLabels === 'function') {
         updateSortButtonLabels();
     }
@@ -736,14 +736,14 @@ function initFilters() {
     if (sortRatingBtn) {
         sortRatingBtn.addEventListener('click', () => {
             currentSortKey = 'rating';
-            if (typeof updateSortButtonLabels === 'function') updateSortButtonLabels(); 
+            if (typeof updateSortButtonLabels === 'function') updateSortButtonLabels();
             updateFilters();
         });
     }
     if (sortScoreBtn) {
         sortScoreBtn.addEventListener('click', () => {
             currentSortKey = 'techScore';
-            if (typeof updateSortButtonLabels === 'function') updateSortButtonLabels(); 
+            if (typeof updateSortButtonLabels === 'function') updateSortButtonLabels();
             updateFilters();
         });
     }
@@ -1058,7 +1058,7 @@ function displayScores(data) {
     const top30Set = new Set();
     if (selectedTrend) {
         const sourceData = (typeof myCurrentRecords !== "undefined" && Array.isArray(myCurrentRecords) && myCurrentRecords.length > 0)
-            ? myCurrentRecords 
+            ? myCurrentRecords
             : data;
 
         const getRatingVal = (item) => {
@@ -1664,12 +1664,301 @@ async function handlePlayerChange(selectedName) {
     }
 }
 
+let modalRadarChartInstance = null;
+let selectedComparePlayers = []; // 比較対象プレイヤー名の保持用（最大3名）
+
+// 比較対象プレイヤー用カラーパレット
+const COMPARISON_COLORS = [
+    { border: 'rgba(54, 162, 235, 1)', bg: 'rgba(54, 162, 235, 0.15)' },  // 青
+    { border: 'rgba(255, 159, 64, 1)', bg: 'rgba(255, 159, 64, 0.15)' }, // オレンジ
+    { border: 'rgba(75, 192, 192, 1)', bg: 'rgba(75, 192, 192, 0.15)' }   // グリーン
+];
+
 /**
- * タブ内容の生成（ドロップダウンでのプレイヤー切替、平均、左右2列リスト）
+ * 💡 1人のプレイヤーの4傾向（Top 30）の平均値を算出
  */
-function renderTabContent(tabKey) {
+function calcPlayerAbilityAverages(targetData) {
+    if (!Array.isArray(targetData) || targetData.length === 0) {
+        return { tairyoku: 0, kenban: 0, chuni: 0, kuse: 0 };
+    }
+
+    const keys = [
+        { modKey: "tairyoku", rawKey: "rawTairyoku", prop: "tairyoku" },
+        { modKey: "kenban", rawKey: "rawKenban", prop: "kenban" },
+        { modKey: "chuni", rawKey: "rawChuni", prop: "chuni" },
+        { modKey: "kuse", rawKey: "rawKuse", prop: "kuse" }
+    ];
+
+    const result = { tairyoku: 0, kenban: 0, chuni: 0, kuse: 0 };
+
+    keys.forEach(k => {
+        const songs = getTopAbilitySongs(targetData, k.modKey, k.rawKey, 30);
+        const sum = songs.reduce((a, b) => a + (b.calcVal || 0), 0);
+        result[k.prop] = songs.length > 0 ? sum / songs.length : 0;
+    });
+
+    return result;
+}
+
+/**
+ * 💡 特定プレイヤーのレコードを取得（キャッシュがなければGASから取得）
+ */
+async function fetchSinglePlayerData(name) {
+    if (allUsersRecords[name]) return allUsersRecords[name];
+    try {
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ mode: "get_player_data", playerName: name })
+        });
+        const result = await response.json();
+        if (result.status === "success") {
+            allUsersRecords[name] = result.records || [];
+            return allUsersRecords[name];
+        }
+    } catch (e) {
+        console.error(`データ取得失敗 (${name}):`, e);
+    }
+    return [];
+}
+
+/**
+ * 💡 重ね合わせレーダーチャート描画処理（キャンバス競合回避・動的スケール対応版）
+ */
+async function renderOverlappedRadarChart() {
+    const canvas = document.getElementById('modal-radar-canvas-overlapped');
+    if (!canvas) return;
+
+    // 💡 非同期通信中の連続呼び出し対策：キャンバスに紐づく既存チャートを即座に破棄
+    const existingChart = Chart.getChart(canvas);
+    if (existingChart) {
+        existingChart.destroy();
+    }
+
+    const mainName = currentModalPlayerName;
+    const mainData = await fetchSinglePlayerData(mainName);
+    const mainAvg = calcPlayerAbilityAverages(mainData);
+
+    const mainVals = [mainAvg.tairyoku, mainAvg.kenban, mainAvg.chuni, mainAvg.kuse];
+    let allVals = [...mainVals];
+
+    const datasets = [];
+
+    // 1. メインプレイヤー（赤・太線・強調表示）
+    datasets.push({
+        label: `${mainName} (メイン)`,
+        data: mainVals,
+        backgroundColor: 'rgba(255, 71, 87, 0.25)',
+        borderColor: 'rgba(255, 71, 87, 1)',
+        borderWidth: 3,
+        pointBackgroundColor: 'rgba(255, 71, 87, 1)',
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2,
+        pointRadius: 5,
+        order: 0
+    });
+
+    // 2. 比較対象プレイヤー（最大3名）
+    for (let i = 0; i < selectedComparePlayers.length; i++) {
+        const compName = selectedComparePlayers[i];
+        if (compName === mainName) continue;
+
+        const compData = await fetchSinglePlayerData(compName);
+        const compAvg = calcPlayerAbilityAverages(compData);
+        const compVals = [compAvg.tairyoku, compAvg.kenban, compAvg.chuni, compAvg.kuse];
+
+        allVals = allVals.concat(compVals);
+
+        const color = COMPARISON_COLORS[i % COMPARISON_COLORS.length];
+        datasets.push({
+            label: compName,
+            data: compVals,
+            backgroundColor: color.bg,
+            borderColor: color.border,
+            borderWidth: 2,
+            pointBackgroundColor: color.border,
+            pointBorderColor: '#fff',
+            pointBorderWidth: 1.5,
+            pointRadius: 4,
+            order: i + 1
+        });
+    }
+
+    // 💡 非同期処理（await）が終わった直後に再度キャンバスの状態をチェックして破棄
+    const activeChartBeforeCreate = Chart.getChart(canvas);
+    if (activeChartBeforeCreate) {
+        activeChartBeforeCreate.destroy();
+    }
+
+    // スケール範囲の動的算出
+    const rawMin = Math.min(...allVals);
+    const rawMax = Math.max(...allVals);
+    const chartMin = Math.max(0, Math.floor(rawMin) - 1);
+    const chartMax = Math.ceil(rawMax) + 1;
+
+    const diff = chartMax - chartMin;
+    let stepSize = 1;
+    if (diff > 15) stepSize = 5;
+    else if (diff > 8) stepSize = 2;
+
+    modalRadarChartInstance = new Chart(canvas, {
+        type: 'radar',
+        data: {
+            labels: ['POWER', 'NOTES', 'CHUNI', 'TRICKY'],
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: { padding: 12 },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        boxWidth: 12,
+                        padding: 12,
+                        font: { size: 12, weight: 'bold' }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function (context) {
+                            return ` ${context.dataset.label}: ${context.raw.toFixed(2)}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                r: {
+                    angleLines: { display: true, color: 'rgba(0, 0, 0, 0.1)' },
+                    grid: { color: 'rgba(0, 0, 0, 0.08)' },
+                    min: chartMin,
+                    max: chartMax,
+                    ticks: {
+                        stepSize: stepSize,
+                        backdropColor: 'transparent',
+                        font: { size: 10, weight: 'bold' }
+                    },
+                    pointLabels: {
+                        font: { size: 11, weight: 'bold', lineHeight: 1.3 },
+                        textAlign: 'center',
+                        callback: function (label, index) {
+                            const val = mainVals[index] || 0;
+                            return [label, val.toFixed(2)];
+                        },
+                        color: function (context) {
+                            const colors = ['#36a2eb', '#d7a62e', '#239898', '#9966ff'];
+                            return colors[context.index] || '#333';
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+/**
+ * 💡 比較対象プレイヤーの選択変更イベント handler
+ */
+function handleCompareCheckboxChange(checkbox) {
+    const val = checkbox.value;
+    if (checkbox.checked) {
+        if (selectedComparePlayers.length >= 3) {
+            alert("比較対象は最大3名まで選択可能です。");
+            checkbox.checked = false;
+            return;
+        }
+        if (!selectedComparePlayers.includes(val)) {
+            selectedComparePlayers.push(val);
+        }
+    } else {
+        selectedComparePlayers = selectedComparePlayers.filter(name => name !== val);
+    }
+    renderOverlappedRadarChart();
+}
+
+/**
+ * 💡 メインプレイヤーの選択変更イベント handler
+ */
+async function handleRadarMainPlayerChange(val) {
+    currentModalPlayerName = val;
+    // メインプレイヤーと比較対象が重複した場合は選択解除
+    selectedComparePlayers = selectedComparePlayers.filter(name => name !== val);
+    
+    // RADARタブを再描画してコントロール群を更新
+    renderTabContent('radar');
+}
+
+/**
+ * タブ内容の生成（async化）
+ */
+async function renderTabContent(tabKey) {
     const container = document.getElementById('modal-tab-content');
     if (!container) return;
+
+    // 💡 RADAR タブ専用の描画分岐（重ね合わせチャート ＋ 比較選択UI）
+    if (tabKey === 'radar') {
+        const systemSheets = ["VideoRequests", "VideoSupplies", "MasterData", "Template"];
+        let rawList = [];
+        if (typeof allPlayerNames !== 'undefined' && Array.isArray(allPlayerNames)) {
+            rawList = rawList.concat(allPlayerNames);
+        }
+        if (typeof allUsersRecords !== 'undefined') {
+            rawList = rawList.concat(Object.keys(allUsersRecords));
+        }
+
+        let playerList = Array.from(new Set(rawList)).filter(p => p && !systemSheets.includes(p));
+        if (playerList.length === 0) playerList = [currentModalPlayerName];
+
+        // メインプレイヤー用ドロップダウンHTML
+        const mainSelectOptions = playerList.map(name => `
+            <option value="${escapeHtml(name)}" ${name === currentModalPlayerName ? 'selected' : ''}>
+                ${escapeHtml(name)}
+            </option>
+        `).join('');
+
+        // 比較用チェックボックスHTML（メインプレイヤー以外を表示）
+        const compareCheckboxesHtml = playerList
+            .filter(name => name !== currentModalPlayerName)
+            .map(name => {
+                const isChecked = selectedComparePlayers.includes(name) ? 'checked' : '';
+                return `
+                    <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 13px; background: #fff; padding: 4px 8px; border-radius: 4px; border: 1px solid #ddd; cursor: pointer;">
+                        <input type="checkbox" value="${escapeHtml(name)}" ${isChecked} onchange="handleCompareCheckboxChange(this)" />
+                        ${escapeHtml(name)}
+                    </label>
+                `;
+            }).join('');
+
+        container.innerHTML = `
+            <div class="radar-controls" style="background: #f8f9fa; padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #e2e8f0;">
+                <div style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                    <label style="font-weight: bold; font-size: 13px; color: #333; min-width: 130px;">★ メインプレイヤー:</label>
+                    <select class="player-select-dropdown" style="padding: 4px 8px; font-weight: bold;" onchange="handleRadarMainPlayerChange(this.value)">
+                        ${mainSelectOptions}
+                    </select>
+                </div>
+                <div>
+                    <label style="font-weight: bold; font-size: 12px; color: #666; display: block; margin-bottom: 6px;">
+                        比較対象を選択 (最大3名まで):
+                    </label>
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                        ${compareCheckboxesHtml || "<span style='font-size:12px; color:#888;'>比較可能な他プレイヤーがいません</span>"}
+                    </div>
+                </div>
+            </div>
+
+            <div style="position: relative; height: 380px; width: 100%;">
+                <canvas id="modal-radar-canvas-overlapped"></canvas>
+            </div>
+        `;
+
+        requestAnimationFrame(() => {
+            renderOverlappedRadarChart();
+        });
+        return;
+    }
 
     // 💡 選択中のプレイヤーのデータがあればそれを優先、無ければ自分(allRecords)を使用
     let targetData = [];
@@ -1684,6 +1973,30 @@ function renderTabContent(tabKey) {
         return;
     }
 
+    // ドロップダウン選択肢の共通生成
+    const systemSheets = ["VideoRequests", "VideoSupplies", "MasterData", "Template"];
+    let rawList = [];
+    if (typeof allPlayerNames !== 'undefined' && Array.isArray(allPlayerNames)) {
+        rawList = rawList.concat(allPlayerNames);
+    }
+    if (typeof allUsersRecords !== 'undefined') {
+        rawList = rawList.concat(Object.keys(allUsersRecords));
+    }
+
+    let playerList = Array.from(new Set(rawList)).filter(p => p && !systemSheets.includes(p));
+    if (playerList.length === 0) {
+        playerList = [currentModalPlayerName];
+    } else if (currentModalPlayerName && !playerList.includes(currentModalPlayerName)) {
+        playerList.unshift(currentModalPlayerName);
+    }
+
+    const selectOptionsHtml = playerList.map(name => `
+        <option value="${escapeHtml(name)}" ${name === currentModalPlayerName ? 'selected' : ''}>
+            ${escapeHtml(name)}
+        </option>
+    `).join('');
+
+    // --- 以下、既存の曲リスト表示処理 (best, new, power, notes, chuni, tricky) ---
     let songs = [];
     let isRateMode = false;
     let limit = 30;
@@ -1699,8 +2012,8 @@ function renderTabContent(tabKey) {
             colorClass = "color-best";
             columnHeader = "定数";
             songs = targetData.filter(s => !s.isNew)
-                .map(s => ({ 
-                    ...s, 
+                .map(s => ({
+                    ...s,
                     calcVal: floorTo2nd(parseFloat(s.rating) || 0),
                     displayConst: parseFloat(s.const || 0).toFixed(1)
                 }))
@@ -1715,8 +2028,8 @@ function renderTabContent(tabKey) {
             colorClass = "color-new";
             columnHeader = "定数";
             songs = targetData.filter(s => s.isNew)
-                .map(s => ({ 
-                    ...s, 
+                .map(s => ({
+                    ...s,
                     calcVal: floorTo2nd(parseFloat(s.rating) || 0),
                     displayConst: parseFloat(s.const || 0).toFixed(1)
                 }))
@@ -1768,31 +2081,6 @@ function renderTabContent(tabKey) {
     const leftSongs = songs.slice(0, half);
     const rightSongs = songs.slice(half);
 
-    // ドロップダウン選択肢の生成
-    const systemSheets = ["VideoRequests", "VideoSupplies", "MasterData", "Template"];
-    
-    let rawList = [];
-    if (typeof allPlayerNames !== 'undefined' && Array.isArray(allPlayerNames)) {
-        rawList = rawList.concat(allPlayerNames);
-    }
-    if (typeof allUsersRecords !== 'undefined') {
-        rawList = rawList.concat(Object.keys(allUsersRecords));
-    }
-
-    let playerList = Array.from(new Set(rawList)).filter(p => p && !systemSheets.includes(p));
-
-    if (playerList.length === 0) {
-        playerList = [currentModalPlayerName];
-    } else if (currentModalPlayerName && !playerList.includes(currentModalPlayerName)) {
-        playerList.unshift(currentModalPlayerName);
-    }
-
-    const selectOptionsHtml = playerList.map(name => `
-        <option value="${escapeHtml(name)}" ${name === currentModalPlayerName ? 'selected' : ''}>
-            ${escapeHtml(name)}
-        </option>
-    `).join('');
-
     let html = `
         <div class="modal-header-summary">
             <select class="player-select-dropdown" onchange="handlePlayerChange(this.value)">
@@ -1819,7 +2107,7 @@ function renderTabContent(tabKey) {
 function getTopAbilitySongs(data, modKey, rawKey, count) {
     // 💡 参照用マップの構築
     const masterMap = new Map();
-    
+
     // myCurrentRecords や masterDataCache から生定数をキー保持
     if (typeof myCurrentRecords !== 'undefined' && Array.isArray(myCurrentRecords)) {
         myCurrentRecords.forEach(item => {
@@ -2378,7 +2666,7 @@ function renderRankingData(result, title, cleanDiff, songConst, originalDiff, is
         updateRankingVideoSection(finalTitle, isWE ? "WE" : originalDiff);
     }
 
-const subInfoContainer = titleContainer.querySelector('.title-sub-info');
+    const subInfoContainer = titleContainer.querySelector('.title-sub-info');
     if (subInfoContainer) {
         const props = result.songProps || {};
         const colorMap = { 'POWER': '#36a2eb', 'NOTES': '#d7a62e', 'CHUNI': '#239898', 'TRICKY': '#9966ff' };
@@ -5068,8 +5356,8 @@ async function shareToDiscord(modalId = 'rating-modal') {
     const isValidDiscordUrl = (url) => {
         if (!url || typeof url !== 'string') return false;
         const trimmed = url.trim();
-        return trimmed.startsWith('https://discord.com/api/webhooks/') || 
-               trimmed.startsWith('https://canary.discord.com/api/webhooks/');
+        return trimmed.startsWith('https://discord.com/api/webhooks/') ||
+            trimmed.startsWith('https://canary.discord.com/api/webhooks/');
     };
 
     // 保存されているURLが無効な形式の場合はクリア
