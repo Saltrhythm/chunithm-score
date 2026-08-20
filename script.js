@@ -346,7 +346,13 @@ function handleSuccess(result, token) {
     }
 
     if (typeof calculatechuniRate === 'function') calculatechuniRate(result.playerName);
-    if (typeof displayScores === 'function') displayScores(myCurrentRecords);
+
+    // 💡 修正: 直接描画するのではなく、保存されたフィルター・ソートを適用して再描画
+    if (typeof updateFilters === 'function') {
+        updateFilters();
+    } else if (typeof displayScores === 'function') {
+        displayScores(myCurrentRecords);
+    }
 }
 
 
@@ -451,7 +457,9 @@ function updateFilters() {
     if (typeof sortData === 'function') {
         sortData(filteredData);
     }
-    displayScores(filteredData);
+    if (typeof displayScores === 'function') {
+        displayScores(filteredData);
+    }
     
     if (typeof updateSortButtonLabels === 'function') {
         updateSortButtonLabels();
@@ -743,6 +751,7 @@ function initFilters() {
     // 💡 保存されていた設定情報を呼び出して復元
     loadFilterSettings();
 }
+
 // LocalStorage のキー名
 const FILTER_STORAGE_KEY = 'chunirec_filter_settings';
 
@@ -821,8 +830,23 @@ function loadFilterSettings() {
             if (activeTypeBtn) activeTypeBtn.classList.add('active');
         }
 
+        // 💡 修正: 保存されたソートキーを復元し、ボタンの表示状態も更新
         if (settings.currentSortKey !== undefined) {
             currentSortKey = settings.currentSortKey;
+            const sortRatingBtn = document.getElementById('sort-Rating');
+            const sortScoreBtn = document.getElementById('sort-score');
+            if (sortRatingBtn && sortScoreBtn) {
+                if (currentSortKey === 'rating') {
+                    sortRatingBtn.classList.add('active');
+                    sortScoreBtn.classList.remove('active');
+                } else {
+                    sortRatingBtn.classList.remove('active');
+                    sortScoreBtn.classList.add('active');
+                }
+            }
+            if (typeof updateSortButtonLabels === 'function') {
+                updateSortButtonLabels();
+            }
         }
 
         if (Array.isArray(settings.activeDiffs)) {
@@ -864,6 +888,16 @@ function updateSortButtonLabels() {
     const sortScoreBtn = document.getElementById('sort-score');
     if (!sortRatingBtn || !sortScoreBtn) return;
 
+    // currentSortKey の状態に合わせて active クラスを自動切り替え
+    const activeKey = typeof currentSortKey !== 'undefined' ? currentSortKey : 'rating';
+    if (activeKey === 'rating') {
+        sortRatingBtn.classList.add('active');
+        sortScoreBtn.classList.remove('active');
+    } else {
+        sortRatingBtn.classList.remove('active');
+        sortScoreBtn.classList.add('active');
+    }
+
     // 色定義マップ
     const colorMap = {
         'POWER': '#36a2eb',
@@ -893,7 +927,7 @@ function updateSortButtonLabels() {
             sortScoreBtn.style.backgroundColor = '';
             sortScoreBtn.style.color = '';
             sortScoreBtn.style.borderColor = '';
-        } else if (sortScoreBtn.classList.contains('active')) {
+        } else {
             sortScoreBtn.style.backgroundColor = activeColor;
             sortScoreBtn.style.color = '#ffffff';
             sortScoreBtn.style.borderColor = activeColor;
@@ -903,7 +937,7 @@ function updateSortButtonLabels() {
             sortRatingBtn.style.borderColor = '';
         }
     } else {
-        // 💡 傾向OFF時：通常ラベルへ戻し、インラインCSSをクリア（デフォルトの黒背景/白文字に戻る）
+        // 💡 傾向OFF時：通常ラベルへ戻し、インラインCSSをクリア
         sortRatingBtn.textContent = "レート順";
         sortScoreBtn.textContent = "スコア順";
 
@@ -921,6 +955,8 @@ function updateSortButtonLabels() {
 function sortData(data) {
     if (!data || data.length === 0) return;
 
+    const sortKey = typeof currentSortKey !== 'undefined' ? currentSortKey : 'rating';
+
     // 1. 現在アクティブな傾向（POWER, NOTES, CHUNI, TRICKY）を取得
     const trendSwitch = document.getElementById('trend-enable-switch');
     const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
@@ -931,7 +967,7 @@ function sortData(data) {
     data.sort((a, b) => {
         // 💡 傾向フィルターがON（傾向が選択されている）の場合
         if (selectedTrend) {
-            if (currentSortKey === 'rating') {
+            if (sortKey === 'rating') {
                 // 【POWERレート順】スコア補正後の値（tairyoku等）で比較
                 const getRatingVal = (item) => {
                     if (selectedTrend === 'POWER') return parseFloat(item.tairyoku ?? item.rawTairyoku ?? 0);
@@ -960,8 +996,8 @@ function sortData(data) {
                 if (valB !== valA) return valB - valA; // 降順
             }
         } else {
-            // 💡 傾向フィルターがOFFの場合（今まで通り）
-            if (currentSortKey === 'rating') {
+            // 💡 傾向フィルターがOFFの場合
+            if (sortKey === 'rating') {
                 // 【単曲レート順】
                 const ratingA = parseFloat(a.rating) || 0;
                 const ratingB = parseFloat(b.rating) || 0;
@@ -979,6 +1015,221 @@ function sortData(data) {
         const scoreB = parseFloat(b.score) || 0;
         return scoreB - scoreA;
     });
+}
+
+/**
+ * 画面にスコアを表示する
+ */
+function displayScores(data) {
+    console.log("--- displayScores開始 ---");
+
+    const body = document.getElementById('score-body');
+    if (!body) return;
+
+    const colorMap = {
+        'POWER': '#36a2eb',
+        'NOTES': '#d7a62e',
+        'CHUNI': '#239898',
+        'TRICKY': '#9966ff'
+    };
+
+    const sortKey = typeof currentSortKey !== 'undefined' ? currentSortKey : 'rating';
+    const trendSwitch = document.getElementById('trend-enable-switch');
+    const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
+    const activeTrendBtn = isTrendEnabled ? document.querySelector('.btn-trend-filter.active') : null;
+    const selectedTrend = activeTrendBtn ? activeTrendBtn.getAttribute('data-trend') : null;
+
+    const ratingHeader = document.getElementById('rating-header') || document.querySelector('thead th:last-child');
+
+    if (ratingHeader) {
+        if (selectedTrend) {
+            ratingHeader.textContent = `${selectedTrend}値`;
+        } else {
+            ratingHeader.textContent = "単曲レート";
+        }
+    }
+
+    if (!data || data.length === 0) {
+        body.innerHTML = "<tr><td colspan='5'>表示できるデータがありません</td></tr>";
+        return;
+    }
+
+    // 💡 傾向選択時の枠対象（Top 30）の算出：補正後レート値基準に固定
+    const top30Set = new Set();
+    if (selectedTrend) {
+        const sourceData = (typeof myCurrentRecords !== "undefined" && Array.isArray(myCurrentRecords) && myCurrentRecords.length > 0)
+            ? myCurrentRecords 
+            : data;
+
+        const getRatingVal = (item) => {
+            if (selectedTrend === 'POWER') return parseFloat(item.tairyoku ?? item.rawTairyoku ?? 0);
+            if (selectedTrend === 'NOTES') return parseFloat(item.kenban ?? item.rawKenban ?? 0);
+            if (selectedTrend === 'CHUNI') return parseFloat(item.chuni ?? item.rawChuni ?? 0);
+            if (selectedTrend === 'TRICKY') return parseFloat(item.kuse ?? item.rawKuse ?? 0);
+            return 0;
+        };
+
+        [...sourceData]
+            .sort((a, b) => getRatingVal(b) - getRatingVal(a))
+            .slice(0, 30)
+            .forEach(item => {
+                if (item && item.title && item.diff) {
+                    const key = `${item.title}_${item.diff}`;
+                    top30Set.add(key);
+                }
+            });
+    }
+
+    body.innerHTML = "";
+    const fragment = document.createDocumentFragment();
+    const limitedData = data.slice(0, 200);
+
+    const thresholds = window.rateThresholds || {};
+    const new20Thresh = thresholds.new20 ?? Infinity;
+    const best30Thresh = thresholds.best30 ?? Infinity;
+
+    limitedData.forEach((item, index) => {
+        const diffRaw = String(item.diff || "");
+        const diffLower = diffRaw.toLowerCase();
+        const isWE = (diffRaw.toUpperCase() === "WE");
+        const isNew = typeof isNewSongCheck === 'function' ? isNewSongCheck(item.isNew) : Boolean(item.isNew);
+
+        const currentConst = parseFloat(item.const) || 0;
+        const tScore = parseFloat(item.score) || 0;
+        const RatingNum = parseFloat(item.rating) || 0;
+
+        let diffLevelHtml = "";
+        let RatingHtml = "-";
+
+        if (selectedTrend) {
+            let costVal = 0;
+            let ratingVal = 0;
+
+            if (selectedTrend === 'POWER') {
+                costVal = parseFloat(item.rawTairyoku ?? item.tairyoku ?? 0);
+                ratingVal = parseFloat(item.tairyoku ?? item.rawTairyoku ?? 0);
+            } else if (selectedTrend === 'NOTES') {
+                costVal = parseFloat(item.rawKenban ?? item.kenban ?? 0);
+                ratingVal = parseFloat(item.kenban ?? item.rawKenban ?? 0);
+            } else if (selectedTrend === 'CHUNI') {
+                costVal = parseFloat(item.rawChuni ?? item.chuni ?? 0);
+                ratingVal = parseFloat(item.chuni ?? item.rawChuni ?? 0);
+            } else if (selectedTrend === 'TRICKY') {
+                costVal = parseFloat(item.rawKuse ?? item.kuse ?? 0);
+                ratingVal = parseFloat(item.kuse ?? item.rawKuse ?? 0);
+            }
+
+            const activeColor = colorMap[selectedTrend] || "#007aff";
+            const displayCostStr = costVal > 0 ? costVal.toFixed(1) : "-";
+            const coloredCostHtml = `<span style="color: ${activeColor}; font-weight: bold;">${displayCostStr}</span>`;
+
+            if (isWE) {
+                const attr = item.weAttr || item.attribute || "";
+                diffLevelHtml = `WORLD'S END ${attr ? `【${attr}】` : ""}`;
+            } else {
+                diffLevelHtml = `${diffRaw} ${coloredCostHtml}`;
+            }
+
+            const ratingStr = ratingVal > 0 ? ratingVal.toFixed(2) : "-";
+            RatingHtml = `<span style="color: ${activeColor}; font-weight: bold;">${ratingStr}</span>`;
+
+        } else {
+            if (isWE) {
+                const attr = item.weAttr || item.attribute || "";
+                diffLevelHtml = `WORLD'S END ${attr ? `【${attr}】` : ""}`;
+            } else {
+                const displayLevel = currentConst > 0 ? currentConst.toFixed(1) : "-";
+                diffLevelHtml = `${diffRaw} ${displayLevel}`;
+            }
+
+            const ratingStr = (!isWE && RatingNum > 0)
+                ? (Math.floor((RatingNum + 0.000001) * 100) / 100).toFixed(2)
+                : "-";
+            RatingHtml = ratingStr;
+        }
+
+        let lampHtml = "";
+        const totalNotes = parseInt(item.notes ?? item.totalNotes ?? item.combo ?? (item.songProps ? item.songProps.notes : 0) ?? 0, 10);
+        const currentScore = parseInt(item.score || 0, 10);
+        const lampText = item.lamp || "";
+
+        let comboClass = "";
+        if (lampText === "AJC") comboClass = "ajc-badge";
+        else if (lampText === "AJ") comboClass = "aj-badge";
+        else if (lampText === "FC") comboClass = "fc-badge";
+
+        if (totalNotes > 0 && currentScore > 0 && currentScore < 1010000) {
+            const jTotal = ((1010000 - currentScore) * totalNotes) / 10000;
+
+            if (lampText.includes("AJ")) {
+                lampHtml = `<span class="${comboClass}">${lampText}</span>`;
+                const jCount = Math.round(jTotal);
+                if (!lampText.includes("AJC") && jCount > 0) {
+                    lampHtml += `<div class="justice-count" style="font-size: 0.75rem; color: #ff9500; font-weight: bold; margin-top: 2px;">-${jCount}</div>`;
+                }
+            } else if (lampText.includes("FC")) {
+                lampHtml = `<span class="${comboClass}">${lampText}</span>`;
+                if (jTotal >= 51 && jTotal <= 101) {
+                    lampHtml += `<div class="attack-count" style="font-size: 0.75rem; color: #2ecc71; font-weight: bold; margin-top: 2px;">-1</div>`;
+                }
+            } else {
+                if (jTotal >= 101 && jTotal <= 151) {
+                    lampHtml = `<span style="color: #888888; font-weight: bold; font-size: 0.85rem;">-1</span>`;
+                } else {
+                    lampHtml = "-";
+                }
+            }
+        } else if (lampText) {
+            lampHtml = `<span class="${comboClass}">${lampText}</span>`;
+        }
+
+        const newBadge = isNew ? `<span class="new-song-label">NEW</span>` : "";
+
+        let trendHtml = "";
+        if (!selectedTrend && item.mainTrend && item.mainTrend !== "None") {
+            const trendColor = colorMap[item.mainTrend] || "#555";
+            trendHtml = ` / <span style="color: ${trendColor};">${item.mainTrend}</span>`;
+        }
+
+        const tr = document.createElement('tr');
+        tr.className = diffLower;
+        tr.style.cursor = "pointer";
+
+        tr.onclick = () => {
+            if (typeof loadRanking === "function") {
+                loadRanking(item.title, diffRaw, item.const);
+            }
+        };
+
+        if (selectedTrend) {
+            const itemKey = `${item.title}_${item.diff}`;
+            if (top30Set.has(itemKey)) {
+                const trendClass = `is-${selectedTrend.toLowerCase()}-target`;
+                tr.classList.add(trendClass);
+            }
+        } else if (!isWE && RatingNum > 0) {
+            if (isNew && RatingNum >= new20Thresh) {
+                tr.classList.add('is-new-target');
+            } else if (!isNew && RatingNum >= best30Thresh) {
+                tr.classList.add('is-best-target');
+            }
+        }
+
+        tr.innerHTML = `
+            <td class="num-cell">${index + 1}</td> 
+            <td>
+                <div class="title-cell">${newBadge}${item.title || "Unknown"}</div>
+                <div class="diff-level-cell">${diffLevelHtml}${trendHtml}</div>
+            </td>
+            <td class="lamp-cell">${lampHtml}</td>
+            <td class="t-score-cell"><span class="t-score">${tScore.toLocaleString()}</span></td>
+            <td class="t-rating-cell"><span class="t-rating">${RatingHtml}</span></td>
+        `;
+
+        fragment.appendChild(tr);
+    });
+
+    body.appendChild(fragment);
 }
 
 // =================================================================
@@ -1666,225 +1917,6 @@ function buildTableHtml(songList, startRank, isRateMode, colorClass, columnHeade
     return html;
 }
 
-
-/**
- * 画面にスコアを表示する
- */
-function displayScores(data) {
-    console.log("--- displayScores開始 ---");
-
-    const body = document.getElementById('score-body');
-    if (!body) return;
-
-    const colorMap = {
-        'POWER': '#36a2eb',
-        'NOTES': '#d7a62e',
-        'CHUNI': '#239898',
-        'TRICKY': '#9966ff'
-    };
-
-    const trendSwitch = document.getElementById('trend-enable-switch');
-    const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
-    const activeTrendBtn = isTrendEnabled ? document.querySelector('.btn-trend-filter.active') : null;
-    const selectedTrend = activeTrendBtn ? activeTrendBtn.getAttribute('data-trend') : null;
-
-    const ratingHeader = document.getElementById('rating-header') || document.querySelector('thead th:last-child');
-
-    if (ratingHeader) {
-        if (selectedTrend === 'POWER') {
-            ratingHeader.textContent = "POWER値";
-        } else if (selectedTrend === 'NOTES') {
-            ratingHeader.textContent = "NOTES値";
-        } else if (selectedTrend === 'CHUNI') {
-            ratingHeader.textContent = "CHUNI値";
-        } else if (selectedTrend === 'TRICKY') {
-            ratingHeader.textContent = "TRICKY値";
-        } else {
-            ratingHeader.textContent = "単曲レート";
-        }
-    }
-
-    if (!data || data.length === 0) {
-        body.innerHTML = "<tr><td colspan='5'>表示できるデータがありません</td></tr>";
-        return;
-    }
-
-    const top30Set = new Set();
-    if (selectedTrend) {
-        const sourceData = (typeof myCurrentRecords !== "undefined" && Array.isArray(myCurrentRecords) && myCurrentRecords.length > 0)
-            ? myCurrentRecords 
-            : data;
-
-        const getVal = (item) => {
-            if (selectedTrend === 'POWER') return parseFloat(item.tairyoku ?? item.rawTairyoku ?? 0);
-            if (selectedTrend === 'NOTES') return parseFloat(item.kenban ?? item.rawKenban ?? 0);
-            if (selectedTrend === 'CHUNI') return parseFloat(item.chuni ?? item.rawChuni ?? 0);
-            if (selectedTrend === 'TRICKY') return parseFloat(item.kuse ?? item.rawKuse ?? 0);
-            return 0;
-        };
-
-        [...sourceData]
-            .sort((a, b) => getVal(b) - getVal(a))
-            .slice(0, 30)
-            .forEach(item => {
-                if (item && item.title && item.diff) {
-                    const key = `${item.title}_${item.diff}`;
-                    top30Set.add(key);
-                }
-            });
-    }
-
-    body.innerHTML = "";
-    const fragment = document.createDocumentFragment();
-    const limitedData = data.slice(0, 200);
-
-    const thresholds = window.rateThresholds || {};
-    const new20Thresh = thresholds.new20 ?? Infinity;
-    const best30Thresh = thresholds.best30 ?? Infinity;
-
-    limitedData.forEach((item, index) => {
-        const diffRaw = String(item.diff || "");
-        const diffLower = diffRaw.toLowerCase();
-        const isWE = (diffRaw.toUpperCase() === "WE");
-        const isNew = typeof isNewSongCheck === 'function' ? isNewSongCheck(item.isNew) : Boolean(item.isNew);
-
-        const currentConst = parseFloat(item.const) || 0;
-        const tScore = parseFloat(item.score) || 0;
-        const RatingNum = parseFloat(item.rating) || 0;
-
-        let diffLevelHtml = "";
-        let RatingHtml = "-";
-
-        if (selectedTrend) {
-            let costVal = 0;
-            let ratingVal = 0;
-
-            if (selectedTrend === 'POWER') {
-                costVal = parseFloat(item.rawTairyoku ?? item.tairyoku ?? 0);
-                ratingVal = parseFloat(item.tairyoku ?? item.rawTairyoku ?? 0);
-            } else if (selectedTrend === 'NOTES') {
-                costVal = parseFloat(item.rawKenban ?? item.kenban ?? 0);
-                ratingVal = parseFloat(item.kenban ?? item.rawKenban ?? 0);
-            } else if (selectedTrend === 'CHUNI') {
-                costVal = parseFloat(item.rawChuni ?? item.chuni ?? 0);
-                ratingVal = parseFloat(item.chuni ?? item.rawChuni ?? 0);
-            } else if (selectedTrend === 'TRICKY') {
-                costVal = parseFloat(item.rawKuse ?? item.kuse ?? 0);
-                ratingVal = parseFloat(item.kuse ?? item.rawKuse ?? 0);
-            }
-
-            const activeColor = colorMap[selectedTrend] || "#007aff";
-            const displayCostStr = costVal > 0 ? costVal.toFixed(1) : "-";
-            const coloredCostHtml = `<span style="color: ${activeColor}; font-weight: bold;">${displayCostStr}</span>`;
-
-            if (isWE) {
-                const attr = item.weAttr || item.attribute || "";
-                diffLevelHtml = `WORLD'S END ${attr ? `【${attr}】` : ""}`;
-            } else {
-                diffLevelHtml = `${diffRaw} ${coloredCostHtml}`;
-            }
-
-            const ratingStr = ratingVal > 0 ? ratingVal.toFixed(2) : "-";
-            RatingHtml = `<span style="color: ${activeColor}; font-weight: bold;">${ratingStr}</span>`;
-
-        } else {
-            if (isWE) {
-                const attr = item.weAttr || item.attribute || "";
-                diffLevelHtml = `WORLD'S END ${attr ? `【${attr}】` : ""}`;
-            } else {
-                const displayLevel = currentConst > 0 ? currentConst.toFixed(1) : "-";
-                diffLevelHtml = `${diffRaw} ${displayLevel}`;
-            }
-
-            const ratingStr = (!isWE && RatingNum > 0)
-                ? (Math.floor((RatingNum + 0.000001) * 100) / 100).toFixed(2)
-                : "-";
-            RatingHtml = ratingStr;
-        }
-
-        let lampHtml = "";
-        const totalNotes = parseInt(item.notes ?? item.totalNotes ?? item.combo ?? (item.songProps ? item.songProps.notes : 0) ?? 0, 10);
-        const currentScore = parseInt(item.score || 0, 10);
-        const lampText = item.lamp || "";
-
-        let comboClass = "";
-        if (lampText === "AJC") comboClass = "ajc-badge";
-        else if (lampText === "AJ") comboClass = "aj-badge";
-        else if (lampText === "FC") comboClass = "fc-badge";
-
-        if (totalNotes > 0 && currentScore > 0 && currentScore < 1010000) {
-            const jTotal = ((1010000 - currentScore) * totalNotes) / 10000;
-
-            if (lampText.includes("AJ")) {
-                lampHtml = `<span class="${comboClass}">${lampText}</span>`;
-                const jCount = Math.round(jTotal);
-                if (!lampText.includes("AJC") && jCount > 0) {
-                    lampHtml += `<div class="justice-count" style="font-size: 0.75rem; color: #ff9500; font-weight: bold; margin-top: 2px;">-${jCount}</div>`;
-                }
-            } else if (lampText.includes("FC")) {
-                lampHtml = `<span class="${comboClass}">${lampText}</span>`;
-                if (jTotal >= 51 && jTotal <= 101) {
-                    lampHtml += `<div class="attack-count" style="font-size: 0.75rem; color: #2ecc71; font-weight: bold; margin-top: 2px;">-1</div>`;
-                }
-            } else {
-                if (jTotal >= 101 && jTotal <= 151) {
-                    lampHtml = `<span style="color: #888888; font-weight: bold; font-size: 0.85rem;">-1</span>`;
-                } else {
-                    lampHtml = "-";
-                }
-            }
-        } else if (lampText) {
-            lampHtml = `<span class="${comboClass}">${lampText}</span>`;
-        }
-
-        const newBadge = isNew ? `<span class="new-song-label">NEW</span>` : "";
-
-        let trendHtml = "";
-        if (!selectedTrend && item.mainTrend && item.mainTrend !== "None") {
-            const trendColor = colorMap[item.mainTrend] || "#555";
-            trendHtml = ` / <span style="color: ${trendColor};">${item.mainTrend}</span>`;
-        }
-
-        const tr = document.createElement('tr');
-        tr.className = diffLower;
-        tr.style.cursor = "pointer";
-
-        tr.onclick = () => {
-            if (typeof loadRanking === "function") {
-                loadRanking(item.title, diffRaw, item.const);
-            }
-        };
-
-        if (selectedTrend) {
-            const itemKey = `${item.title}_${item.diff}`;
-            if (top30Set.has(itemKey)) {
-                const trendClass = `is-${selectedTrend.toLowerCase()}-target`;
-                tr.classList.add(trendClass);
-            }
-        } else if (!isWE && RatingNum > 0) {
-            if (isNew && RatingNum >= new20Thresh) {
-                tr.classList.add('is-new-target');
-            } else if (!isNew && RatingNum >= best30Thresh) {
-                tr.classList.add('is-best-target');
-            }
-        }
-
-        tr.innerHTML = `
-            <td class="num-cell">${index + 1}</td> 
-            <td>
-                <div class="title-cell">${newBadge}${item.title || "Unknown"}</div>
-                <div class="diff-level-cell">${diffLevelHtml}${trendHtml}</div>
-            </td>
-            <td class="lamp-cell">${lampHtml}</td>
-            <td class="t-score-cell"><span class="t-score">${tScore.toLocaleString()}</span></td>
-            <td class="t-rating-cell"><span class="t-rating">${RatingHtml}</span></td>
-        `;
-
-        fragment.appendChild(tr);
-    });
-
-    body.appendChild(fragment);
-}
 
 /**
  * 選曲中の演出付きランダム選出（難易度マルチセレクト＆WE対応完全版）
