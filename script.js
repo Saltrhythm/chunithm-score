@@ -1185,10 +1185,30 @@ function displayScores(data) {
 
         const newBadge = isNew ? `<span class="new-song-label">NEW</span>` : "";
 
+        // 💡 生コスト（raw値）を取得して優先度（TRICKY > POWER > CHUNI > NOTES）に従い表示
         let trendHtml = "";
-        if (!selectedTrend && item.mainTrend && item.mainTrend !== "None") {
-            const trendColor = colorMap[item.mainTrend] || "#555";
-            trendHtml = ` / <span style="color: ${trendColor};">${item.mainTrend}</span>`;
+        if (!selectedTrend) {
+            const rawTricky = parseFloat(item.rawKuse ?? item.kuse ?? 0);
+            const rawPower = parseFloat(item.rawTairyoku ?? item.tairyoku ?? 0);
+            const rawChuni = parseFloat(item.rawChuni ?? item.chuni ?? 0);
+            const rawNotes = parseFloat(item.rawKenban ?? item.kenban ?? 0);
+
+            const maxRawVal = Math.max(rawTricky, rawPower, rawChuni, rawNotes);
+
+            let mainTrendTrend = "None";
+            if (maxRawVal > 0) {
+                if (rawTricky === maxRawVal) mainTrendTrend = 'TRICKY';
+                else if (rawPower === maxRawVal) mainTrendTrend = 'POWER';
+                else if (rawChuni === maxRawVal) mainTrendTrend = 'CHUNI';
+                else if (rawNotes === maxRawVal) mainTrendTrend = 'NOTES';
+            } else if (item.mainTrend && item.mainTrend !== "None") {
+                mainTrendTrend = item.mainTrend;
+            }
+
+            if (mainTrendTrend !== "None") {
+                const trendColor = colorMap[mainTrendTrend] || "#555";
+                trendHtml = ` / <span style="color: ${trendColor};">${mainTrendTrend}</span>`;
+            }
         }
 
         const tr = document.createElement('tr');
