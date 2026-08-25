@@ -35,8 +35,17 @@
     <!-- スコア表示画面 -->
     <div id="main-screen" style="display: none;">
 
-        <h1>ウニスコア管理ツール</h1>
-
+        <!-- 💡 ヘッダーエリア（左上ビンゴボタン＋タイトル） -->
+        <div class="header-container"
+            style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+            <button id="open-bingo-btn" class="bingo-icon-btn" onclick="openBingoModal()"
+                style="padding: 8px 12px; font-weight: bold; cursor: pointer; border-radius: 8px; border: 2px solid #ff9800; background: #fff3e0; color: #e65100; display: flex; align-items: center; gap: 5px; flex-shrink: 0;">
+                🎯 <span>ビンゴ</span>
+            </button>
+            <h1 style="margin: 0; font-size: clamp(1.2rem, 5vw, 2rem); text-align: center; flex: 1;">ウニスコア管理ツール</h1>
+            <!-- 左ボタンとの左右バランスを取るための余白調整用ダミー（幅をボタンと同等に） -->
+            <div style="width: 80px; flex-shrink: 0;" class="header-spacer"></div>
+        </div>
 
         <div class="button-group">
             <button onclick="refreshScores()" class="nav-item active refresh-btn">データを再同期</button>
@@ -596,10 +605,328 @@
     </div>
     <datalist id="song-suggestions"></datalist>
 
+    <!-- 💡 ビンゴカード表示用モーダル（一般用） -->
+    <div id="bingo-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header header-orange">
+                <h2 class="modal-title color-orange">イベントビンゴカード</h2>
+                <div class="modal-header-actions">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="fetchBingoData()">更新</button>
+                    <button type="button" class="btn btn-danger-light btn-sm"
+                        onclick="openBingoAdminModal()">管理</button>
+                    <button type="button" class="btn-close" onclick="closeBingoModal()"
+                        aria-label="閉じる">&times;</button>
+                </div>
+            </div>
+
+            <!-- 💡 modal-body で囲むことで中身のみスクロール可能にします -->
+            <div class="modal-body">
+                <div id="bingo-board" class="bingo-grid-container">
+                    <!-- JSによりビンゴマスが描画されます -->
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-dark" onclick="closeBingoModal()">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 💡 管理者用 ビンゴ設定モーダル -->
+    <div id="bingo-admin-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content max-w-720">
+            <div class="modal-header header-red">
+                <h3 class="modal-title color-red">ビンゴ管理者設定</h3>
+                <button type="button" class="btn-close" onclick="closeBingoAdminModal()"
+                    aria-label="閉じる">&times;</button>
+            </div>
+
+            <!-- 💡 設定エリア全体を modal-body で囲み、ヘッダー・フッターを固定化 -->
+            <div class="modal-body">
+                <!-- 💡 新規カード作成 ＆ 条件プール管理エリア -->
+                <div class="admin-section bg-orange-light border-orange-light">
+                    <div class="admin-section-header">
+                        <h4 class="section-title color-orange-dark">新規ビンゴカード生成（条件プール設定）</h4>
+                    </div>
+
+                    <div id="admin-rules-form">
+                        <!-- JSにより条件追加フォームおよび設定済みリストが描画されます -->
+                    </div>
+
+                    <button id="submit-create-bingo-btn" class="btn btn-primary-orange btn-block"
+                        onclick="submitCreateNewBingo(this)" disabled>
+                        新規カードを発行してビンゴを開始
+                    </button>
+                </div>
+
+                <!-- 💡 管理者用：25マス開栓作業エリア -->
+                <div class="admin-section bg-gray-light border-gray">
+                    <div class="admin-section-header">
+                        <h4 class="section-title color-dark">管理画面専用 25マスビンゴカード</h4>
+                    </div>
+
+                    <div id="admin-bingo-board" class="bingo-grid-container">
+                        <!-- JSにより管理用盤面が描画されます -->
+                    </div>
+                </div>
+
+                <!-- 💡 手動アサイン機能（2曲＆ベスト枠上限対応） -->
+                <div class="admin-section bg-gray-subtle border-gray-light">
+                    <h4 class="section-title color-blue margin-b-10">マスへの個別指定アサイン（手動調整用）</h4>
+
+                    <!-- 対象マスの選択 ＆ ベスト枠上限調整 -->
+                    <div class="form-row-compact bg-white border-light margin-b-12">
+                        <div class="form-group-inline">
+                            <label for="admin-cell-index" class="form-label">対象マス:</label>
+                            <select id="admin-cell-index" class="form-select font-bold">
+                                <option value="0">No.1</option>
+                                <option value="1">No.2</option>
+                                <option value="2">No.3</option>
+                                <option value="3">No.4</option>
+                                <option value="4">No.5</option>
+                                <option value="5">No.6</option>
+                                <option value="6">No.7</option>
+                                <option value="7">No.8</option>
+                                <option value="8">No.9</option>
+                                <option value="9">No.10</option>
+                                <option value="10">No.11</option>
+                                <option value="11">No.12</option>
+                                <option value="12" disabled>No.13 (※FREEマス)</option>
+                                <option value="13">No.14</option>
+                                <option value="14">No.15</option>
+                                <option value="15">No.16</option>
+                                <option value="16">No.17</option>
+                                <option value="17">No.18</option>
+                                <option value="18">No.19</option>
+                                <option value="19">No.20</option>
+                                <option value="20">No.21</option>
+                                <option value="21">No.22</option>
+                                <option value="22">No.23</option>
+                                <option value="23">No.24</option>
+                                <option value="24">No.25</option>
+                            </select>
+                        </div>
+                        <div class="form-group-inline">
+                            <label for="admin-cell-max-rating" class="form-label">ベスト枠上限:</label>
+                            <input type="number" id="admin-cell-max-rating" class="form-input input-w-80" step="0.01"
+                                placeholder="制限なし">
+                        </div>
+                    </div>
+
+                    <!-- 1曲目入力エリア -->
+                    <div class="sub-label color-green">【1曲目】（必須）</div>
+                    <div class="form-row margin-b-12">
+                        <input type="text" id="admin-song-title" class="form-input flex-1 min-w-140"
+                            placeholder="1曲目の曲名">
+                        <select id="admin-song-diff" class="form-select">
+                            <option value="MAS">MAS</option>
+                            <option value="ULT">ULT</option>
+                            <option value="EXP">EXP</option>
+                            <option value="WE">WE</option>
+                        </select>
+                        <input type="number" id="admin-song-const" class="form-input input-w-70" step="0.1"
+                            placeholder="定数">
+                    </div>
+
+                    <!-- 2曲目入力エリア -->
+                    <div class="sub-label color-red-dark">【2曲目】（任意 / OR条件）</div>
+                    <div class="form-row margin-b-12">
+                        <input type="text" id="admin-song2-title" class="form-input flex-1 min-w-140"
+                            placeholder="2曲目の曲名（なしの場合は空欄）">
+                        <select id="admin-song2-diff" class="form-select">
+                            <option value="MAS">MAS</option>
+                            <option value="ULT">ULT</option>
+                            <option value="EXP">EXP</option>
+                            <option value="WE">WE</option>
+                        </select>
+                        <input type="number" id="admin-song2-const" class="form-input input-w-70" step="0.1"
+                            placeholder="定数">
+                    </div>
+
+                    <!-- 達成条件入力エリア -->
+                    <div class="sub-label color-blue-light">【達成条件】（任意 / 未入力時は既存条件または「手動設定」）</div>
+                    <div class="form-row margin-b-12">
+                        <input type="text" id="admin-condition1" class="form-input flex-1 min-w-160"
+                            placeholder="1曲目の達成条件 (例: AJ / SSS / 990,000)">
+                        <input type="text" id="admin-condition2" class="form-input flex-1 min-w-160"
+                            placeholder="2曲目の達成条件 (空欄時は1曲目と同じ)">
+                    </div>
+
+                    <div class="form-actions-split">
+                        <span class="text-note">※2曲目を空欄にして設定すると1曲目のみのマスになります</span>
+                        <button type="button" class="btn btn-primary-blue" onclick="handleManualAdminAssign()">
+                            手動設定を実行
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 💡 手動クリアステータス管理（楽曲選択 ＆ 条件自動判定対応） -->
+                <div class="admin-section bg-green-subtle border-green-light margin-t-16">
+                    <h4 class="section-title color-green-dark margin-b-10">個別プレイヤー 達成ステータス手動管理</h4>
+
+                    <!-- 1行目: マス選択 & プレイヤー名 -->
+                    <div class="form-row-compact bg-white border-light margin-b-12">
+                        <div class="form-group-inline">
+                            <label for="admin-clear-cell-index" class="form-label">対象マス:</label>
+                            <select id="admin-clear-cell-index" class="form-select font-bold"
+                                onchange="updateAdminClearFormState()">
+                                <option value="0">No.1</option>
+                                <option value="1">No.2</option>
+                                <option value="2">No.3</option>
+                                <option value="3">No.4</option>
+                                <option value="4">No.5</option>
+                                <option value="5">No.6</option>
+                                <option value="6">No.7</option>
+                                <option value="7">No.8</option>
+                                <option value="8">No.9</option>
+                                <option value="9">No.10</option>
+                                <option value="11">No.12</option>
+                                <option value="12" disabled>No.13 (※FREEマス)</option>
+                                <option value="13">No.14</option>
+                                <option value="13">No.14</option>
+                                <option value="14">No.15</option>
+                                <option value="15">No.16</option>
+                                <option value="16">No.17</option>
+                                <option value="17">No.18</option>
+                                <option value="18">No.19</option>
+                                <option value="19">No.20</option>
+                                <option value="20">No.21</option>
+                                <option value="21">No.22</option>
+                                <option value="22">No.23</option>
+                                <option value="23">No.24</option>
+                                <option value="24">No.25</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group-inline flex-1 min-w-160">
+                            <label for="admin-clear-player-name" class="form-label">対象プレイヤー名:</label>
+                            <input type="text" id="admin-clear-player-name" class="form-input flex-1"
+                                placeholder="プレイヤー名を入力（必須）" oninput="updateAdminClearFormState()">
+                        </div>
+                    </div>
+
+                    <!-- 2行目: 対象楽曲 ＆ 達成スコア ＆ 達成ランプ ＆ ボタン -->
+                    <div class="form-row margin-b-10">
+                        <div class="form-group-inline flex-1 min-w-160">
+                            <label for="admin-clear-song-select" class="form-label">対象楽曲:</label>
+                            <select id="admin-clear-song-select" class="form-select flex-1"
+                                onchange="updateAdminClearFormState()">
+                            </select>
+                        </div>
+
+                        <div class="form-group-inline">
+                            <label for="admin-clear-score" class="form-label">達成スコア (任意):</label>
+                            <input type="number" id="admin-clear-score" class="form-input input-w-140"
+                                placeholder="例: 1009950">
+                        </div>
+
+                        <!-- ★ 追加: 達成ランプの選択肢 -->
+                        <div class="form-group-inline">
+                            <label for="admin-clear-lamp" class="form-label">ランプ:</label>
+                            <select id="admin-clear-lamp" class="form-select font-bold">
+                                <option value="AJ">AJ (ALL JUSTICE)</option>
+                                <option value="FC">FC (FULL COMBO)</option>
+                                <option value="CLEAR" selected>CLEAR</option>
+                            </select>
+                        </div>
+
+                        <div class="button-group margin-l-auto">
+                            <button type="button" class="btn btn-danger-subtle"
+                                onclick="handleManualClearAction('remove')">
+                                クリア取り消し
+                            </button>
+                            <button type="button" class="btn btn-primary-green"
+                                onclick="handleManualClearAction('add')">
+                                達成として登録
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 3行目: 注記 -->
+                    <div class="text-note">
+                        ※指定した条件・ベ枠上限を満たしている場合のみ登録を実行します
+                    </div>
+                </div>
+
+                <!-- 💡 FREEマス（中央マス）専用スコア・目標管理エリア -->
+                <div class="admin-section bg-yellow-subtle border-yellow-light margin-t-16">
+                    <h4 class="section-title color-orange-dark margin-b-10">FREE（中央）マス 協力型イベント設定・スコア管理</h4>
+
+                    <!-- 1行目: 課題曲名 & 目標スコア -->
+                    <div class="form-row margin-b-12">
+                        <div class="form-group-inline flex-1 min-w-160">
+                            <label for="admin-free-song-title" class="form-label">課題名 / 楽曲名:</label>
+                            <input type="text" id="admin-free-song-title" class="form-input flex-1"
+                                placeholder="例: 全員で1,000万点目指せ！">
+                        </div>
+                        <div class="form-group-inline">
+                            <label for="admin-free-target-score" class="form-label">目標スコア:</label>
+                            <input type="number" id="admin-free-target-score" class="form-input input-w-140"
+                                placeholder="例: 10000000">
+                        </div>
+                    </div>
+
+                    <!-- 2行目: プレイヤー成果ログの登録 -->
+                    <div class="form-row margin-b-10">
+                        <div class="form-group-inline">
+                            <label for="admin-free-player-name" class="form-label">プレイヤー名:</label>
+                            <input type="text" id="admin-free-player-name" class="form-input input-w-140"
+                                placeholder="例: プレイヤーA">
+                        </div>
+                        <div class="form-group-inline">
+                            <label for="admin-free-player-score" class="form-label">獲得スコア:</label>
+                            <input type="number" id="admin-free-player-score" class="form-input input-w-140"
+                                placeholder="例: 10000">
+                        </div>
+
+                        <div class="button-group margin-l-auto">
+                            <button type="button" class="btn btn-primary-orange" onclick="handleAdminFreeScoreUpdate()">
+                                FREEマス情報を更新
+                            </button>
+                        </div>
+                    </div>
+                    <div class="text-note">
+                        ※同一プレイヤー名で登録した場合、スコアは最新の値に上書きされ、全員の合計値が自動計算されます。
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary font-bold" onclick="closeBingoAdminModal()">
+                    閉じる
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 💡 マス達成者一覧モーダル（新規追加） -->
+    <div id="bingo-cleared-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content max-w-420">
+            <div class="modal-header header-orange">
+                <h3 id="cleared-modal-title" class="modal-title color-orange">
+                    No.- マス 達成者一覧
+                </h3>
+                <button type="button" class="btn-close" onclick="closeBingoClearedModal()"
+                    aria-label="閉じる">&times;</button>
+            </div>
+
+            <div class="modal-body">
+                <ul id="cleared-players-list" class="cleared-list">
+                    <!-- JSにより達成者のリスト（名前・日時・楽曲・スコア）が挿入されます -->
+                </ul>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-dark" onclick="closeBingoClearedModal()">閉じる</button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <!-- 例: ?v=1.1 のようにバージョン番号を付けて保存・Pushする -->
     <script src="script.js?v=1.1"></script>
-    
+
 </body>
 
 </html>

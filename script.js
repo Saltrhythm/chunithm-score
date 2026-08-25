@@ -27,12 +27,6 @@ let currentDisplayType = 'count'; // 'count' (数) または 'avg' (平均)
 let currentDenominator = 0;       // 母数（達成率計算用）
 let lastStatsResponse = null; // GASの結果を保持する
 
-/**
- * 起動時に実行
- */
-window.onload = function () {
-    initFilters();
-};
 
 /**
  * 強制ログアウト処理（端末のキャッシュを完全消去してログイン画面へ戻す）
@@ -55,129 +49,6 @@ function clearUserCache() {
     if (tokenScreen) tokenScreen.style.display = "block";
 }
 
-/**
- * 💡 ページ読み込み完了時の初期化・統合処理
- */
-document.addEventListener('DOMContentLoaded', async () => {
-    // 1. プレイヤー選択用セレクトボックス一覧の取得
-    if (typeof fetchPlayerNames === 'function') {
-        await fetchPlayerNames();
-    }
-
-    // URLパラメータのチェック（ブックマークレットからの自動遷移時: ?player=〇〇）
-    const urlParams = new URLSearchParams(window.location.search);
-    const targetPlayerFromUrl = urlParams.get("player");
-
-    // 保存されているトークンとキャッシュの取得
-    const savedToken = localStorage.getItem('chunirec_token');
-    const cachedData = localStorage.getItem('chunirec_scores');
-    const savedName = localStorage.getItem('chunirec_player_name');
-
-    // トークンフォームの初期値復元
-    const tokenInput = document.getElementById('token-input');
-    if (tokenInput && savedToken) {
-        tokenInput.value = savedToken;
-    }
-
-    // -------------------------------------------------------------------------
-    // ⚠️ 安全ガード：トークンが未登録の場合は完全ブロック
-    // -------------------------------------------------------------------------
-    if (!savedToken) {
-        console.warn("トークン未登録のため利用をブロックしました。");
-
-        // アドレスバーのパラメータ削除
-        if (targetPlayerFromUrl) {
-            window.history.replaceState({}, document.title, window.location.pathname);
-        }
-
-        // 画面初期化（トークン入力画面を表示、メイン画面を非表示）
-        const tokenScreen = document.getElementById("token-screen");
-        const mainScreen = document.getElementById("main-screen");
-        if (tokenScreen) tokenScreen.style.display = "block";
-        if (mainScreen) mainScreen.style.display = "none";
-
-        // エラーメッセージダイアログを表示
-        alert("【エラー】トークンが設定されていません。\n本ツールの利用には管理者による「UserMap」への承認登録が必要です。\n管理者に承認を依頼のうえ、トークンを設定してご利用ください。");
-        return;
-    }
-
-    // =========================================================================
-    // パターンA: ブックマークレットから遷移してきた場合 (?player=〇〇)
-    // =========================================================================
-    if (targetPlayerFromUrl) {
-        console.log(`ブックマークレットからの遷移を検出: ${targetPlayerFromUrl}`);
-
-        // 古い画面キャッシュを削除
-        localStorage.removeItem('chunirec_scores');
-        localStorage.setItem('chunirec_player_name', targetPlayerFromUrl);
-
-        // 画面切り替え（トークン画面を隠してメイン画面を表示）
-        const tokenScreen = document.getElementById("token-screen");
-        const mainScreen = document.getElementById("main-screen");
-        if (tokenScreen) tokenScreen.style.display = "none";
-        if (mainScreen) mainScreen.style.display = "block";
-
-        // URLパラメータを削除してアドレスバーを整形（?player=〇〇 を消す）
-        window.history.replaceState({}, document.title, window.location.pathname);
-
-        // 💡 トークンが存在するため自動で完全再同期を実行
-        if (typeof loadScores === 'function') {
-            console.log("全データの自動再同期を開始します...");
-
-            const btn = document.querySelector('.refresh-btn');
-            let originalText = "";
-            if (btn) {
-                originalText = btn.innerText;
-                btn.disabled = true;
-                btn.innerText = "自動同期中...";
-            }
-
-            const isSuccess = await loadScores();
-
-            if (btn) {
-                btn.disabled = false;
-                btn.innerText = originalText;
-            }
-
-            if (!isSuccess) {
-                alert("自動同期に失敗しました。トークンがUserMapに登録されているか確認してください。");
-            }
-        }
-        return;
-    }
-
-    // =========================================================================
-    // パターンB: 通常アクセス（トークンあり → 自動再同期）
-    // =========================================================================
-    console.log("トークンを検出しました。自動再同期を開始します...");
-
-    const btn = document.querySelector('.refresh-btn');
-    let originalText = "";
-    if (btn) {
-        originalText = btn.innerText;
-        btn.disabled = true;
-        btn.innerText = "自動同期中...";
-    }
-
-    await new Promise(resolve => setTimeout(resolve, 50));
-
-    let isSuccess = false;
-    if (typeof loadScores === 'function') {
-        isSuccess = await loadScores();
-    }
-
-    if (btn) {
-        btn.disabled = false;
-        btn.innerText = originalText;
-    }
-
-    if (isSuccess) {
-        console.log("起動時自動同期が正常完了しました");
-    } else {
-        console.warn("起動時自動同期に失敗しました");
-    }
-});
-
 function toggleTokenVisibility() {
     const input = document.getElementById("token-input");
     const btn = document.getElementById("toggle-token");
@@ -193,6 +64,3307 @@ function toggleTokenVisibility() {
     } else {
         input.type = "password";
         btn.innerText = "👁️";
+    }
+}
+
+
+/**
+ * HTMLエスケープ処理関数
+ */
+function escapeHTML(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// --------------------------------------------------------------------------
+// グローバル変数定義（最上部に配置）
+// --------------------------------------------------------------------------
+let allScores = []; // スプレッドシート(MasterData)から取得した楽曲データベース
+let adminConditionPool = [];
+let currentBingoState = null;
+
+document.addEventListener('DOMContentLoaded', async () => {
+    // 💡 1. フィルターの初期設定（0件表示エラーを防ぐため最初に実行）
+    if (typeof initFilters === 'function') {
+        initFilters();
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const targetPlayerFromUrl = urlParams.get("player");
+    const savedToken = localStorage.getItem('chunirec_token');
+
+    const tokenInput = document.getElementById('token-input');
+    if (tokenInput && savedToken) {
+        tokenInput.value = savedToken;
+    }
+
+    if (!savedToken) {
+        console.warn("トークン未登録のため利用をブロックしました。");
+        if (targetPlayerFromUrl) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+        document.getElementById("token-screen")?.style.setProperty('display', 'block');
+        document.getElementById("main-screen")?.style.setProperty('display', 'none');
+        alert("【エラー】トークンが設定されていません。");
+        return;
+    }
+
+    // トークンが存在する場合：メイン画面を表示
+    document.getElementById("token-screen")?.style.setProperty('display', 'none');
+    document.getElementById("main-screen")?.style.setProperty('display', 'block');
+
+    if (targetPlayerFromUrl) {
+        localStorage.removeItem('chunirec_scores');
+        localStorage.setItem('chunirec_player_name', targetPlayerFromUrl);
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    // 💡 2. 保存済みスコア（LocalStorage）を復元して画面に再描画
+    if (typeof loadSavedScoresFromLocalStorage === 'function') {
+        loadSavedScoresFromLocalStorage();
+    }
+
+    // 💡 3. キャッシュからビンゴ状態を読み込み（無ければGASから取得）
+    if (typeof loadBingoDataFromCache === 'function') {
+        if (!loadBingoDataFromCache() && typeof fetchBingoData === 'function') {
+            fetchBingoData().catch(err => console.error("ビンゴデータ初期読み込みエラー:", err));
+        }
+    }
+});
+
+/**
+ * 💡 保存済みスコア（LocalStorage）を復元して再描画する関数
+ */
+function loadSavedScoresFromLocalStorage() {
+    const savedScoresStr = localStorage.getItem('chunirec_scores');
+    const savedPlayerName = localStorage.getItem('chunirec_player_name');
+
+    if (savedScoresStr) {
+        try {
+            // グローバル変数のスコア配列を復元
+            myCurrentRecords = JSON.parse(savedScoresStr);
+
+            // プレイヤー選択セレクトボックスの表示合わせ
+            const playerSelect = document.getElementById("playerSelect");
+            if (playerSelect && savedPlayerName) {
+                playerSelect.value = savedPlayerName;
+            }
+
+            // レート計算
+            if (typeof calculatechuniRate === 'function' && savedPlayerName) {
+                calculatechuniRate(savedPlayerName);
+            }
+
+            // スコア一覧の再描画
+            if (typeof updateFilters === 'function') {
+                updateFilters();
+            } else if (typeof displayScores === 'function') {
+                displayScores(myCurrentRecords);
+            }
+        } catch (e) {
+            console.error("保存済みスコアデータの復元に失敗しました:", e);
+        }
+    }
+}
+
+const BINGO_CURRENT_CARD_STATE_KEY = "BINGO_CURRENT_CARD_STATE";
+
+/**
+ * ビンゴの全状態（条件プール ＋ 各セルの開栓状態・2楽曲情報）を一元保存
+ * @param {Object} [state] 保存するステート（指定がない場合は currentBingoState を使用）
+ */
+function saveBingoStateToStorage(state = currentBingoState) {
+    try {
+        if (!state) return;
+
+        // adminConditionPool が設定されている場合は最新化して保持
+        const stateToSave = {
+            ...state,
+            conditionPool: (Array.isArray(adminConditionPool) && adminConditionPool.length > 0)
+                ? adminConditionPool
+                : (state.conditionPool || [])
+        };
+
+        localStorage.setItem(BINGO_CURRENT_CARD_STATE_KEY, JSON.stringify(stateToSave));
+
+        // 互換性のために旧キー（条件用）側も同時に最新化
+        if (typeof BINGO_CONDITION_STORAGE_KEY !== "undefined") {
+            localStorage.setItem(BINGO_CONDITION_STORAGE_KEY, JSON.stringify(stateToSave.conditionPool));
+        }
+    } catch (e) {
+        console.error("ビンゴ状態の一元保存に失敗しました:", e);
+    }
+}
+
+/**
+ * 保持されている前回データ（条件プール ＋ 各セルの開栓状態・2楽曲情報）を一元復元
+ */
+function loadPreviousBingoState() {
+    try {
+        let savedData = localStorage.getItem(BINGO_CURRENT_CARD_STATE_KEY);
+        let parsedState = savedData ? JSON.parse(savedData) : null;
+
+        if (!parsedState && typeof BINGO_CONDITION_STORAGE_KEY !== "undefined") {
+            const legacyCondition = localStorage.getItem(BINGO_CONDITION_STORAGE_KEY);
+            if (legacyCondition) {
+                parsedState = { conditionPool: JSON.parse(legacyCondition), cells: [] };
+            }
+        }
+
+        if (!parsedState) {
+            if (currentBingoState && currentBingoState.conditionPool) {
+                parsedState = currentBingoState;
+            } else {
+                alert("保持されている前回のデータが見つかりませんでした。");
+                return false;
+            }
+        }
+
+        // 💡 データの正規化とセット（2曲構成・NULL許容の整合性を確保）
+        currentBingoState = {
+            ...parsedState,
+            cells: (parsedState.cells || []).map(cell => ({
+                ...cell,
+                isOpened: cell.isOpened || false,
+                song: cell.song || null,       // 曲1 (title, diff, const)
+                song2: cell.song2 || null,     // 曲2 (title, diff, const)
+                condition: cell.condition || cell.condition1 || "",
+                condition1: cell.condition1 || cell.condition || "",
+                condition2: cell.condition2 || cell.condition || "",
+                minConst1: cell.minConst1 ?? cell.minConst ?? 0,
+                maxConst1: cell.maxConst1 ?? cell.maxConst ?? 0,
+                minConst2: cell.minConst2 !== undefined ? cell.minConst2 : null,
+                maxConst2: cell.maxConst2 !== undefined ? cell.maxConst2 : null,
+                isWE: Boolean(cell.isWE),
+                isWE2: Boolean(cell.isWE2)
+            })),
+            conditionPool: (parsedState.conditionPool || []).map(item => {
+                const min1 = item.minConst1 ?? item.minConst ?? 0;
+                const max1 = item.maxConst1 ?? item.maxConst ?? 0;
+                return {
+                    ...item,
+                    minConst1: min1,
+                    maxConst1: max1,
+                    minConst: min1,
+                    maxConst: max1,
+                    minConst2: item.minConst2 !== undefined ? item.minConst2 : null,
+                    maxConst2: item.maxConst2 !== undefined ? item.maxConst2 : null,
+                    condition: item.condition || item.condition1 || "",
+                    condition1: item.condition1 || item.condition || "",
+                    condition2: item.condition2 || item.condition || "",
+                    maxBestAvg: item.maxBestAvg || item.maxRatingLimit || null,
+                    count: item.total || item.count || 0,
+                    isWE: Boolean(item.isWE),
+                    isWE2: Boolean(item.isWE2)
+                };
+            })
+        };
+
+        // 管理フォーム用の変数も同時同期
+        adminConditionPool = currentBingoState.conditionPool;
+
+        // 画面の再描画を一括実行（関数名の揺れに対応）
+        if (typeof renderUserBingoBoard === "function") renderUserBingoBoard(currentBingoState);
+        if (typeof renderAdminBingoBoard === "function") renderAdminBingoBoard(currentBingoState);
+        if (typeof renderAdminRulesForm === "function") renderAdminRulesForm();
+
+        if (typeof updateAdminClearSongOptions === "function") updateAdminClearSongOptions();
+
+        alert("前回保存されたデータ（条件設定および選出楽曲情報）を復元しました。");
+        return true;
+
+    } catch (e) {
+        console.error("ビンゴ状態の復元に失敗しました:", e);
+        alert("データの復元中にエラーが発生しました。");
+        return false;
+    }
+}
+
+async function fetchAllSongMaster() {
+    try {
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ mode: "get_all_songs" })
+        });
+
+        const result = await response.json();
+        const songList = result.data || result.songs;
+
+        if (result.status === "success" && Array.isArray(songList)) {
+            allScores = songList;
+            console.log("楽曲マスター(GASから取得完了):", allScores.length, "件");
+        } else {
+            console.warn("楽曲マスターの取得に失敗、またはデータが空です:", result.message);
+        }
+    } catch (e) {
+        console.error("楽曲マスター通信エラー:", e);
+    }
+}
+
+// ==========================================================================
+// ビンゴ機能 コア処理
+// ==========================================================================
+
+// 共通ヘルパー: WE（WORLD'S END）難易度判定
+function isWEDiff(diff) {
+    if (!diff) return false;
+    const d = String(diff).toUpperCase();
+    return d === "WE" || d === "WORLD'S END" || d === "WORLDS END";
+}
+
+/**
+ * 💡 キャッシュ（LocalStorage）からビンゴ状態を読み込んで描画する（通信なし）
+ */
+function loadBingoDataFromCache() {
+    const cachedDataStr = localStorage.getItem('bingo_data_cache');
+    if (!cachedDataStr) return false;
+
+    try {
+        const cachedData = JSON.parse(cachedDataStr);
+        currentBingoState = cachedData;
+
+        // グローバル変数 adminConditionPool にも確実に同期
+        if (cachedData.conditionPool && Array.isArray(cachedData.conditionPool)) {
+            adminConditionPool = cachedData.conditionPool;
+            if (typeof saveConditionPoolToStorage === "function") {
+                saveConditionPoolToStorage(cachedData.conditionPool);
+            }
+        }
+
+        renderUserBingoBoard(cachedData);
+        renderAdminBingoBoard(cachedData);
+
+        if (typeof updateAdminPublishStatusUI === "function") {
+            updateAdminPublishStatusUI(cachedData.isPublished);
+        }
+        return true;
+    } catch (e) {
+        console.error("ビンゴキャッシュデータの読み込みに失敗しました:", e);
+        return false;
+    }
+}
+
+/**
+ * 💡 GASから最新のビンゴデータを取得し、画面を再描画する
+ */
+async function fetchBingoData() {
+    const refreshBtn = document.querySelector('button[onclick="fetchBingoData()"]');
+    const originalBtnText = refreshBtn ? refreshBtn.innerText : "";
+
+    try {
+        if (refreshBtn) {
+            refreshBtn.disabled = true;
+            refreshBtn.innerText = "更新中...";
+        }
+
+        if (typeof GAS_URL === 'undefined' || !GAS_URL) {
+            throw new Error("GAS_URL が定義されていません。");
+        }
+
+        const playerName = localStorage.getItem('chunirec_player_name') || "";
+
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+                mode: "get_admin_bingo_data",
+                isAdmin: true,
+                playerName: playerName
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP Error: ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (result.status === "success" && result.data) {
+            currentBingoState = result.data;
+
+            // グローバルプール変数も最新化
+            if (result.data.conditionPool && Array.isArray(result.data.conditionPool)) {
+                adminConditionPool = result.data.data ? result.data.conditionPool : result.data.conditionPool;
+                if (typeof saveConditionPoolToStorage === "function") {
+                    saveConditionPoolToStorage(result.data.conditionPool);
+                }
+            }
+
+            localStorage.setItem('bingo_data_cache', JSON.stringify(result.data));
+            saveBingoStateToStorage(result.data);
+
+            // ★ 管理画面のFREEマス入力フォームに最新データをセット・保持
+            syncAdminFreeFormInputs(result.data);
+
+            // --- 画面描画処理 ---
+            updateAdminPublishStatusUI(result.data.isPublished);
+
+            if (typeof renderAdminRulesForm === "function") {
+                renderAdminRulesForm();
+            }
+
+            if (typeof renderUserBingoBoard === "function") {
+                renderUserBingoBoard(result.data);
+            }
+            if (typeof renderAdminBingoBoard === "function") {
+                renderAdminBingoBoard(result.data);
+            }
+
+            if (typeof showToast === "function") {
+                showToast("最新のビンゴデータを読み込みました！");
+            }
+
+        } else {
+            currentBingoState = null;
+            localStorage.removeItem('bingo_data_cache');
+
+            const boardContainer = document.getElementById("bingo-board");
+            if (boardContainer) {
+                boardContainer.innerHTML = "<p style='grid-column: 1 / -1; text-align:center; padding:20px;'>現在有効なビンゴカードがありません。</p>";
+            }
+            alert("有効なビンゴデータが取得できませんでした: " + (result.message || "データなし"));
+        }
+    } catch (error) {
+        console.error("ビンゴデータの取得に失敗しました:", error);
+        alert(`データの更新に失敗しました:\n${error.message}`);
+
+        if (typeof loadBingoDataFromCache === "function") {
+            loadBingoDataFromCache();
+        }
+    } finally {
+        if (refreshBtn) {
+            refreshBtn.disabled = false;
+            refreshBtn.innerText = originalBtnText;
+        }
+    }
+}
+
+/**
+ * ビンゴデータ取得時に管理画面フォームへFREEマスの最新状態を保持・セットする
+ * @param {Object} bingoState - GASから返されたビンゴ状態データ
+ */
+function syncAdminFreeFormInputs(bingoState) {
+    if (!bingoState || !bingoState.cells) return;
+
+    // 中央のFREE協力マス（index 12）を取得
+    const centerCell = bingoState.cells[12] || bingoState.cells.find(c => c.isCenter);
+    if (!centerCell) return;
+
+    const titleInput = document.getElementById("admin-free-song-title");
+    const targetInput = document.getElementById("admin-free-target-score");
+    const currentInput = document.getElementById("admin-free-current-score");
+
+    // 曲名・設定テキストの保持
+    if (titleInput) {
+        titleInput.value = centerCell.songTitle || centerCell.title || "";
+    }
+    // 目標スコアの保持
+    if (targetInput && centerCell.freeTargetScore !== undefined) {
+        targetInput.value = centerCell.freeTargetScore ?? "";
+    }
+    // 現在の累計スコアの保持（入力欄またはプレースホルダー）
+    if (currentInput && centerCell.freeCurrentScore !== undefined) {
+        currentInput.value = centerCell.freeCurrentScore ?? 0;
+        currentInput.placeholder = `現在: ${Number(centerCell.freeCurrentScore).toLocaleString()} pt`;
+    }
+}
+
+/**
+ * 一般画面用 ビンゴボード描画（GASのBINGO_STATE構造に完全準拠）
+ */
+function renderUserBingoBoard(bingoState) {
+    const boardContainer = document.getElementById("bingo-board");
+    if (!boardContainer || !bingoState || !bingoState.cells) return;
+
+    boardContainer.innerHTML = "";
+
+    if (!bingoState.isPublished) {
+        boardContainer.innerHTML = `
+            <div style="grid-column: 1 / -1; text-align:center; padding: 20px 10px; background: #f5f5f5; border: 1px solid #cccccc; color: #666666; border-radius: 8px;">
+                <div style="font-size: 0.95rem; font-weight: bold; margin-bottom: 4px;">ビンゴカード準備中</div>
+                <div style="font-size: 0.75rem;">現在管理者がビンゴカードを作成・抽選中です。<br>公開まで今しばらくお待ちください。</div>
+            </div>
+        `;
+        return;
+    }
+
+    // ★ モーダル表示・描画時は常に「ビンゴ: X本」をアクティブ状態に初期化
+    window.currentBingoViewMode = 'bingo';
+
+    // --- 上部サマリー（外枠・背景色を除去） ---
+    const bingoCount = bingoState.bingoCount || 0;
+    const bigBingoCount = bingoState.bigBingoCount || 0;
+
+    const isBingoActive = currentBingoViewMode === 'bingo';
+    const isBigActive = currentBingoViewMode === 'big';
+
+    const headerEl = document.createElement("div");
+    headerEl.className = "bingo-header-summary";
+    headerEl.style.cssText = "grid-column: 1 / -1; margin-bottom: 12px; padding: 4px 0; display: flex; justify-content: center; align-items: center;";
+
+    headerEl.innerHTML = `
+        <div style="display: flex; gap: 12px; font-weight: bold; font-size: 0.85rem; width: 100%; justify-content: center;">
+            <button onclick="setBingoViewMode('bingo')" class="bingo-toggle-btn ${isBingoActive ? 'active' : ''}" style="flex: 1; max-width: 180px; padding: 8px 12px; border-radius: 6px; border: 1.5px solid #ff9800; background: ${isBingoActive ? '#ff9800' : '#fff'}; color: ${isBingoActive ? '#fff' : '#e65100'}; cursor: pointer; font-weight: bold; font-size: 0.9rem; transition: all 0.2s; box-shadow: ${isBingoActive ? '0 2px 4px rgba(255,152,0,0.3)' : 'none'};">
+                ビンゴ: ${bingoCount} 本
+            </button>
+            <button onclick="setBingoViewMode('big')" class="bingo-toggle-btn ${isBigActive ? 'active' : ''}" style="flex: 1; max-width: 180px; padding: 8px 12px; border-radius: 6px; border: 1.5px solid #ab47bc; background: ${isBigActive ? 'linear-gradient(135deg, #ec407a, #8e24aa)' : '#fff'}; color: ${isBigActive ? '#fff' : '#4a148c'}; cursor: pointer; font-weight: bold; font-size: 0.9rem; transition: all 0.2s; box-shadow: ${isBigActive ? '0 2px 4px rgba(171,71,188,0.3)' : 'none'};">
+                大ビンゴ: ${bigBingoCount} 本
+            </button>
+        </div>
+    `;
+    boardContainer.appendChild(headerEl);
+
+    const titleStyle = "display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; word-break: break-all; line-height: 1.1; vertical-align: middle;";
+    const userBestAvg = parseFloat(bingoState.userBestAvg || 0);
+
+    bingoState.cells.forEach((cell, index) => {
+        const cellEl = document.createElement("div");
+        cellEl.style.position = "relative";
+
+        // GAS側の計算結果フラグを参照
+        const isCleared = Boolean(cell.isCleared);
+        const isBigCleared = Boolean(cell.isBigCleared);
+        const clearedList = cell.clearedList || [];
+        const clearCount = clearedList.length;
+
+        // 表示モード別の判定
+        const isBigMode = currentBingoViewMode === 'big';
+        let activeCleared = false;
+        let statusClass = "unopened";
+
+        if (isBigMode) {
+            activeCleared = isBigCleared;
+            if (activeCleared) {
+                statusClass = "big-cleared cleared";
+            } else if (cell.isOpened) {
+                statusClass = "opened";
+            }
+        } else {
+            activeCleared = isCleared;
+            if (activeCleared) {
+                statusClass = "cleared";
+            } else if (cell.isOpened) {
+                statusClass = "opened";
+            }
+        }
+
+        // べ枠平均上限判定
+        const rawMaxAvg = cell.maxBestAvg ?? cell.maxRatingLimit;
+        let badgeNum = "1";
+        let badgeTitle = "べ枠平均上限なし";
+        let limitAvg = null;
+
+        if (rawMaxAvg !== null && rawMaxAvg !== undefined && rawMaxAvg !== "") {
+            const numAvg = parseFloat(rawMaxAvg);
+            if (!isNaN(numAvg) && numAvg > 0) {
+                limitAvg = numAvg;
+                if (limitAvg <= 17.20) {
+                    badgeNum = "3";
+                    badgeTitle = "べ枠平均上限: ～17.20";
+                } else if (limitAvg <= 17.40) {
+                    badgeNum = "2";
+                    badgeTitle = "べ枠平均上限: ～17.40";
+                }
+            }
+        }
+
+        // 無効化判定
+        let isDisabled = false;
+        if (!isCleared && !cell.isFree && !cell.isCenter && index !== 12 && limitAvg !== null && userBestAvg > 0) {
+            if (userBestAvg > limitAvg) isDisabled = true;
+        }
+
+        const isCenterCell = cell.isCenter || index === 12;
+        const freeClass = (cell.isFree || isCenterCell) ? " free-cell" : "";
+        cellEl.className = `bingo-cell ${statusClass}${freeClass}${isDisabled ? " is-disabled" : ""}`;
+
+        cellEl.onclick = () => onBingoCellClick(index);
+
+        const avgBadgeHtml = (cell.isFree || isCenterCell) ? "" : `
+            <div style="position: absolute; top: 2px; left: 4px; font-size: 13px; font-weight: 900; color: ${isDisabled ? '#888888' : '#212121'}; line-height: 1; z-index: 2;" title="${badgeTitle}">
+                ${badgeNum}
+            </div>
+        `;
+
+        // --- FREEマス描画処理部 ---
+        if (cell.isFree || isCenterCell) {
+            const freeTextColor = activeCleared ? (isBigMode ? "#8e24aa" : "#e65100") : "#d32f2f";
+
+            let innerContentHtml = "";
+
+            if (!isBigMode) {
+                // 通常（ビンゴ）モード時は「FREE」と大きく表示
+                innerContentHtml = `
+                    <div style="display:flex; justify-content:center; align-items:center; height:calc(100% - 14px);">
+                        <span style="font-size: 16px; font-weight: 900; color: #e65100; letter-spacing: 1px;">FREE</span>
+                    </div>
+                `;
+            } else {
+                // 大ビンゴモード時は楽曲名・目標スコア・CLEARバッジを表示
+                const freeSongTitle = cell.songTitle || cell.title || "全員協力マス";
+                const current = Number(cell.freeCurrentScore || 0);
+                const target = Number(cell.freeTargetScore || 0);
+
+                let scoreText = "";
+                if (target > 0) {
+                    scoreText = `${current.toLocaleString()} / ${target.toLocaleString()}`;
+                } else if (current > 0) {
+                    scoreText = `${current.toLocaleString()} pt`;
+                }
+
+                const clearBadgeText = "BIG CLEAR";
+                const clearBadgeHtml = activeCleared ? `<div class="clear-badge" style="margin-top:2px;">${clearBadgeText}</div>` : "";
+
+                innerContentHtml = `
+                    <div style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:calc(100% - 14px); padding:0 2px;">
+                        <div style="font-size:10px; font-weight:bold; color:#212121; line-height:1.1; margin-bottom:2px; text-align:center; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;" title="${escapeHTML(freeSongTitle)}">
+                            ${escapeHTML(freeSongTitle)}
+                        </div>
+                        ${scoreText ? `<div style="font-size:10px; font-weight:bold; color:${freeTextColor}; line-height:1;">${scoreText}</div>` : ""}
+                        ${clearBadgeHtml}
+                    </div>
+                `;
+            }
+
+            cellEl.innerHTML = `
+                <div style="font-weight:bold; color:${freeTextColor}; font-size:9px; line-height: 1; margin: 0; text-align:center;">No.${index + 1}</div>
+                ${innerContentHtml}
+            `;
+            boardContainer.appendChild(cellEl);
+            return;
+        }
+
+        // 通常マス描画
+        if (!cell.isOpened) {
+            cellEl.innerHTML = `
+                ${avgBadgeHtml}
+                <div style="font-weight:bold; color:${isDisabled ? '#9e9e9e' : '#d32f2f'}; font-size:9px; line-height: 1; margin: 0; text-align:center;">No.${index + 1}</div>
+                <div style="margin: 2px 0 0 0; color: #9e9e9e; font-size:9px; text-align:center; font-weight:bold;">未確定</div>
+            `;
+        } else {
+            const s1 = cell.song || { title: cell.songTitle, diff: cell.diff };
+            const s2 = cell.song2;
+
+            const badge1 = s1.diff ? `<span class="diff-badge ${escapeHTML(s1.diff || '')}">${escapeHTML(s1.diff || '')}</span>` : "";
+            const badge2 = (s2 && s2.diff) ? `<span class="diff-badge ${escapeHTML(s2.diff || '')}">${escapeHTML(s2.diff || '')}</span>` : "";
+
+            let songHtml = `
+                <div class="song-block" style="margin: 0; line-height: 1.1;">
+                    ${badge1}<strong class="song-title" style="${titleStyle}" title="${escapeHTML(s1.title || '')}">${escapeHTML(s1.title || '')}</strong>
+                </div>
+            `;
+
+            if (s2 && s2.title) {
+                songHtml += `
+                    <div style="font-size:7px; color:${activeCleared ? (isBigMode ? '#4a148c' : '#e65100') : '#0a0a0a'}; font-weight:bold; margin: 0; text-align:center; scale: 0.85; line-height: 1;">ー OR ー</div>
+                    <div class="song-block" style="margin: 0; line-height: 1.1;">
+                        ${badge2}<strong class="song-title" style="${titleStyle}" title="${escapeHTML(s2.title || '')}">${escapeHTML(s2.title || '')}</strong>
+                    </div>
+                `;
+            }
+
+            const conditionText = getFormattedConditionText(cell);
+            const clearBadgeText = isBigMode ? `BIG CLEAR (${clearCount}件)` : `CLEAR (${clearCount}件)`;
+            const clearBadgeHtml = activeCleared ? `<div class="clear-badge">${clearBadgeText}</div>` : "";
+
+            cellEl.innerHTML = `
+                ${avgBadgeHtml}
+                <div style="font-weight:bold; color:${activeCleared ? (isBigMode ? '#4a148c' : '#e65100') : (isDisabled ? '#888888' : '#0f0f0f')}; font-size:9px; line-height: 1; margin: 0; text-align:center;">No.${index + 1}</div>
+                ${songHtml}
+                <div class="condition" style="margin-top:1px; padding-top:1px;">
+                    ${escapeHTML(conditionText)}
+                </div>
+                ${clearBadgeHtml}
+            `;
+        }
+
+        boardContainer.appendChild(cellEl);
+    });
+}
+
+
+// 簡易トースト通知用ヘルパー
+function showToast(message) {
+    if (typeof toastr !== "undefined") {
+        toastr.success(message);
+    } else {
+        console.log(message);
+    }
+}
+
+// 表示モード保持用グローバル変数 ('all' | 'normal' | 'big')
+let currentBingoViewMode = 'all';
+
+/**
+ * 条件コード・文字列を画面表示用ラベルに変換
+ */
+function formatCondition(conditionCode) {
+    if (!conditionCode) return "";
+
+    const labelMap = {
+        "THEORY": "理論値",
+        "AJ_995": "995AJ",
+        "AJ_99": "99AJ",
+        "AJ": "AJ",
+        "SSS_PLUS": "SSS+",
+        "8500": "8500",
+        "SSS_8500": "8500",
+        "8000": "8000",
+        "SSS_8000": "8000",
+        "SSS": "SSS",
+        "7000": "7000",
+        "5000": "SS+",
+        "SS_PLUS": "SS+",
+        "SS": "SS",
+        "SSS+": "SSS+",
+        "理論値": "理論値",
+        "995AJ": "995AJ",
+        "99AJ": "99AJ"
+    };
+
+    return labelMap[conditionCode] || conditionCode;
+}
+
+/**
+ * マス目描画用の条件テキスト生成ヘルパー
+ */
+function getFormattedConditionText(cell) {
+    const cond1 = cell.condition1 || cell.condition || "";
+    const cond2 = cell.condition2 || cond1;
+
+    let condFormatted = formatCondition(cond1);
+    if (cell.song2 && cond1 !== cond2) {
+        condFormatted = `①${formatCondition(cond1)} / ②${formatCondition(cond2)}`;
+    }
+    return condFormatted;
+}
+
+/**
+ * ビューモード切り替え用関数（タブ切り替えボタンから呼び出し想定）
+ */
+function setBingoViewMode(mode) {
+    if (!['bingo', 'big'].includes(mode)) return;
+    window.currentBingoViewMode = mode;
+    // 現在のビンゴデータで再描画
+    if (typeof currentBingoState !== "undefined" && currentBingoState) {
+        // 再描画時は初期化されないよう一時フラグで防ぐか、ビュー固定再描画を実施
+        renderUserBingoBoardModeKeep(currentBingoState);
+    }
+}
+
+/**
+ * タブ切り替え専用（モードを維持したまま再描画する内部関数）
+ */
+function renderUserBingoBoardModeKeep(bingoState) {
+    const savedMode = window.currentBingoViewMode;
+    renderUserBingoBoard(bingoState);
+    window.currentBingoViewMode = savedMode; // モードを再復元
+}
+
+/**
+ * 表示モード切り替え処理
+ */
+function setBingoViewMode(mode) {
+    currentBingoViewMode = mode;
+    if (currentBingoState && typeof renderUserBingoBoard === "function") {
+        renderUserBingoBoard(currentBingoState);
+    }
+}
+
+/**
+ * ビンゴマスをクリックした際の統合ハンドラ
+ */
+function onBingoCellClick(index) {
+    if (!currentBingoState || !currentBingoState.cells) return;
+    const cell = currentBingoState.cells[index];
+    if (!cell) return;
+
+    // ★ FREEマス・中央マスの場合はFREEマス用モーダルを表示
+    if (cell.isFree || cell.isCenter || index === 12) {
+        openFreeCellModal(index);
+        return;
+    }
+
+    // 未確定マスはクリック無効
+    if (!cell.isOpened) return;
+
+    const clearedList = cell.clearedList || [];
+
+    if (clearedList.length > 0 || cell.isCleared) {
+        showBingoClearedModal(index);
+    } else {
+        if (typeof openManualClearModal === "function") {
+            openManualClearModal(index);
+        }
+    }
+}
+
+/**
+ * 達成者一覧モーダルの表示処理（2曲左右分け＆スコア降順対応）
+ */
+function showBingoClearedModal(cellIndex) {
+    if (!currentBingoState || !currentBingoState.cells) return;
+    const cell = currentBingoState.cells[cellIndex];
+    if (!cell) return;
+
+    const modal = document.getElementById("bingo-cleared-modal");
+    const titleEl = document.getElementById("cleared-modal-title");
+    const listEl = document.getElementById("cleared-players-list");
+    if (!modal || !listEl) return;
+
+    if (titleEl) titleEl.textContent = `No.${cellIndex + 1} マス 達成情報一覧`;
+
+    const clearedList = cell.clearedList || [];
+
+    // --- A. スコア降順ソート関数 ---
+    const sortByScoreDesc = (list) => {
+        return [...list].sort((a, b) => {
+            const scoreA = (a.score !== undefined && a.score !== null) ? Number(a.score) : -1;
+            const scoreB = (b.score !== undefined && b.score !== null) ? Number(b.score) : -1;
+            return scoreB - scoreA;
+        });
+    };
+
+    // --- B. 1リスト分のHTML生成関数 ---
+    const renderListItems = (items) => {
+        if (items.length === 0) {
+            return `<li class="cleared-list-item" style="text-align:center; color:#888; padding:15px 0;">達成記録なし</li>`;
+        }
+        return items.map(item => {
+            const displayScore = (item.score !== undefined && item.score !== null)
+                ? Number(item.score).toLocaleString()
+                : '-';
+
+            const isManualTag = item.isManual ? `<span style="font-size:0.65rem; background:#757575; color:#fff; padding:1px 4px; border-radius:3px; margin-left:4px;">手動</span>` : '';
+
+            return `
+                <li class="cleared-list-item" style="margin-bottom: 8px; padding: 8px; background: #f9f9f9; border-radius: 6px; list-style: none; border-left: 3px solid ${item.isManual ? '#757575' : '#1976d2'};">
+                    <div class="cleared-user-row" style="display: flex; justify-content: space-between; font-weight: bold; font-size: 0.9rem;">
+                        <span class="cleared-user-name">${escapeHTML(item.playerName || '匿名')}${isManualTag}</span>
+                        <span class="cleared-user-score" style="color: #d32f2f;">${displayScore}</span>
+                    </div>
+                    <div class="cleared-detail-info" style="font-size: 0.75rem; color: #666; margin-top: 4px; display: flex; justify-content: space-between;">
+                        <span>ランプ: <b>${escapeHTML(item.lamp || '-')}</b></span>
+                        <span class="cleared-user-time">${escapeHTML(item.clearedAt || '')}</span>
+                    </div>
+                </li>
+            `;
+        }).join("");
+    };
+
+    // 1曲構成・FREEマス・中央マスの処理
+    const s1 = cell.song || { title: cell.songTitle, diff: cell.diff };
+    const s2 = cell.song2;
+
+    if (cell.isFree || cell.isCenter || cellIndex === 12 || !s2 || !s2.title) {
+        const sortedList = sortByScoreDesc(clearedList);
+        listEl.innerHTML = `<ul style="padding: 0; margin: 0;">${renderListItems(sortedList)}</ul>`;
+    } else {
+        // --- C. 2曲存在する場合の左右分割処理 ---
+        const title1 = (s1.title || "").trim();
+        const title2 = (s2.title || "").trim();
+
+        // 1曲目と2曲目に振り分け (songIndexの文字列・数値の型不一致を考慮)
+        const list1 = clearedList.filter(item => {
+            if (item.songIndex !== undefined && item.songIndex !== null) {
+                return String(item.songIndex) === "1";
+            }
+            const itemTitle = String(item.songTitle || item.title || "").trim();
+            return itemTitle === title1;
+        });
+
+        const list2 = clearedList.filter(item => {
+            if (item.songIndex !== undefined && item.songIndex !== null) {
+                return String(item.songIndex) === "2";
+            }
+            const itemTitle = String(item.songTitle || item.title || "").trim();
+            return itemTitle === title2;
+        });
+
+        const sortedList1 = sortByScoreDesc(list1);
+        const sortedList2 = sortByScoreDesc(list2);
+
+        listEl.innerHTML = `
+            <div style="display: flex; gap: 12px; width: 100%; box-sizing: border-box; flex-wrap: wrap;">
+                <!-- 左カラム: 1曲目 -->
+                <div style="flex: 1; min-width: 200px; background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px;">
+                    <div style="font-weight: bold; font-size: 0.85rem; border-bottom: 2px solid #1976d2; padding-bottom: 4px; margin-bottom: 8px; color: #1976d2; text-align: center;">
+                        ${s1.diff ? `[${escapeHTML(s1.diff)}] ` : ''}${escapeHTML(s1.title || '楽曲1')}
+                        <span style="font-size:0.75rem; color:#666;">(${sortedList1.length}件)</span>
+                    </div>
+                    <ul style="padding: 0; margin: 0;">
+                        ${renderListItems(sortedList1)}
+                    </ul>
+                </div>
+
+                <!-- 右カラム: 2曲目 -->
+                <div style="flex: 1; min-width: 200px; background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px;">
+                    <div style="font-weight: bold; font-size: 0.85rem; border-bottom: 2px solid #e65100; padding-bottom: 4px; margin-bottom: 8px; color: #e65100; text-align: center;">
+                        ${s2.diff ? `[${escapeHTML(s2.diff)}] ` : ''}${escapeHTML(s2.title || '楽曲2')}
+                        <span style="font-size:0.75rem; color:#666;">(${sortedList2.length}件)</span>
+                    </div>
+                    <ul style="padding: 0; margin: 0;">
+                        ${renderListItems(sortedList2)}
+                    </ul>
+                </div>
+            </div>
+        `;
+    }
+
+    modal.style.display = "flex";
+}
+
+/**
+ * 達成者一覧モーダルを閉じる
+ */
+function closeBingoClearedModal() {
+    const modal = document.getElementById("bingo-cleared-modal");
+    if (modal) modal.style.display = "none";
+}
+
+/**
+ * FREEマス専用 モーダル表示（達成度 + スコア降順一覧）
+ */
+function openFreeCellModal(cellIndex) {
+    if (!currentBingoState || !currentBingoState.cells) return;
+    const cell = currentBingoState.cells[cellIndex];
+    if (!cell) return;
+
+    const modal = document.getElementById("bingo-cleared-modal");
+    const titleEl = document.getElementById("cleared-modal-title");
+    const listEl = document.getElementById("cleared-players-list");
+    if (!modal || !listEl) return;
+
+    if (titleEl) titleEl.textContent = `No.${cellIndex + 1} FREE協力マス スコア一覧`;
+
+    // clearedList の安全な抽出（SYSTEMデータのみ除外）
+    const rawList = cell.clearedList || [];
+    const clearedList = rawList.filter(item => {
+        if (!item) return false;
+        const name = item.playerName || item.name || "";
+        return name !== "SYSTEM";
+    });
+
+    const sortedList = [...clearedList].sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
+
+    const current = Number(cell.freeCurrentScore || 0);
+    const target = Number(cell.freeTargetScore || 0);
+
+    // 達成率（%）の計算（グラデーション塗りの領域計算用・上限100%）
+    const progressPercent = target > 0 ? Math.min(100, (current / target) * 100) : 0;
+
+    // 1. 上部：達成度表示ヘッダー（背景をグラデーションでローディングバー風に設定）
+    const headerHtml = `
+        <div style="
+            position: relative;
+            margin-bottom: 15px; 
+            padding: 12px; 
+            background: linear-gradient(to right, #e3f2fd ${progressPercent}%, #f0f4f8 ${progressPercent}%);
+            border-radius: 8px; 
+            border: 1px solid #d0d7de; 
+            text-align: center;
+            overflow: hidden;
+            transition: background 0.3s ease;
+        ">
+            <div style="font-size: 0.8rem; color: #57606a; margin-bottom: 2px; position: relative; z-index: 1;">現在の達成度</div>
+            <div style="font-weight: bold; color: #1976d2; font-size: 1.1rem; position: relative; z-index: 1;">
+                ${current.toLocaleString()} / ${target > 0 ? target.toLocaleString() : "---"}
+            </div>
+        </div>
+    `;
+
+    // 2. リスト項目HTML
+    const listItemsHtml = sortedList.length === 0
+        ? `<li style="text-align:center; color:#888; padding:20px 0; list-style: none;">まだスコア登録はありません</li>`
+        : sortedList.map((item, idx) => {
+            const name = item.playerName || item.name || '匿名';
+            const score = Number(item.score || 0);
+
+            return `
+                <li class="cleared-list-item" style="margin-bottom: 8px; padding: 10px 12px; background: #f9f9f9; border-radius: 6px; list-style: none; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #1976d2;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 0.8rem; font-weight: bold; color: #666; width: 20px;">${idx + 1}.</span>
+                        <span style="font-weight: bold; font-size: 0.95rem; color: #333;">${escapeHTML(name)}</span>
+                    </div>
+                    <span style="color: #d32f2f; font-weight: bold; font-size: 1rem;">${score.toLocaleString()}</span>
+                </li>
+            `;
+        }).join('');
+
+    listEl.innerHTML = headerHtml + `<ul style="padding: 0; margin: 0;">${listItemsHtml}</ul>`;
+    modal.style.display = "flex";
+}
+
+/**
+ * 管理画面のボード描画（Big Clear表示・中央マス対応）
+ */
+function renderAdminBingoBoard(bingoState) {
+    const adminBoardContainer = document.getElementById("admin-bingo-board");
+    if (!adminBoardContainer || !bingoState || !bingoState.cells) return;
+
+    adminBoardContainer.innerHTML = "";
+    adminBoardContainer.className = "bingo-grid-container";
+
+    bingoState.cells.forEach((cell, index) => {
+        const cellEl = document.createElement("div");
+        cellEl.style.position = "relative";
+        cellEl.style.cursor = "pointer";
+
+        const isCenterCell = cell.isCenter || index === 12;
+
+        // ★ 1. FREEマス または 中央協力マスの処理
+        if (cell.isFree || isCenterCell) {
+            const isBigCleared = Boolean(cell.isBigCleared);
+            const activeCleared = Boolean(cell.isCleared) || isBigCleared;
+            cellEl.className = `bingo-cell cleared free-cell${isBigCleared ? " big-cleared" : ""}`;
+
+            // 曲名/課題名（songTitle）の取得
+            const freeSongTitle = cell.songTitle || cell.title || "全員協力マス";
+            const current = Number(cell.freeCurrentScore || 0);
+            const target = Number(cell.freeTargetScore || 0);
+
+            // スコア表示テキストの生成
+            let scoreText = "";
+            if (target > 0) {
+                scoreText = `${current.toLocaleString()} / ${target.toLocaleString()}`;
+            } else if (current > 0) {
+                scoreText = `${current.toLocaleString()} pt`;
+            }
+
+            const freeTextColor = isBigCleared ? '#e65100' : (activeCleared ? '#2e7d32' : '#1976d2');
+
+            cellEl.innerHTML = `
+                <div style="font-weight:bold; color:#212121; font-size:10px; line-height: 1; margin: 0; text-align:center;">No.${index + 1}</div>
+                <div style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:calc(100% - 14px); padding:0 2px;">
+                    <div style="font-size:10px; font-weight:bold; color:#212121; line-height:1.1; margin-bottom:2px; text-align:center; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;" title="${escapeHTML(freeSongTitle)}">
+                        ${escapeHTML(freeSongTitle)}
+                    </div>
+                    ${scoreText ? `<div style="font-size:10px; font-weight:bold; color:${freeTextColor}; line-height:1;">${scoreText}</div>` : ""}
+                </div>
+            `;
+
+            // FREEマスをクリックした際にスコア確認モーダルを開く
+            cellEl.onclick = () => {
+                if (typeof openFreeCellModal === "function") {
+                    openFreeCellModal(index);
+                }
+            };
+
+            adminBoardContainer.appendChild(cellEl);
+            return;
+        }
+
+        // ★ 2. べ枠平均上限の数値判定
+        const maxAvg = cell.maxBestAvg ?? cell.maxRatingLimit;
+        let badgeNum = "1";
+        let badgeTitle = "べ枠平均上限なし";
+
+        if (maxAvg !== null && maxAvg !== undefined && maxAvg !== "") {
+            const numAvg = parseFloat(maxAvg);
+            if (!isNaN(numAvg)) {
+                if (numAvg <= 17.20) {
+                    badgeNum = "3";
+                    badgeTitle = "べ枠平均上限: ～17.20";
+                } else if (numAvg <= 17.40) {
+                    badgeNum = "2";
+                    badgeTitle = "べ枠平均上限: ～17.40";
+                }
+            }
+        }
+
+        // ★ 3. 左上バッジHTML
+        const avgBadgeHtml = `
+            <div style="position: absolute; top: 2px; left: 4px; font-size: 13px; font-weight: 900; color: #212121; line-height: 1; z-index: 2;" title="${escapeHTML(badgeTitle)}">
+                ${badgeNum}
+            </div>
+        `;
+
+        // ★ 4. クリア / Big Clear / 確定 / 未確定 のクラス分け
+        const isCleared = Boolean(cell.isCleared);
+        const isBigCleared = Boolean(cell.isBigCleared);
+
+        let statusClass = "unopened";
+        if (isBigCleared) {
+            statusClass = "big-cleared cleared";
+        } else if (isCleared) {
+            statusClass = "cleared";
+        } else if (cell.isOpened) {
+            statusClass = "opened";
+        }
+
+        cellEl.className = `bingo-cell ${statusClass}`;
+
+        if (cell.isOpened) {
+            const s1 = cell.song || { title: cell.songTitle, diff: cell.diff };
+            const s2 = cell.song2;
+
+            const badge1 = s1 && s1.diff ? `<span class="diff-badge ${escapeHTML(s1.diff || '')}">${escapeHTML(s1.diff || '')}</span>` : "";
+            const badge2 = (s2 && s2.diff) ? `<span class="diff-badge ${escapeHTML(s2.diff || '')}">${escapeHTML(s2.diff || '')}</span>` : "";
+
+            const titleStyle = "display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; word-break: break-all; line-height: 1.1; vertical-align: middle;";
+
+            let songHtml = `
+                <div style="margin: 0; line-height: 1.1;">
+                    ${badge1}<strong class="song-title" style="${titleStyle}" title="${escapeHTML(s1.title || '')}">${escapeHTML(s1.title || '')}</strong>
+                </div>
+            `;
+
+            if (s2 && s2.title) {
+                songHtml += `
+                    <div style="font-size:7px; color:#d32f2f; font-weight:bold; margin: 0; text-align:center; scale: 0.85; line-height: 1;">ー OR ー</div>
+                    <div style="margin: 0; line-height: 1.1;">
+                        ${badge2}<strong class="song-title" style="${titleStyle}" title="${escapeHTML(s2.title || '')}">${escapeHTML(s2.title || '')}</strong>
+                    </div>
+                `;
+            }
+
+            const conditionText = typeof getFormattedConditionText === "function" ? getFormattedConditionText(cell) : (cell.condition || "");
+
+            let statusLabel = "[確定]";
+            let statusColor = "#212121";
+            if (isBigCleared) {
+                statusLabel = "[BIG CLEAR!]";
+                statusColor = "#e65100";
+            } else if (isCleared) {
+                statusLabel = "[CLEAR!]";
+                statusColor = "#2e7d32";
+            }
+
+            cellEl.innerHTML = `
+                ${avgBadgeHtml}
+                <div style="font-weight:bold; color:${statusColor}; font-size:10px; line-height: 1; margin: 0; text-align: center;">No.${index + 1} ${statusLabel}</div>
+                ${songHtml}
+                <div class="condition" style="margin-top:1px; padding-top:1px;">
+                    ${escapeHTML(conditionText)}
+                </div>
+            `;
+        } else {
+            cellEl.innerHTML = `
+                ${avgBadgeHtml}
+                <div style="font-weight:bold; color:#212121; font-size:10px; line-height: 1; margin: 0; text-align: center;">No.${index + 1} [未確定]</div>
+                <div style="font-weight:bold; color:#1976d2; font-size:12px; margin: 2px 0 0 0; text-align: center;">ランダム抽選</div>
+            `;
+        }
+
+        cellEl.onclick = () => handleAdminCellClick(index);
+        adminBoardContainer.appendChild(cellEl);
+    });
+
+    if (typeof updateAdminClearFormState === "function") {
+        updateAdminClearFormState();
+    }
+}
+
+// 通信重複防止用Promise保持変数
+let fetchSongMasterPromise = null;
+
+/**
+ * 管理画面からのセルクリック（開栓済みマスの自動再抽選判定付き）
+ */
+async function handleAdminCellClick(cellIndex, isReSpin = false) {
+    if (!currentBingoState || !currentBingoState.conditionPool) {
+        alert("ビンゴデータまたは条件プールが存在しません。");
+        return;
+    }
+
+    const targetCell = currentBingoState.cells ? currentBingoState.cells[cellIndex] : null;
+
+    // ★ 1. FREEマスおよび中央協力マス（No.13/index 12）の場合はルーレットを行わない
+    if (targetCell && (targetCell.isFree || targetCell.isCenter || cellIndex === 12)) return;
+
+    // ★ 2. 自動判定: 開栓済み（isOpened === true）かつ明示的に false の場合は isReSpin を true に変更
+    if (targetCell && targetCell.isOpened) {
+        isReSpin = true;
+    }
+
+    // ★ 3. 再抽選時の確認ダイアログ
+    if (isReSpin) {
+        const confirmRetry = confirm(`マス No.${cellIndex + 1} は開栓済みです。もう一度ルーレットを回して楽曲を上書きしますか？`);
+        if (!confirmRetry) return;
+    }
+
+    // ★ 4. allScores の安全な取得処理
+    if (typeof allScores === "undefined" || !Array.isArray(allScores) || allScores.length === 0) {
+        if (typeof fetchAllSongMaster === "function") {
+            if (!fetchSongMasterPromise) {
+                fetchSongMasterPromise = fetchAllSongMaster();
+            }
+            await fetchSongMasterPromise;
+            fetchSongMasterPromise = null;
+        }
+    }
+
+    if (typeof allScores === "undefined" || !Array.isArray(allScores) || allScores.length === 0) {
+        alert("楽曲データベースが読み込まれていません。");
+        return;
+    }
+
+    let pickedCondition = null;
+    let pickedPoolIndex = -1;
+
+    // ★ 5. 条件の取得
+    if (isReSpin && targetCell && (targetCell.condition || targetCell.condition1 || targetCell.minConst1 !== undefined || targetCell.minConst !== undefined)) {
+        pickedCondition = {
+            id: targetCell.conditionId || targetCell.id || null,
+            minConst1: targetCell.minConst1 ?? targetCell.minConst ?? 0,
+            maxConst1: targetCell.maxConst1 ?? targetCell.maxConst ?? 0,
+            minConst2: targetCell.minConst2 ?? targetCell.minConst1 ?? targetCell.minConst ?? 0,
+            maxConst2: targetCell.maxConst2 ?? targetCell.maxConst1 ?? targetCell.maxConst ?? 0,
+            minConst: targetCell.minConst1 ?? targetCell.minConst ?? 0,
+            maxConst: targetCell.maxConst1 ?? targetCell.maxConst ?? 0,
+            condition: targetCell.condition || targetCell.condition1 || "",
+            condition1: targetCell.condition1 || targetCell.condition || "",
+            condition2: targetCell.condition2 || targetCell.condition || "",
+            isWE: targetCell.isWE || false,
+            isWE2: targetCell.isWE2 || targetCell.isWE || false,
+            maxBestAvg: targetCell.maxBestAvg ?? targetCell.conditionObj?.maxBestAvg ?? null
+        };
+    } else {
+        let expandedPool = [];
+        currentBingoState.conditionPool.forEach((p, poolIndex) => {
+            const rem = p.remaining !== undefined ? p.remaining : (p.count || 0);
+            for (let r = 0; r < rem; r++) {
+                expandedPool.push({ conditionObj: p, poolIndex: poolIndex });
+            }
+        });
+
+        if (expandedPool.length === 0) {
+            alert("使用可能な残り条件がありません。すべて開栓済みです。");
+            return;
+        }
+
+        const pickedItem = expandedPool[Math.floor(Math.random() * expandedPool.length)];
+        pickedCondition = pickedItem.conditionObj;
+        pickedPoolIndex = pickedItem.poolIndex;
+    }
+
+    // ★ 6. 重複回避キーの作成
+    const assignedKeys = new Set();
+    if (currentBingoState && currentBingoState.cells) {
+        currentBingoState.cells.forEach((c, idx) => {
+            if (idx === cellIndex) return;
+            if (!c.isOpened || c.isFree || c.isCenter) return;
+
+            if (c.song && c.song.title) assignedKeys.add(`${c.song.title}_${c.song.diff}`);
+            if (c.song2 && c.song2.title) assignedKeys.add(`${c.song2.title}_${c.song2.diff}`);
+        });
+    }
+
+    const minC1 = parseFloat(pickedCondition.minConst1 ?? pickedCondition.minConst ?? 0);
+    const maxC1 = parseFloat(pickedCondition.maxConst1 ?? pickedCondition.maxConst ?? 0);
+    const minC2 = parseFloat(pickedCondition.minConst2 ?? minC1);
+    const maxC2 = parseFloat(pickedCondition.maxConst2 ?? maxC1);
+
+    const cond1 = pickedCondition.condition1 || pickedCondition.condition || "";
+    const cond2 = pickedCondition.condition2 || pickedCondition.condition || cond1;
+
+    const condStrUpper = String(pickedCondition.condition || "").toUpperCase();
+    const isWE1 = Boolean(pickedCondition.isWE) || condStrUpper.includes("WE") || condStrUpper.includes("WORLD");
+    const isWE2 = Boolean(pickedCondition.isWE2 ?? pickedCondition.isWE) || condStrUpper.includes("WE") || condStrUpper.includes("WORLD");
+
+    const candidates1 = allScores.filter(s => {
+        const title = s.title || s.songTitle;
+        const c = parseFloat(s.constant || s.const || 0);
+        const isSongWE = typeof isWEDiff === "function" ? isWEDiff(s.diff) : (String(s.diff).toUpperCase() === "WE" || String(s.diff).includes("WORLD"));
+
+        if (isWE1 !== isSongWE) return false;
+        return c >= minC1 && c <= maxC1 && !assignedKeys.has(`${title}_${s.diff}`);
+    });
+
+    if (candidates1.length === 0) {
+        alert(`該当する条件の楽曲候補（1曲目）がありません。\n条件: ${cond1 || "指定なし"}\n指定定数: ${minC1} ～ ${maxC1}\nWE判定: ${isWE1}`);
+        return;
+    }
+
+    const candidates2 = allScores.filter(s => {
+        const title = s.title || s.songTitle;
+        const c = parseFloat(s.constant || s.const || 0);
+        const isSongWE = typeof isWEDiff === "function" ? isWEDiff(s.diff) : (String(s.diff).toUpperCase() === "WE" || String(s.diff).includes("WORLD"));
+
+        if (isWE2 !== isSongWE) return false;
+        return c >= minC2 && c <= maxC2 && !assignedKeys.has(`${title}_${s.diff}`);
+    });
+
+    const candidatePool = {
+        pool1: candidates1,
+        pool2: candidates2.length > 0 ? candidates2 : candidates1
+    };
+
+    const targetMaxBestAvg = pickedCondition.maxBestAvg ?? null;
+
+    const constRules = {
+        minConst1: minC1,
+        maxConst1: maxC1,
+        minConst2: minC2,
+        maxConst2: maxC2,
+        maxBestAvg: targetMaxBestAvg,
+        condition1: cond1,
+        condition2: cond2
+    };
+
+    // ★ 7. ルーレット開始
+    spinBingoCellRoulette(cellIndex, candidatePool, async (idx, sel1, sel2) => {
+        if (!sel1) return;
+
+        const song1Data = {
+            title: sel1.title || sel1.songTitle,
+            diff: sel1.diff,
+            const: parseFloat(sel1.constant || sel1.const || 0)
+        };
+
+        const song2Data = sel2 ? {
+            title: sel2.title || sel2.songTitle,
+            diff: sel2.diff,
+            const: parseFloat(sel2.constant || sel2.const || 0)
+        } : null;
+
+        const conditionData = {
+            id: pickedCondition.id || null,
+            minConst: minC1,
+            maxConst: maxC1,
+            minConst1: minC1,
+            maxConst1: maxC1,
+            minConst2: minC2,
+            maxConst2: maxC2,
+            condition: cond1,
+            condition1: cond1,
+            condition2: cond2,
+            isWE: isWE1,
+            isWE2: isWE2,
+            maxBestAvg: targetMaxBestAvg
+        };
+
+        let updatedConditionPool = currentBingoState.conditionPool;
+        if (!isReSpin && pickedPoolIndex !== -1) {
+            updatedConditionPool = currentBingoState.conditionPool.map((poolItem, pIdx) => {
+                if (pIdx === pickedPoolIndex) {
+                    const rem = poolItem.remaining !== undefined ? poolItem.remaining : poolItem.count;
+                    return { ...poolItem, remaining: Math.max(0, rem - 1) };
+                }
+                return poolItem;
+            });
+        }
+
+        await openBingoCell(cellIndex, song1Data, song2Data, updatedConditionPool, conditionData);
+    }, constRules);
+}
+
+/**
+ * 開栓APIの送信
+ */
+async function openBingoCell(cellIndex, song1, song2, updatedConditionPool, conditionData) {
+    try {
+        const idx = parseInt(cellIndex, 10);
+        const updatedCells = JSON.parse(JSON.stringify(currentBingoState.cells || []));
+
+        if (updatedCells[idx]) {
+            const targetCondition1 = conditionData?.condition1 ?? conditionData?.condition ?? updatedCells[idx].condition1 ?? updatedCells[idx].condition ?? "";
+            const targetCondition2 = conditionData?.condition2 ?? conditionData?.condition ?? updatedCells[idx].condition2 ?? updatedCells[idx].condition ?? targetCondition1;
+
+            const targetMaxBestAvg = conditionData ? (conditionData.maxBestAvg ?? null) : (updatedCells[idx].maxBestAvg ?? null);
+
+            const minC1 = conditionData?.minConst1 ?? conditionData?.minConst ?? updatedCells[idx].minConst1 ?? updatedCells[idx].minConst ?? 0;
+            const maxC1 = conditionData?.maxConst1 ?? conditionData?.maxConst ?? updatedCells[idx].maxConst1 ?? updatedCells[idx].maxConst ?? 0;
+            const minC2 = conditionData?.minConst2 ?? conditionData?.minConst ?? updatedCells[idx].minConst2 ?? updatedCells[idx].minConst ?? minC1;
+            const maxC2 = conditionData?.maxConst2 ?? conditionData?.maxConst ?? updatedCells[idx].maxConst2 ?? updatedCells[idx].maxConst ?? maxC1;
+
+            updatedCells[idx] = {
+                ...updatedCells[idx],
+                song: song1,
+                song2: song2,
+                songTitle: song1.title,
+                diff: song1.diff,
+                const: song1.const,
+                isOpened: true,
+                conditionId: conditionData?.id ?? updatedCells[idx].conditionId ?? null,
+                condition: targetCondition1,
+                condition1: targetCondition1,
+                condition2: targetCondition2,
+                maxBestAvg: targetMaxBestAvg,
+                minConst: minC1,
+                maxConst: maxC1,
+                minConst1: minC1,
+                maxConst1: maxC1,
+                minConst2: minC2,
+                maxConst2: maxC2,
+                isWE: conditionData?.isWE ?? updatedCells[idx].isWE ?? false,
+                isWE2: conditionData?.isWE2 ?? updatedCells[idx].isWE2 ?? false
+            };
+        }
+
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: {
+                "Content-Type": "text/plain;charset=utf-8"
+            },
+            body: JSON.stringify({
+                mode: "open_bingo_cell",
+                cellIndex: cellIndex,
+                song: song1,
+                song2: song2,
+                conditionPool: updatedConditionPool,
+                conditionData: conditionData,
+                updatedCells: updatedCells
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP Error: ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (result.status === "success" && result.data) {
+            currentBingoState = result.data;
+            renderUserBingoBoard(result.data);
+            renderAdminBingoBoard(result.data);
+            if (typeof renderAdminRulesForm === "function") renderAdminRulesForm();
+        } else {
+            alert("開栓失敗: " + (result.message || "エラーが発生しました"));
+        }
+    } catch (error) {
+        console.error("開栓エラー:", error);
+        alert("通信エラーが発生しました。");
+    }
+}
+
+/**
+ * ルーレット演出関数（豪華エフェクト追加版）
+ */
+function spinBingoCellRoulette(cellIndex, candidatePool, onConfirmedCallback, constRules = {}) {
+    let pool1 = [];
+    let pool2 = [];
+
+    if (Array.isArray(candidatePool)) {
+        pool1 = candidatePool;
+        pool2 = candidatePool;
+    } else if (candidatePool && typeof candidatePool === 'object') {
+        pool1 = candidatePool.pool1 || [];
+        pool2 = candidatePool.pool2 || [];
+    }
+
+    if (!pool1 || pool1.length === 0) {
+        alert("該当する条件の楽曲候補（1曲目）がありません。");
+        return;
+    }
+
+    // 1曲目決定
+    const shuffled1 = shuffleArray(pool1);
+    const finalSong1 = shuffled1[0];
+
+    // 2曲目決定
+    let finalSong2 = null;
+    if (pool2 && pool2.length > 0) {
+        const filteredPool2 = pool2.filter(s => (s.title || s.songTitle) !== (finalSong1.title || finalSong1.songTitle));
+        const targetPool2 = filteredPool2.length > 0 ? filteredPool2 : pool2;
+        const shuffled2 = shuffleArray(targetPool2);
+        finalSong2 = shuffled2[0];
+    }
+
+    // 定数表示用文字列の生成関数
+    function formatConstText(minVal, maxVal) {
+        const min = (minVal !== undefined && minVal !== null && minVal !== "") ? Number(minVal) : null;
+        const max = (maxVal !== undefined && maxVal !== null && maxVal !== "") ? Number(maxVal) : null;
+
+        if (min !== null && max !== null) {
+            if (min === max) {
+                return `${min.toFixed(1)}`;
+            }
+            return `${min.toFixed(1)} 〜 ${max.toFixed(1)}`;
+        } else if (min !== null) {
+            return `${min.toFixed(1)} 以上`;
+        } else if (max !== null) {
+            return `${max.toFixed(1)} 以下`;
+        }
+        return "全範囲";
+    }
+
+    const const1Text = formatConstText(
+        constRules.minConst1 ?? candidatePool.minConst1,
+        constRules.maxConst1 ?? candidatePool.maxConst1
+    );
+    const const2Text = formatConstText(
+        constRules.minConst2 ?? candidatePool.minConst2,
+        constRules.maxConst2 ?? candidatePool.maxConst2
+    );
+
+    const cond1Badge = constRules.condition1 ? `<span style="font-size: 0.8rem; background: rgba(255, 235, 59, 0.2); color: #fff176; padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(255, 235, 59, 0.4); font-weight: bold;">条件: ${escapeHTML(formatCondition(constRules.condition1))}</span>` : "";
+    const cond2Badge = constRules.condition2 ? `<span style="font-size: 0.8rem; background: rgba(255, 235, 59, 0.2); color: #fff176; padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(255, 235, 59, 0.4); font-weight: bold;">条件: ${escapeHTML(formatCondition(constRules.condition2))}</span>` : "";
+
+    const limitHeaderHtml = constRules.maxBestAvg
+        ? `<div style="font-size: 0.95rem; color: #ffca28; margin-top: 4px; font-weight: bold;">【ベスト枠平均上限: ～${parseFloat(constRules.maxBestAvg).toFixed(2)}】</div>`
+        : "";
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+        background: rgba(0, 0, 0, 0.92); z-index: 100000;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        backdrop-filter: blur(8px);
+    `;
+
+    overlay.innerHTML = `
+        <div style="text-align: center; margin-bottom: 20px;">
+            <div style="font-size: 1.3rem; color: #27ae60; font-weight: bold; letter-spacing: 2px;">
+                DUAL ROULETTE CELL #${cellIndex + 1}
+            </div>
+            ${limitHeaderHtml}
+        </div>
+        
+        <div style="display: flex; gap: 20px; align-items: center; justify-content: center; max-width: 900px; width: 90%; flex-wrap: wrap;">
+            
+            <!-- 1枠目 CHOICE 1 -->
+            <div id="roulette-card-1" style="flex: 1; min-width: 280px; background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.1); text-align: center; transition: all 0.3s ease;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 4px;">
+                    <span style="font-size: 0.85rem; color: #4fc3f7; font-weight: bold;">[ CHOICE 1 ]</span>
+                    <div style="display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end;">
+                        <span style="font-size: 0.8rem; background: rgba(79, 195, 247, 0.2); color: #81d4fa; padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(79, 195, 247, 0.4); font-weight: bold;">
+                            定数: ${const1Text}
+                        </span>
+                        ${cond1Badge}
+                    </div>
+                </div>
+                <div id="roulette-title-1" style="font-size: 1.5rem; font-weight: bold; min-height: 2.5em; display: flex; align-items: center; justify-content: center; line-height: 1.2; transition: all 0.3s ease;"></div>
+                <div id="roulette-diff-1" style="display: inline-block; padding: 4px 16px; border-radius: 15px; font-weight: bold; font-size: 1rem; margin-top: 8px; transition: all 0.3s ease;"></div>
+            </div>
+
+            <div style="font-size: 1.2rem; font-weight: bold; color: #ffeb3b;">OR</div>
+
+            <!-- 2枠目 CHOICE 2 -->
+            <div id="roulette-card-2" style="flex: 1; min-width: 280px; background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.1); text-align: center; transition: all 0.3s ease;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 4px;">
+                    <span style="font-size: 0.85rem; color: #ffb74d; font-weight: bold;">[ CHOICE 2 ]</span>
+                    <div style="display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end;">
+                        <span style="font-size: 0.8rem; background: rgba(255, 183, 77, 0.2); color: #ffe0b2; padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(255, 183, 77, 0.4); font-weight: bold;">
+                            定数: ${const2Text}
+                        </span>
+                        ${cond2Badge}
+                    </div>
+                </div>
+                <div id="roulette-title-2" style="font-size: 1.5rem; font-weight: bold; min-height: 2.5em; display: flex; align-items: center; justify-content: center; line-height: 1.2; transition: all 0.3s ease;"></div>
+                <div id="roulette-diff-2" style="display: inline-block; padding: 4px 16px; border-radius: 15px; font-weight: bold; font-size: 1rem; margin-top: 8px; transition: all 0.3s ease;"></div>
+            </div>
+
+        </div>
+
+        <div id="roulette-action-area" style="margin-top: 35px; min-height: 60px; display: flex; justify-content: center; align-items: center;"></div>
+    `;
+    document.body.appendChild(overlay);
+
+    const titleEl1 = document.getElementById('roulette-title-1');
+    const diffEl1 = document.getElementById('roulette-diff-1');
+    const titleEl2 = document.getElementById('roulette-title-2');
+    const diffEl2 = document.getElementById('roulette-diff-2');
+    const cardEl1 = document.getElementById('roulette-card-1');
+    const cardEl2 = document.getElementById('roulette-card-2');
+
+    const diffColors = { 'EXP': '#ff4d4d', 'MAS': '#9966ff', 'ULT': '#2b2b2b' };
+
+    function applyDiffStyle(targetEl, diffStr, itemObj) {
+        if (!targetEl || !diffStr) return;
+        const dUpper = String(diffStr || "").toUpperCase();
+        if (dUpper === 'WE') {
+            const attr = itemObj.weAttr || itemObj.attribute || "";
+            targetEl.innerText = `WORLD'S END ${attr ? `【${attr}】` : ""}`;
+            targetEl.style.background = 'linear-gradient(45deg, #ff3366, #ff9933, #33cc66, #3399ff, #9933ff)';
+            targetEl.style.color = '#fff';
+        } else {
+            targetEl.innerText = diffStr;
+            targetEl.style.background = diffColors[dUpper] || '#555';
+            targetEl.style.color = '#fff';
+        }
+    }
+
+    // Web Audio API による確定用ファンファーレ音源
+    function playFanfareSound() {
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+            const ctx = new AudioContext();
+
+            const notes = [
+                { f: 523.25, t: 0.00, d: 0.12 }, // C5
+                { f: 659.25, t: 0.12, d: 0.12 }, // E5
+                { f: 783.99, t: 0.24, d: 0.12 }, // G5
+                { f: 1046.50, t: 0.36, d: 0.40 } // C6 (長め)
+            ];
+
+            notes.forEach(n => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(n.f, ctx.currentTime + n.t);
+
+                gain.gain.setValueAtTime(0.3, ctx.currentTime + n.t);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + n.t + n.d);
+
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+
+                osc.start(ctx.currentTime + n.t);
+                osc.stop(ctx.currentTime + n.t + n.d);
+            });
+        } catch (e) {
+            console.warn("Audio playback not supported or blocked by browser policy.", e);
+        }
+    }
+
+    // 紙吹雪（コンフェッティ）パーティクル作成
+    function triggerConfetti() {
+        const colors = ['#f1c40f', '#e74c3c', '#3498db', '#2ecc71', '#9b59b6'];
+        const confettiContainer = document.createElement('div');
+        confettiContainer.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none; z-index: 100002; overflow: hidden;
+        `;
+        document.body.appendChild(confettiContainer);
+
+        for (let i = 0; i < 40; i++) {
+            const particle = document.createElement('div');
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            const size = Math.random() * 8 + 6;
+            const startX = Math.random() * 100;
+            const endX = startX + (Math.random() * 20 - 10);
+            const duration = Math.random() * 1.5 + 1.2;
+
+            particle.style.cssText = `
+                position: absolute; top: -20px; left: ${startX}vw;
+                width: ${size}px; height: ${size}px; background: ${color};
+                border-radius: ${Math.random() > 0.5 ? '50%' : '2px'};
+                opacity: 0.9;
+                transform: rotate(${Math.random() * 360}deg);
+                animation: confettiFall ${duration}s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+            `;
+            confettiContainer.appendChild(particle);
+        }
+
+        // キーフレーム挿入
+        if (!document.getElementById('confetti-style')) {
+            const style = document.createElement('style');
+            style.id = 'confetti-style';
+            style.innerHTML = `
+                @keyframes confettiFall {
+                    0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+                    100% { transform: translateY(105vh) rotate(720deg); opacity: 0; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        setTimeout(() => {
+            if (document.body.contains(confettiContainer)) {
+                document.body.removeChild(confettiContainer);
+            }
+        }, 3000);
+    }
+
+    let currentStep = 0;
+    const totalSteps = 26;
+    let delay = 55;
+
+    function step() {
+        if (currentStep < totalSteps - 1) {
+            const temp1 = pool1[Math.floor(Math.random() * pool1.length)];
+            const temp2 = (pool2 && pool2.length > 0) ? pool2[Math.floor(Math.random() * pool2.length)] : null;
+
+            titleEl1.innerText = temp1.title || temp1.songTitle;
+            applyDiffStyle(diffEl1, temp1.diff, temp1);
+
+            if (temp2) {
+                titleEl2.innerText = temp2.title || temp2.songTitle;
+                applyDiffStyle(diffEl2, temp2.diff, temp2);
+            } else {
+                titleEl2.innerText = "ー";
+            }
+        } else {
+            titleEl1.innerText = finalSong1.title || finalSong1.songTitle;
+            applyDiffStyle(diffEl1, finalSong1.diff, finalSong1);
+
+            if (finalSong2) {
+                titleEl2.innerText = finalSong2.title || finalSong2.songTitle;
+                applyDiffStyle(diffEl2, finalSong2.diff, finalSong2);
+            } else {
+                titleEl2.innerText = "（該当曲なし）";
+            }
+        }
+
+        currentStep++;
+
+        if (currentStep < totalSteps) {
+            if (currentStep > totalSteps - 5) delay += 70;
+            else if (currentStep > totalSteps - 10) delay += 30;
+            setTimeout(step, delay);
+        } else {
+            finishSelection();
+        }
+    }
+
+    step();
+
+    function finishSelection() {
+        // 音源再生
+        playFanfareSound();
+
+        // 紙吹雪エフェクト
+        triggerConfetti();
+
+        // フラッシュ演出
+        const flash = document.createElement('div');
+        flash.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: white; z-index: 100001; opacity: 1;
+            transition: opacity 0.5s ease-out; pointer-events: none;
+        `;
+        document.body.appendChild(flash);
+
+        // 決定時カードズームアップ & 発光ポップ演出
+        cardEl1.style.transform = "scale(1.05)";
+        cardEl1.style.borderColor = "rgba(241, 196, 15, 0.8)";
+        cardEl1.style.boxShadow = "0 0 25px rgba(241, 196, 15, 0.4)";
+
+        titleEl1.style.color = "#f1c40f";
+        titleEl1.style.textShadow = "0 0 15px #f1c40f";
+        diffEl1.style.boxShadow = `0 0 20px ${diffEl1.style.backgroundColor}`;
+
+        if (finalSong2) {
+            cardEl2.style.transform = "scale(1.05)";
+            cardEl2.style.borderColor = "rgba(241, 196, 15, 0.8)";
+            cardEl2.style.boxShadow = "0 0 25px rgba(241, 196, 15, 0.4)";
+
+            titleEl2.style.color = "#f1c40f";
+            titleEl2.style.textShadow = "0 0 15px #f1c40f";
+            diffEl2.style.boxShadow = `0 0 20px ${diffEl2.style.backgroundColor}`;
+        }
+
+        requestAnimationFrame(() => {
+            flash.style.opacity = "0";
+            setTimeout(() => {
+                if (document.body.contains(flash)) document.body.removeChild(flash);
+            }, 500);
+        });
+
+        // ボタンのポップイン表示
+        const actionArea = document.getElementById('roulette-action-area');
+        if (actionArea) {
+            const nextBtn = document.createElement('button');
+            nextBtn.innerText = "この楽曲で確定する（次へ）";
+            nextBtn.style.cssText = `
+                padding: 12px 36px;
+                font-size: 1.1rem;
+                font-weight: bold;
+                color: #ffffff;
+                background: linear-gradient(135deg, #27ae60, #2ecc71);
+                border: none;
+                border-radius: 30px;
+                cursor: pointer;
+                box-shadow: 0 4px 15px rgba(39, 174, 96, 0.4);
+                transform: scale(0.8);
+                opacity: 0;
+                transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            `;
+
+            setTimeout(() => {
+                nextBtn.style.transform = "scale(1)";
+                nextBtn.style.opacity = "1";
+            }, 150);
+
+            nextBtn.onmouseover = () => { nextBtn.style.transform = "scale(1.08)"; };
+            nextBtn.onmouseout = () => { nextBtn.style.transform = "scale(1)"; };
+
+            nextBtn.onclick = () => {
+                if (document.body.contains(overlay)) {
+                    document.body.removeChild(overlay);
+                }
+                if (typeof onConfirmedCallback === 'function') {
+                    onConfirmedCallback(cellIndex, finalSong1, finalSong2);
+                }
+            };
+
+            actionArea.appendChild(nextBtn);
+        }
+    }
+}
+
+// Fisher-Yates シャッフル関数ヘルパー
+function shuffleArray(array) {
+    const arr = [...array];
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+
+/**
+ * 全マス一括抽選（FREEマス対応版）
+ */
+async function bulkDrawAllBingoCells() {
+    if (!currentBingoState || !currentBingoState.cells) return;
+    if (!confirm("未開栓の全マスを一括で抽選して開きますか？")) return;
+
+    if (typeof allScores === "undefined" || !Array.isArray(allScores) || allScores.length === 0) {
+        if (typeof fetchAllSongMaster === "function") await fetchAllSongMaster();
+    }
+
+    const targetBtn = document.activeElement;
+    const originalText = targetBtn && targetBtn.tagName === "BUTTON" ? targetBtn.innerText : "";
+    if (targetBtn && targetBtn.tagName === "BUTTON") {
+        targetBtn.disabled = true;
+        targetBtn.innerText = "一括抽選中...";
+    }
+
+    try {
+        let updatedCells = JSON.parse(JSON.stringify(currentBingoState.cells));
+        let updatedPool = JSON.parse(JSON.stringify(currentBingoState.conditionPool || []));
+
+        const getSongKey = (title, diff) => `${title}_${diff}`;
+
+        let expandedPool = [];
+        updatedPool.forEach((p, poolIndex) => {
+            const rem = p.remaining !== undefined ? p.remaining : (p.count || 0);
+            for (let r = 0; r < rem; r++) {
+                expandedPool.push({
+                    conditionObj: p,
+                    poolIndex: poolIndex
+                });
+            }
+        });
+
+        expandedPool = shuffleArray(expandedPool);
+
+        const assignedKeys = new Set();
+        updatedCells.forEach(c => {
+            if (c.isOpened && !c.isFree) {
+                if (c.song && c.song.title) assignedKeys.add(getSongKey(c.song.title, c.song.diff));
+                if (c.song2 && c.song2.title) assignedKeys.add(getSongKey(c.song2.title, c.song2.diff));
+                if (c.songTitle && c.diff) assignedKeys.add(getSongKey(c.songTitle, c.diff));
+            }
+        });
+
+        for (let i = 0; i < updatedCells.length; i++) {
+            let cell = updatedCells[i];
+
+            // ★ 開栓済み、またはFREEマスはスキップ
+            if (cell.isOpened || cell.isFree) continue;
+
+            if (expandedPool.length === 0) {
+                console.warn(`マス No.${i + 1}: 使用可能な条件プールが残っていません。`);
+                continue;
+            }
+
+            const pickedItem = expandedPool.shift();
+            const pickedCondition = pickedItem.conditionObj;
+            const pickedPoolIndex = pickedItem.poolIndex;
+
+            const minC1 = parseFloat(pickedCondition.minConst1 ?? pickedCondition.minConst ?? 0);
+            const maxC1 = parseFloat(pickedCondition.maxConst1 ?? pickedCondition.maxConst ?? 0);
+            const minC2 = parseFloat(pickedCondition.minConst2 ?? minC1);
+            const maxC2 = parseFloat(pickedCondition.maxConst2 ?? maxC1);
+            const conditionStr = pickedCondition.condition || "";
+
+            const condForWE = pickedCondition;
+            const isWE1 = String(condForWE.condition || "").includes("WE") || Boolean(condForWE.isWE);
+            const isWE2 = String(condForWE.condition || "").includes("WE") || Boolean(condForWE.isWE2 ?? condForWE.isWE);
+
+            const c1 = allScores.filter(s => {
+                const title = s.title || s.songTitle;
+                const c = parseFloat(s.constant || s.const || 0);
+                const isWE = typeof isWEDiff === "function" ? isWEDiff(s.diff) : false;
+                if (isWE1 !== isWE) return false;
+                return c >= minC1 && c <= maxC1 && !assignedKeys.has(getSongKey(title, s.diff));
+            });
+
+            if (c1.length > 0) {
+                const sel1 = c1[Math.floor(Math.random() * c1.length)];
+                const title1 = sel1.title || sel1.songTitle;
+                const key1 = getSongKey(title1, sel1.diff);
+                assignedKeys.add(key1);
+
+                const c2 = allScores.filter(s => {
+                    const title = s.title || s.songTitle;
+                    const c = parseFloat(s.constant || s.const || 0);
+                    const k = getSongKey(title, s.diff);
+                    const isWE = typeof isWEDiff === "function" ? isWEDiff(s.diff) : false;
+                    if (isWE2 !== isWE) return false;
+                    return c >= minC2 && c <= maxC2 && !assignedKeys.has(k);
+                });
+
+                let sel2 = null;
+                if (c2.length > 0) {
+                    sel2 = c2[Math.floor(Math.random() * c2.length)];
+                    const title2 = sel2.title || sel2.songTitle;
+                    assignedKeys.add(getSongKey(title2, sel2.diff));
+                }
+
+                updatedCells[i] = {
+                    ...cell,
+                    isOpened: true,
+                    conditionId: pickedCondition.id || cell.conditionId,
+                    condition: conditionStr,
+                    song: {
+                        title: title1,
+                        diff: sel1.diff,
+                        const: parseFloat(sel1.constant || sel1.const || 0)
+                    },
+                    song2: sel2 ? {
+                        title: sel2.title || sel2.songTitle,
+                        diff: sel2.diff,
+                        const: parseFloat(sel2.constant || sel2.const || 0)
+                    } : null,
+                    songTitle: title1,
+                    diff: sel1.diff,
+                    const: parseFloat(sel1.constant || sel1.const || 0),
+                    minConst1: minC1,
+                    maxConst1: maxC1,
+                    minConst2: minC2,
+                    maxConst2: maxC2,
+                    minConst: minC1,
+                    maxConst: maxC1,
+                    maxBestAvg: pickedCondition.maxBestAvg || null
+                };
+
+                if (updatedPool[pickedPoolIndex]) {
+                    const currentRem = updatedPool[pickedPoolIndex].remaining !== undefined
+                        ? updatedPool[pickedPoolIndex].remaining
+                        : updatedPool[pickedPoolIndex].count;
+                    updatedPool[pickedPoolIndex].remaining = Math.max(0, currentRem - 1);
+                }
+            } else {
+                console.warn(`マス No.${i + 1}: 条件（定数 ${minC1}〜${maxC1} / WE:${isWE1}）に一致する楽曲が見つかりませんでした。`);
+            }
+        }
+
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            body: JSON.stringify({
+                mode: "bulk_open_bingo_cells",
+                updatedCells: updatedCells,
+                conditionPool: updatedPool
+            })
+        });
+
+        const resData = await response.json();
+        if (resData.status === "success" && resData.data) {
+            currentBingoState = resData.data;
+            renderUserBingoBoard(resData.data);
+            renderAdminBingoBoard(resData.data);
+            if (typeof renderAdminRulesForm === "function") renderAdminRulesForm();
+            alert("すべてのマスを一括開栓しました！");
+        } else {
+            alert("保存失敗: " + (resData.message || ""));
+        }
+    } catch (err) {
+        console.error(err);
+        alert("通信エラーが発生しました。");
+    } finally {
+        if (targetBtn && targetBtn.tagName === "BUTTON") {
+            targetBtn.disabled = false;
+            targetBtn.innerText = originalText;
+        }
+    }
+}
+
+
+/**
+ * 全マスを一括リロール（条件カウント入れ替わり防止・2曲＆べ枠対応版）
+ */
+async function bulkRerollAllBingoCells() {
+    if (!currentBingoState || !currentBingoState.cells) return;
+    if (!confirm("【警告】現在の設定条件に基づき、全マスを最初から一括リロール（再抽選）しますか？")) return;
+
+    if (typeof allScores === "undefined" || !Array.isArray(allScores) || allScores.length === 0) {
+        if (typeof fetchAllSongMaster === "function") await fetchAllSongMaster();
+    }
+
+    const targetBtn = document.activeElement;
+    const originalText = targetBtn && targetBtn.tagName === "BUTTON" ? targetBtn.innerText : "";
+    if (targetBtn && targetBtn.tagName === "BUTTON") {
+        targetBtn.disabled = true;
+        targetBtn.innerText = "リロール中...";
+    }
+
+    try {
+        // ★ 1. プールのリセット (インデックスをIDとして確実に紐付け)
+        let resetPool = (currentBingoState.conditionPool || []).map((p, idx) => {
+            const count = p.total !== undefined ? p.total : (p.count !== undefined ? p.count : (p.remaining || 0));
+            return {
+                ...p,
+                poolIndex: idx, // 元の条件行インデックスを固定
+                total: count,
+                count: count,
+                remaining: count // 全件リロールなのでカウントを最大値にリセット
+            };
+        });
+
+        // ★ 2. 展開用プールを作成（元データのインデックス情報を保持）
+        let expandedPool = [];
+        resetPool.forEach(p => {
+            for (let c = 0; c < p.total; c++) {
+                expandedPool.push({
+                    conditionObj: JSON.parse(JSON.stringify(p)),
+                    poolIndex: p.poolIndex
+                });
+            }
+        });
+
+        // 条件プールをシャッフル
+        expandedPool = shuffleArray(expandedPool);
+
+        let newCells = JSON.parse(JSON.stringify(currentBingoState.cells));
+        const assignedKeys = new Set();
+
+        for (let i = 0; i < newCells.length; i++) {
+            if (newCells[i].isFree) continue;
+
+            if (expandedPool.length === 0) {
+                console.warn(`マス No.${i + 1}: 残り条件が不足しているため抽選をスキップしました。`);
+                continue;
+            }
+
+            // プールから1つ条件を取り出す
+            const pickedItem = expandedPool.shift();
+            const pickedCondition = pickedItem.conditionObj;
+            const targetPoolIndex = pickedItem.poolIndex; // 元の条件の配列番号
+
+            // 定数の抽出（1曲目・2曲目それぞれ）
+            const minC1 = parseFloat(pickedCondition.minConst1 ?? pickedCondition.minConst ?? 0);
+            const maxC1 = parseFloat(pickedCondition.maxConst1 ?? pickedCondition.maxConst ?? 0);
+            const minC2 = parseFloat(pickedCondition.minConst2 ?? minC1);
+            const maxC2 = parseFloat(pickedCondition.maxConst2 ?? maxC1);
+
+            const cond1 = pickedCondition.condition1 || pickedCondition.condition || "";
+            const cond2 = pickedCondition.condition2 || pickedCondition.condition || cond1;
+
+            const condStrUpper = String(pickedCondition.condition || "").toUpperCase();
+            const isWE1 = Boolean(pickedCondition.isWE) || condStrUpper.includes("WORLD") || /\bWE\b/.test(condStrUpper);
+            const isWE2 = Boolean(pickedCondition.isWE2 ?? pickedCondition.isWE) || condStrUpper.includes("WORLD") || /\bWE\b/.test(condStrUpper);
+
+            // 1曲目の選曲
+            const candidates1 = allScores.filter(s => {
+                const title = s.title || s.songTitle;
+                const c = parseFloat(s.constant || s.const || 0);
+                const isSongWE = typeof isWEDiff === "function" ? isWEDiff(s.diff) : (String(s.diff).toUpperCase() === "WE");
+                if (isWE1 !== isSongWE) return false;
+                return c >= minC1 && c <= maxC1 && !assignedKeys.has(`${title}_${s.diff}`);
+            });
+
+            if (candidates1.length === 0) {
+                console.warn(`マス No.${i + 1}: 定数 ${minC1}～${maxC1} に該当する楽曲が見つかりませんでした。`);
+                continue;
+            }
+
+            const sel1 = candidates1[Math.floor(Math.random() * candidates1.length)];
+            const key1 = `${sel1.title || sel1.songTitle}_${sel1.diff}`;
+            assignedKeys.add(key1);
+
+            // 2曲目の選曲
+            const candidates2 = allScores.filter(s => {
+                const title = s.title || s.songTitle;
+                const c = parseFloat(s.constant || s.const || 0);
+                const k = `${title}_${s.diff}`;
+                const isSongWE = typeof isWEDiff === "function" ? isWEDiff(s.diff) : (String(s.diff).toUpperCase() === "WE");
+                if (isWE2 !== isSongWE) return false;
+                return c >= minC2 && c <= maxC2 && !assignedKeys.has(k) && k !== key1;
+            });
+
+            let sel2 = null;
+            if (candidates2.length > 0) {
+                sel2 = candidates2[Math.floor(Math.random() * candidates2.length)];
+                assignedKeys.add(`${sel2.title || sel2.songTitle}_${sel2.diff}`);
+            }
+
+            // マス更新
+            newCells[i] = {
+                ...newCells[i],
+                isOpened: true,
+                isCleared: false,
+                clearedBy: "",
+                clearedAt: "",
+                conditionId: pickedCondition.id || null,
+                condition: cond1,
+                condition1: cond1,
+                condition2: cond2,
+                minConst1: minC1,
+                maxConst1: maxC1,
+                minConst2: minC2,
+                maxConst2: maxC2,
+                minConst: minC1,
+                maxConst: maxC1,
+                isWE: isWE1,
+                isWE2: isWE2,
+                maxBestAvg: pickedCondition.maxBestAvg ?? null,
+                song: {
+                    title: sel1.title || sel1.songTitle,
+                    diff: sel1.diff,
+                    const: parseFloat(sel1.constant || sel1.const || 0)
+                },
+                song2: sel2 ? {
+                    title: sel2.title || sel2.songTitle,
+                    diff: sel2.diff,
+                    const: parseFloat(sel2.constant || sel2.const || 0)
+                } : null,
+                songTitle: sel1.title || sel1.songTitle,
+                diff: sel1.diff,
+                const: parseFloat(sel1.constant || sel1.const || 0)
+            };
+
+            // ★ 3. poolIndex を使って直接元の条件行の remaining を減算（入れ替わり防止）
+            if (resetPool[targetPoolIndex]) {
+                resetPool[targetPoolIndex].remaining = Math.max(0, resetPool[targetPoolIndex].remaining - 1);
+            }
+        }
+
+        // 保存リクエスト
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            body: JSON.stringify({
+                mode: "bulk_open_bingo_cells",
+                updatedCells: newCells,
+                conditionPool: resetPool
+            })
+        });
+
+        const resData = await response.json();
+        if (resData.status === "success" && resData.data) {
+            currentBingoState = resData.data;
+            renderUserBingoBoard(resData.data);
+            renderAdminBingoBoard(resData.data);
+            if (typeof renderAdminRulesForm === "function") renderAdminRulesForm();
+            alert("全マスを設定条件に基づきリロールしました！");
+        } else {
+            alert("リロール保存失敗: " + (resData.message || ""));
+        }
+    } catch (err) {
+        console.error(err);
+        alert("通信エラーが発生しました。");
+    } finally {
+        if (targetBtn && targetBtn.tagName === "BUTTON") {
+            targetBtn.disabled = false;
+            targetBtn.innerText = originalText;
+        }
+    }
+}
+
+/**
+ * 新規カード生成ボタン押下時の処理
+ */
+async function submitCreateNewBingo(btnEl) {
+    if (typeof adminConditionPool === "undefined" || !Array.isArray(adminConditionPool)) {
+        alert("条件プールが初期化されていません。");
+        return;
+    }
+
+    // ★ 1. item.count を安全に数値変換して合計（NaN防止）
+    const totalCells = adminConditionPool.reduce((sum, item) => {
+        const count = Number(item.count) || 0;
+        return sum + count;
+    }, 0);
+
+    // ★ 2. 中央の協力マスを除いた「24マス分」チェック
+    if (totalCells !== 24) {
+        alert(`合計が24マス分になるように条件を設定してください。（現在の合計: ${totalCells}マス / 中央協力マスを除く）`);
+        return;
+    }
+
+    if (!confirm("新しいビンゴカードを発行しますか？（非公開で生成されます）")) return;
+
+    // ★ 3. GASの initBingoData に適合する 24マス分ルール配列（rules24）を構築
+    const rules24 = [];
+    adminConditionPool.forEach(item => {
+        const count = Number(item.count) || 0;
+        for (let i = 0; i < count; i++) {
+            const minC1 = item.minConst1 ?? item.minConst ?? 0;
+            const maxC1 = item.maxConst1 ?? item.maxConst ?? 0;
+            const minC2 = item.minConst2 !== undefined && item.minConst2 !== "" ? item.minConst2 : null;
+            const maxC2 = item.maxConst2 !== undefined && item.maxConst2 !== "" ? item.maxConst2 : null;
+            const cond1 = item.condition1 || item.condition || "SSS";
+            const cond2 = item.condition2 || item.condition || cond1;
+
+            rules24.push({
+                minConst1: parseFloat(minC1),
+                maxConst1: parseFloat(maxC1),
+                minConst2: minC2 !== null ? parseFloat(minC2) : null,
+                maxConst2: maxC2 !== null ? parseFloat(maxC2) : null,
+                condition: String(cond1),
+                condition1: String(cond1),
+                condition2: String(cond2),
+                maxBestAvg: (item.maxBestAvg !== undefined && item.maxBestAvg !== null && item.maxBestAvg !== "") ? parseFloat(item.maxBestAvg) : null,
+                isFree: Boolean(item.isFree)
+            });
+        }
+    });
+
+    // ★ 4. 条件プールデータ（GAS側の conditionPool 構造と同調）
+    const conditionPoolData = adminConditionPool.map((item, index) => {
+        const count = Number(item.count) || 0;
+        const minC1 = item.minConst1 ?? item.minConst ?? 0;
+        const maxC1 = item.maxConst1 ?? item.maxConst ?? 0;
+        const minC2 = item.minConst2 !== undefined && item.minConst2 !== "" ? item.minConst2 : null;
+        const maxC2 = item.maxConst2 !== undefined && item.maxConst2 !== "" ? item.maxConst2 : null;
+        const cond1 = item.condition1 || item.condition || "SSS";
+        const cond2 = item.condition2 || item.condition || cond1;
+
+        return {
+            id: item.id !== undefined ? item.id : (index + 1),
+            minConst1: parseFloat(minC1),
+            maxConst1: parseFloat(maxC1),
+            minConst2: minC2 !== null ? parseFloat(minC2) : null,
+            maxConst2: maxC2 !== null ? parseFloat(maxC2) : null,
+            condition: String(cond1),
+            condition1: String(cond1),
+            condition2: String(cond2),
+            maxBestAvg: (item.maxBestAvg !== undefined && item.maxBestAvg !== null && item.maxBestAvg !== "") ? parseFloat(item.maxBestAvg) : null,
+            total: count,
+            remaining: count
+        };
+    });
+
+    // 中央協力マスのターゲットスコア（入力フォーム等から取得、デフォルトは1000万）
+    const centerTargetEl = document.getElementById("admin-center-target-score");
+    const centerTargetScore = centerTargetEl ? parseFloat(centerTargetEl.value) || 10000000 : 10000000;
+
+    try {
+        if (btnEl) btnEl.disabled = true;
+        await createNewBingoCard(rules24, conditionPoolData, centerTargetScore);
+    } finally {
+        if (btnEl) btnEl.disabled = false;
+    }
+}
+
+/**
+ * 新規カード発行（GAS通信）
+ */
+async function createNewBingoCard(rulesData, conditionPoolData, centerTargetScore) {
+    try {
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            body: JSON.stringify({
+                mode: "init_bingo_data",
+                rules: rulesData,
+                conditionPool: conditionPoolData,
+                centerTargetScore: centerTargetScore
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP Error: ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (result.status === "success" && result.data) {
+            alert("新規ビンゴカードを作成しました。管理画面上でマスの開栓を行ってください。");
+
+            // グローバル状態の更新
+            if (typeof currentBingoState !== "undefined") {
+                currentBingoState = {
+                    ...result.data,
+                    isPublished: false
+                };
+            }
+
+            // 各UIコンポーネントの再描画
+            if (typeof renderUserBingoBoard === "function") {
+                renderUserBingoBoard(result.data);
+            }
+            if (typeof renderAdminBingoBoard === "function") {
+                renderAdminBingoBoard(result.data);
+            }
+            if (typeof renderAdminRulesForm === "function") {
+                renderAdminRulesForm(false);
+            }
+            if (typeof updateAdminPublishStatusUI === "function") {
+                updateAdminPublishStatusUI(false);
+            }
+        } else {
+            alert("作成失敗: " + (result.message || "エラーが発生しました"));
+        }
+    } catch (error) {
+        console.error("初期化エラー:", error);
+        alert("通信エラーが発生しました。");
+    }
+}
+
+
+// モーダル表示制御
+function openBingoModal() {
+    document.getElementById("bingo-modal").style.display = "flex";
+}
+
+function closeBingoModal() {
+    document.getElementById("bingo-modal").style.display = "none";
+}
+
+async function openBingoAdminModal() {
+    const isAuthed = sessionStorage.getItem("bingo_admin_authed");
+    if (!isAuthed) {
+        const pw = prompt("管理者パスワードを入力してください:");
+        if (pw === "admin123") {
+            sessionStorage.setItem("bingo_admin_authed", "true");
+        } else {
+            if (pw !== null) alert("パスワードが違います。");
+            return;
+        }
+    }
+
+    document.getElementById("bingo-admin-modal").style.display = "flex";
+
+    if (typeof fetchBingoData === "function") {
+        await fetchBingoData(true);
+    }
+
+    if (typeof loadConditionPoolFromStorage === "function") {
+        adminConditionPool = loadConditionPoolFromStorage();
+    } else if (!adminConditionPool) {
+        adminConditionPool = [];
+    }
+
+    renderAdminRulesForm();
+    if (currentBingoState) {
+        renderAdminBingoBoard(currentBingoState);
+        updateAdminPublishStatusUI(!!currentBingoState.isPublished);
+    }
+}
+
+function closeBingoAdminModal() {
+    document.getElementById("bingo-admin-modal").style.display = "none";
+}
+
+let editingIndex = -1;
+
+/**
+ * フォームの入力値を保持・復元するためのヘルパー関数
+ */
+function getFormData() {
+    return {
+        min1: document.getElementById("pool-min")?.value || "",
+        max1: document.getElementById("pool-max")?.value || "",
+        min2: document.getElementById("pool-min2")?.value || "",
+        max2: document.getElementById("pool-max2")?.value || "",
+        cond1: document.getElementById("pool-cond")?.value || "SSS",
+        cond2: document.getElementById("pool-cond2")?.value || "",
+        maxRating: document.getElementById("pool-max-rating")?.value || "",
+        count: document.getElementById("pool-count")?.value || "2"
+    };
+}
+
+function restoreFormData(data) {
+    if (!data) return;
+    if (document.getElementById("pool-min")) document.getElementById("pool-min").value = data.min1;
+    if (document.getElementById("pool-max")) document.getElementById("pool-max").value = data.max1;
+    if (document.getElementById("pool-min2")) document.getElementById("pool-min2").value = data.min2;
+    if (document.getElementById("pool-max2")) document.getElementById("pool-max2").value = data.max2;
+    if (document.getElementById("pool-cond")) document.getElementById("pool-cond").value = data.cond1;
+    if (document.getElementById("pool-cond2")) document.getElementById("pool-cond2").value = data.cond2;
+    if (document.getElementById("pool-max-rating")) document.getElementById("pool-max-rating").value = data.maxRating;
+    if (document.getElementById("pool-count")) document.getElementById("pool-count").value = data.count;
+}
+
+/**
+ * 条件選択肢のHTMLを出力するヘルパー
+ */
+function getConditionOptionsHTML(selectedValue = "") {
+    const options = [
+        { val: "SS", label: "SS" },
+        { val: "SS_PLUS", label: "SS+" },
+        { val: "7000", label: "7000" },
+        { val: "8000", label: "8000" },
+        { val: "8500", label: "8500" },
+        { val: "SSS", label: "SSS" },
+        { val: "SSS_PLUS", label: "SSS+" },
+        { val: "AJ", label: "AJ" },
+        { val: "AJ_99", label: "99AJ" },
+        { val: "AJ_995", label: "995AJ" },
+        { val: "THEORY", label: "理論値" }
+    ];
+    return options.map(opt => `<option value="${opt.val}" ${opt.val === selectedValue ? "selected" : ""}>${opt.label}</option>`).join('');
+}
+
+/**
+ * 設定済み＆残り条件一覧の描画更新
+ */
+function renderAdminRulesForm(forceEdit = false, preserveFormValues = false) {
+    const container = document.getElementById("admin-rules-form");
+    if (!container) return;
+
+    const savedFormData = preserveFormValues ? getFormData() : null;
+
+    const isBingoCreated = !forceEdit && currentBingoState && currentBingoState.cells && currentBingoState.cells.length > 0;
+    const poolList = isBingoCreated ? currentBingoState.conditionPool : adminConditionPool;
+
+    const totalCells = poolList.reduce((sum, item) => {
+        if (isBingoCreated) {
+            return sum + (item.remaining !== undefined ? item.remaining : (item.total || 0));
+        } else {
+            return sum + (item.count || item.total || 0);
+        }
+    }, 0);
+
+    const hasUnopenedCells = isBingoCreated && currentBingoState.cells.some(c => !c.isOpened && !c.isFree);
+
+    container.innerHTML = `
+        <div style="background: #e3f2fd; padding: 12px; border-radius: 8px; border: 1px solid #90caf9; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <strong style="font-size: 14px; color: #0d47a1;">公開ステータス:</strong>
+                <span id="admin-publish-label" style="font-weight: bold; margin-left: 8px;">確認中...</span>
+            </div>
+            <button type="button" id="toggle-publish-btn" onclick="handlePublishToggleClick()" style="padding: 6px 14px; font-weight: bold; border-radius: 4px; border: none; cursor: pointer; color: #fff; background: #1976d2;">
+                切り替える
+            </button>
+        </div>
+
+        <div style="background: #fff; padding: 12px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="font-weight: bold; font-size: 14px;">新規カード生成（条件プール設定）</div>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    ${isBingoCreated ? (
+            hasUnopenedCells ? `
+                            <button type="button" onclick="bulkDrawAllBingoCells()" style="background: #e65100; color: #fff; border: none; border-radius: 4px; padding: 4px 10px; font-size: 12px; font-weight: bold; cursor: pointer;">
+                                未開栓を一括抽選
+                            </button>
+                        ` : `
+                            <button type="button" onclick="bulkRerollAllBingoCells()" style="background: #d32f2f; color: #fff; border: none; border-radius: 4px; padding: 4px 10px; font-size: 12px; font-weight: bold; cursor: pointer;" title="FREE以外の24マスを初期条件から再抽選します">
+                                全マス一括リロール
+                            </button>
+                        `
+        ) : ''}
+                    ${isBingoCreated ? `
+                        <button type="button" onclick="switchToEditMode(true)" style="background:#0288d1; color:#fff; border:none; border-radius:4px; padding:4px 8px; font-size:12px; cursor:pointer;" title="現在の条件を引き継いで編集します">条件を流用して編集</button>
+                        <button type="button" onclick="clearAndCreateNewRules()" style="background:#757575; color:#fff; border:none; border-radius:4px; padding:4px 8px; font-size:12px; cursor:pointer;" title="条件をすべて消去して作り直します">条件を一括クリア</button>
+                    ` : ''}
+                </div>
+            </div>
+            
+            <!-- 定数条件設定エリア -->
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 4px; background: #f1f8e9; padding: 4px 8px; border-radius: 4px; border: 1px solid #c8e6c9;">
+                    <span style="font-size: 12px; font-weight: bold; color: #2e7d32;">1曲目:</span>
+                    <input type="number" id="pool-min" step="0.1" value="15.0" style="width: 55px; padding: 3px;" title="1曲目 最小定数">
+                    <span>～</span>
+                    <input type="number" id="pool-max" step="0.1" value="15.0" style="width: 55px; padding: 3px;" title="1曲目 最大定数">
+                    <select id="pool-cond" style="padding: 3px;">
+                        ${getConditionOptionsHTML("SSS")}
+                    </select>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 4px; background: #ffebee; padding: 4px 8px; border-radius: 4px; border: 1px solid #ffcdd2;">
+                    <span style="font-size: 12px; font-weight: bold; color: #c62828;">2曲目:</span>
+                    <input type="number" id="pool-min2" step="0.1" placeholder="同上" style="width: 55px; padding: 3px;" title="2曲目 最小定数">
+                    <span>～</span>
+                    <input type="number" id="pool-max2" step="0.1" placeholder="同上" style="width: 55px; padding: 3px;" title="2曲目 最大定数">
+                    <select id="pool-cond2" style="padding: 3px;">
+                        <option value="">(同上)</option>
+                        ${getConditionOptionsHTML("")}
+                    </select>
+                </div>
+            </div>
+
+            <!-- クリア条件・ベスト枠上限・マス数設定エリア -->
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+                <input type="number" id="pool-max-rating" step="0.01" placeholder="上限(任意)" style="width: 80px; padding: 4px;" title="ベスト枠上限">
+                <input type="number" id="pool-count" min="1" max="24" value="2" style="width: 50px; padding: 4px;" title="マス数">
+                <span>マス分</span>
+                
+                <button type="button" id="admin-rule-submit-btn" onclick="addAdminConditionRule()" style="padding: 4px 10px; background: ${editingIndex >= 0 ? '#4caf50' : '#ff9800'}; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                    ${editingIndex >= 0 ? '更新' : '追加'}
+                </button>
+                ${editingIndex >= 0 ? `
+                    <button type="button" onclick="cancelEditRule()" style="padding: 4px 8px; background: #9e9e9e; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                        キャンセル
+                    </button>
+                ` : ''}
+            </div>
+        </div>
+
+        <div style="background: #f9f9f9; padding: 10px; border-radius: 8px; border: 1px solid #eee;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-weight: bold; font-size: 14px;">${isBingoCreated ? '現在の残り条件一覧' : '設定済み条件一覧'}</span>
+                <span style="font-weight: bold; font-size: 14px;">
+                    ${isBingoCreated ? '残り合計:' : '合計:'} 
+                    <span style="color: ${(!isBingoCreated && totalCells === 24) || isBingoCreated ? '#2e7d32' : '#d32f2f'};">${totalCells}</span> 
+                    ${isBingoCreated ? 'マス' : '/ 24マス (+ FREE 1マス)'}
+                </span>
+            </div>
+            <div id="condition-pool-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto;">
+                ${poolList.length === 0 ? '<div style="color:#888; font-size:12px; text-align:center; padding:10px;">条件が設定されていません</div>' : ''}
+                ${poolList.map((rule, idx) => {
+            const min1 = rule.minConst1 ?? rule.minConst;
+            const max1 = rule.maxConst1 ?? rule.maxConst;
+            const min2 = rule.minConst2 ?? min1;
+            const max2 = rule.maxConst2 ?? max1;
+
+            const cond1 = rule.condition1 ?? rule.condition;
+            const cond2 = rule.condition2 ?? cond1;
+
+            const isRemainingMode = isBingoCreated;
+            const rem = isRemainingMode ? rule.remaining : rule.count;
+            const tot = isRemainingMode ? rule.total : rule.count;
+
+            const limitText = rule.maxBestAvg ? ` (～${parseFloat(rule.maxBestAvg).toFixed(2)})` : "";
+
+            let detailText = `[1曲目] ${min1}～${max1} (${formatCondition(cond1)})`;
+            if (min2 !== min1 || max2 !== max1 || cond2 !== cond1) {
+                detailText += ` / [2曲目] ${min2}～${max2} (${formatCondition(cond2)})`;
+            } else {
+                detailText += ` (両曲共通)`;
+            }
+
+            const isEditingThis = editingIndex === idx;
+
+            return `
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: ${isEditingThis ? '#fffde7' : '#fff'}; padding: 6px 10px; border-radius: 4px; border: 1px solid ${isEditingThis ? '#fbc02d' : '#e0e0e0'}; font-size: 13px; ${rem === 0 ? 'opacity: 0.5;' : ''}">
+                            <span>${detailText}${limitText} : <strong>${isRemainingMode ? `残り ${rem} / ${tot}` : `${tot}`} マス分</strong></span>
+                            ${!isBingoCreated ? `
+                                <div style="display: flex; gap: 4px;">
+                                    <button onclick="editAdminConditionRule(${idx})" style="background: #0288d1; color: #fff; border: none; border-radius: 3px; padding: 2px 6px; cursor: pointer; font-size: 11px;">編集</button>
+                                    <button onclick="removeAdminConditionRule(${idx})" style="background: #ff4d4d; color: #fff; border: none; border-radius: 3px; padding: 2px 6px; cursor: pointer; font-size: 11px;">削除</button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+        }).join('')}
+            </div>
+        </div>
+    `;
+
+    if (preserveFormValues && savedFormData) {
+        restoreFormData(savedFormData);
+    }
+
+    const submitBtn = document.getElementById("submit-create-bingo-btn");
+    if (submitBtn) {
+        if (!isBingoCreated) {
+            submitBtn.disabled = totalCells !== 24;
+            submitBtn.style.opacity = totalCells === 24 ? "1" : "0.5";
+            submitBtn.style.cursor = totalCells === 24 ? "pointer" : "not-allowed";
+        }
+    }
+
+    if (typeof updateAdminPublishStatusUI === "function") {
+        const isPublished = currentBingoState ? !!currentBingoState.isPublished : false;
+        updateAdminPublishStatusUI(isPublished);
+    }
+}
+
+/**
+ * 💡 条件の追加および更新（編集完了）の共通処理
+ */
+function addAdminConditionRule() {
+    const minConst1 = parseFloat(document.getElementById("pool-min").value) || 0;
+    const maxConst1 = parseFloat(document.getElementById("pool-max").value) || 0;
+
+    const min2Val = document.getElementById("pool-min2")?.value;
+    const max2Val = document.getElementById("pool-max2")?.value;
+
+    const minConst2 = (min2Val !== "" && min2Val !== undefined) ? parseFloat(min2Val) : minConst1;
+    const maxConst2 = (max2Val !== "" && max2Val !== undefined) ? parseFloat(max2Val) : maxConst1;
+
+    if (minConst1 > maxConst1) {
+        alert("1曲目の最小定数は最大定数以下に設定してください。");
+        return;
+    }
+    if (minConst2 > maxConst2) {
+        alert("2曲目の最小定数は最大定数以下に設定してください。");
+        return;
+    }
+
+    const condition1 = document.getElementById("pool-cond").value;
+    const cond2Val = document.getElementById("pool-cond2")?.value;
+    const condition2 = (cond2Val !== "" && cond2Val !== undefined) ? cond2Val : condition1;
+
+    const count = parseInt(document.getElementById("pool-count").value, 10) || 0;
+
+    const maxRatingVal = document.getElementById("pool-max-rating").value;
+    const maxBestAvg = maxRatingVal !== "" ? parseFloat(maxRatingVal) : null;
+
+    if (count <= 0) return;
+
+    const currentTotal = adminConditionPool.reduce((sum, item, idx) => {
+        return sum + (idx === editingIndex ? 0 : item.count);
+    }, 0);
+
+    if (currentTotal + count > 24) {
+        alert("合計が24マス（FREEマス除く）を超えてしまいます。");
+        return;
+    }
+
+    const ruleData = {
+        minConst1,
+        maxConst1,
+        minConst2,
+        maxConst2,
+        minConst: minConst1,
+        maxConst: maxConst1,
+        condition1,
+        condition2,
+        condition: condition1, // 既存ロジック用フォールバック
+        count,
+        maxBestAvg
+    };
+
+    if (editingIndex >= 0) {
+        adminConditionPool[editingIndex] = ruleData;
+        editingIndex = -1;
+    } else {
+        adminConditionPool.push(ruleData);
+    }
+
+    renderAdminRulesForm(true, false);
+}
+
+/**
+ * 💡 既存の条件を入力欄に読み込んで編集モードへ移行する
+ */
+function editAdminConditionRule(index) {
+    const rule = adminConditionPool[index];
+    if (!rule) return;
+
+    editingIndex = index;
+
+    renderAdminRulesForm(true, false);
+
+    document.getElementById("pool-min").value = rule.minConst1 ?? rule.minConst ?? 15.0;
+    document.getElementById("pool-max").value = rule.maxConst1 ?? rule.maxConst ?? 15.0;
+
+    document.getElementById("pool-min2").value = (rule.minConst2 !== undefined && rule.minConst2 !== rule.minConst1) ? rule.minConst2 : "";
+    document.getElementById("pool-max2").value = (rule.maxConst2 !== undefined && rule.maxConst2 !== rule.maxConst1) ? rule.maxConst2 : "";
+
+    const c1 = rule.condition1 ?? rule.condition ?? "SSS";
+    const c2 = rule.condition2 ?? c1;
+
+    document.getElementById("pool-cond").value = c1;
+    document.getElementById("pool-cond2").value = (c2 !== c1) ? c2 : "";
+
+    document.getElementById("pool-max-rating").value = rule.maxBestAvg !== null && rule.maxBestAvg !== undefined ? rule.maxBestAvg : "";
+    document.getElementById("pool-count").value = rule.count || 2;
+}
+
+/**
+ * 💡 編集モードのキャンセル
+ */
+function cancelEditRule() {
+    editingIndex = -1;
+    renderAdminRulesForm(true, false);
+}
+
+/**
+ * 💡 条件削除処理（現在の入力値を維持したまま削除）
+ */
+function removeAdminConditionRule(index) {
+    adminConditionPool.splice(index, 1);
+
+    if (editingIndex === index) {
+        editingIndex = -1;
+    } else if (editingIndex > index) {
+        editingIndex--;
+    }
+
+    renderAdminRulesForm(true, true);
+}
+
+
+
+
+// ==========================================
+// 1. 公開 / 非公開の切り替え処理
+// ==========================================
+
+/**
+ * 💡 「公開する / 非公開にする」ボタンのクリックハンドラー
+ */
+async function handlePublishToggleClick() {
+    const currentState = currentBingoState || { isPublished: false, cells: [] };
+    const targetState = !currentState.isPublished;
+    const unopenedCount = currentState.cells ? currentState.cells.filter(c => !c.isOpened && !c.isFree).length : 0;
+
+    if (targetState && unopenedCount > 0) {
+        if (!confirm(`まだ未確定（抽選前）のマスが ${unopenedCount} 個あります。\nこのまま公開してもよろしいですか？`)) {
+            return;
+        }
+    }
+
+    if (confirm(`ビンゴカードを「${targetState ? '公開' : '非公開'}」に変更しますか？`)) {
+        await toggleBingoPublishStatus(targetState);
+    }
+}
+
+/**
+ * 💡 ビンゴの公開 / 非公開状態をGASに送信して更新する
+ */
+async function toggleBingoPublishStatus(targetState) {
+    if (typeof GAS_URL === 'undefined' || !GAS_URL) {
+        alert("GAS_URL が定義されていません。");
+        return false;
+    }
+
+    const isPublishedBool = Boolean(targetState);
+
+    try {
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+                mode: "toggle_bingo_publish",
+                isPublished: isPublishedBool,
+                params: { isPublished: isPublishedBool }
+            })
+        });
+
+        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+
+        const result = await response.json();
+
+        if (result && result.status === "success" && result.data) {
+            currentBingoState = result.data;
+            localStorage.setItem('bingo_data_cache', JSON.stringify(result.data));
+
+            updateAdminPublishStatusUI(result.data.isPublished);
+
+            if (typeof showToast === "function") {
+                showToast(result.data.isPublished ? "ビンゴを「公開」に切り替えました！" : "ビンゴを「非公開」に切り替えました！");
+            }
+            return true;
+        } else {
+            alert("ステータス更新に失敗しました: " + (result.message || "不明なエラー"));
+            return false;
+        }
+    } catch (error) {
+        console.error("公開ステータスの更新通信エラー:", error);
+        alert(`サーバーとの通信に失敗しました:\n${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * 💡 管理者画面の公開ステータスラベルとボタンの表記を更新する
+ */
+function updateAdminPublishStatusUI(isPublished) {
+    const labelEl = document.getElementById("admin-publish-label");
+    const btnEl = document.getElementById("toggle-publish-btn");
+
+    if (labelEl && btnEl) {
+        if (isPublished) {
+            labelEl.textContent = "公開中";
+            labelEl.style.color = "#2e7d32";
+            btnEl.textContent = "非公開にする";
+            btnEl.style.background = "#d32f2f";
+        } else {
+            labelEl.textContent = "非公開（準備中）";
+            labelEl.style.color = "#d32f2f";
+            btnEl.textContent = "公開する";
+            btnEl.style.background = "#2e7d32";
+        }
+    }
+}
+
+/**
+ * 条件を引き継いで編集モードに切替
+ */
+function switchToEditMode(keepCurrent = true) {
+    if (keepCurrent && currentBingoState && Array.isArray(currentBingoState.conditionPool)) {
+        adminConditionPool = currentBingoState.conditionPool.map(item => ({
+            ...item,
+            count: item.total !== undefined ? item.total : (item.count || 0)
+        }));
+    } else if (!keepCurrent) {
+        adminConditionPool = [];
+    }
+
+    renderAdminRulesForm(true);
+}
+
+/**
+ * 条件をすべて一括削除して新規作成モードへ
+ */
+function clearAndCreateNewRules() {
+    if (confirm("設定済みの条件を全てクリアしてゼロから作り直しますか？")) {
+        adminConditionPool = [];
+        renderAdminRulesForm(true);
+    }
+}
+
+/**
+ * 管理者用：FREEマス（中央マス）の情報・プレイヤー成果ログの送信
+ */
+function handleAdminFreeScoreUpdate() {
+    const songTitle = document.getElementById("admin-free-song-title").value.trim();
+    const targetScore = document.getElementById("admin-free-target-score").value;
+    const playerName = document.getElementById("admin-free-player-name").value.trim();
+    const playerScoreInput = document.getElementById("admin-free-player-score").value;
+
+    if (!confirm("FREEマスの設定・スコアを更新しますか？")) return;
+
+    // 現在のFREEマスのクリアリストを取得
+    const centerCell = currentBingoState?.cells?.[12] || currentBingoState?.cells?.find(c => c.isCenter);
+    let clearedList = centerCell?.clearedList ? [...centerCell.clearedList] : [];
+
+    // プレイヤー名とスコアが入力されている場合はリストを更新（同名なら上書き）
+    if (playerName && playerScoreInput !== "") {
+        const scoreVal = Number(playerScoreInput);
+        const existingIdx = clearedList.findIndex(item => (item.playerName === playerName || item.name === playerName));
+
+        if (existingIdx !== -1) {
+            clearedList[existingIdx].score = scoreVal;
+            clearedList[existingIdx].playerName = playerName;
+            clearedList[existingIdx].clearedAt = new Date().toISOString();
+        } else {
+            clearedList.push({
+                playerName: playerName,
+                score: scoreVal,
+                clearedAt: new Date().toISOString(),
+                isManual: true
+            });
+        }
+    }
+
+    // SYSTEMなどのシステムデータを除外した有効なプレイヤーのスコア合計値を計算
+    const calculatedTotalScore = clearedList.reduce((sum, item) => sum + Number(item.score || 0), 0);
+
+    const payload = {
+        mode: "update_free_score",
+        songTitle: songTitle || "",
+        targetScore: targetScore !== "" ? Number(targetScore) : null,
+        currentScore: calculatedTotalScore,
+        clearedList: clearedList, // ★重要: clearedList 配列をそのままGASに送信する
+        addScore: null
+    };
+
+    fetch(GAS_URL, {
+        method: "POST",
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(response => {
+        if (response.status === "success") {
+            alert("FREEマスの情報を更新しました");
+            fetchBingoData(); // 最新データ取得・画面再描画
+            
+            // プレイヤー名・スコア入力欄のみクリア
+            document.getElementById("admin-free-player-name").value = "";
+            document.getElementById("admin-free-player-score").value = "";
+        } else {
+            alert("エラー: " + response.message);
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert("通信エラーが発生しました");
+    });
+}
+
+/**
+ * フォーム入力から手動アサイン（曲の追加・割り当て）を実行
+ */
+async function handleManualAdminAssign() {
+    const idxEl = document.getElementById("admin-cell-index");
+    const idx = parseInt(idxEl?.value, 10);
+
+    if (isNaN(idx) || idx < 0 || idx >= 25) {
+        alert("有効なマス番号（No.1〜No.25）を選択してください。");
+        return;
+    }
+
+    const targetCell = (currentBingoState && currentBingoState.cells) ? currentBingoState.cells[idx] : null;
+
+    // 対象がFREEマスの場合は専用編集ダイアログへ誘導
+    if (targetCell && (targetCell.isFree || idx === 12)) {
+        if (confirm(`No.${idx + 1} はFREE（協力マス）です。FREEマスの内容編集を行いますか？`)) {
+            await handleAdminEditFreeCell(idx);
+        }
+        return;
+    }
+
+    const maxRatingVal = document.getElementById("admin-cell-max-rating")?.value.trim() || "";
+    const maxBestAvg = (maxRatingVal !== "" && !isNaN(parseFloat(maxRatingVal))) ? parseFloat(maxRatingVal) : null;
+
+    const title1 = document.getElementById("admin-song-title")?.value.trim() || "";
+    const diff1 = document.getElementById("admin-song-diff")?.value || "";
+    const const1 = parseFloat(document.getElementById("admin-song-const")?.value);
+
+    const title2 = document.getElementById("admin-song2-title")?.value.trim() || "";
+    const diff2 = document.getElementById("admin-song2-diff")?.value || "";
+    const const2Val = document.getElementById("admin-song2-const")?.value || "";
+    const const2 = const2Val !== "" ? parseFloat(const2Val) : NaN;
+
+    const cond1Input = document.getElementById("admin-condition1")?.value.trim() || "";
+    const cond2Input = document.getElementById("admin-condition2")?.value.trim() || "";
+
+    if (!title1 || isNaN(const1)) {
+        alert("【1曲目】の曲名と定数を正しく入力してください。");
+        return;
+    }
+
+    const song1 = { title: title1, diff: diff1, const: const1 };
+    let song2 = null;
+
+    if (title2) {
+        if (isNaN(const2)) {
+            alert("【2曲目】の定数を入力するか、2曲目を空欄にしてください。");
+            return;
+        }
+        song2 = { title: title2, diff: diff2, const: const2 };
+    }
+
+    const finalCond1 = cond1Input || targetCell?.condition1 || targetCell?.condition || "手動設定";
+    const finalCond2 = cond2Input || (cond1Input ? cond1Input : (targetCell?.condition2 || targetCell?.condition || finalCond1));
+
+    const conditionData = {
+        minConst1: targetCell?.minConst1 ?? const1,
+        maxConst1: targetCell?.maxConst1 ?? const1,
+        minConst2: targetCell?.minConst2 ?? (song2 ? const2 : const1),
+        maxConst2: targetCell?.maxConst2 ?? (song2 ? const2 : const1),
+        minConst: targetCell?.minConst1 ?? targetCell?.minConst ?? const1,
+        maxConst: targetCell?.maxConst1 ?? targetCell?.maxConst ?? const1,
+        condition: finalCond1,
+        condition1: finalCond1,
+        condition2: finalCond2,
+        maxBestAvg: maxBestAvg
+    };
+
+    let confirmMsg = `No.${idx + 1} マスに以下を手動アサインしますか？\n\n`;
+    confirmMsg += `・1曲目: ${title1} [${diff1}] (${const1}) / 条件: ${finalCond1}\n`;
+    if (song2) {
+        confirmMsg += `・2曲目: ${title2} [${diff2}] (${const2}) / 条件: ${finalCond2}\n`;
+    }
+    confirmMsg += `・ベスト枠上限: ${maxBestAvg !== null ? maxBestAvg : "なし"}`;
+
+    if (!confirm(confirmMsg)) return;
+
+    await openBingoCell(
+        idx,
+        song1,
+        song2,
+        currentBingoState ? currentBingoState.conditionPool : null,
+        conditionData
+    );
+
+    if (document.getElementById("admin-song-title")) document.getElementById("admin-song-title").value = "";
+    if (document.getElementById("admin-song-const")) document.getElementById("admin-song-const").value = "";
+    if (document.getElementById("admin-song2-title")) document.getElementById("admin-song2-title").value = "";
+    if (document.getElementById("admin-song2-const")) document.getElementById("admin-song2-const").value = "";
+    if (document.getElementById("admin-condition1")) document.getElementById("admin-condition1").value = "";
+    if (document.getElementById("admin-condition2")) document.getElementById("admin-condition2").value = "";
+    if (document.getElementById("admin-cell-max-rating")) document.getElementById("admin-cell-max-rating").value = "";
+}
+
+/**
+ * 条件コード・文字列から目標スコア（数値）を算出するヘルパー
+ */
+function parseRequiredScoreFromCondition(conditionCode) {
+    if (!conditionCode) return 0;
+    const code = String(conditionCode).trim().toUpperCase();
+
+    const scoreMap = {
+        "THEORY": 1010000,
+        "理論値": 1010000,
+        "AJ_995": 1009500,
+        "995AJ": 1009500,
+        "AJ_99": 1009900,
+        "99AJ": 1009900,
+        "AJ": 0,
+        "SSS_PLUS": 1009000,
+        "SSS+": 1009000,
+        "8500": 1008500,
+        "SSS_8500": 1008500,
+        "8000": 1008000,
+        "SSS_8000": 1008000,
+        "SSS": 1007500,
+        "7000": 1007000,
+        "SSS_7000": 1007000,
+        "SS_PLUS": 1005000,
+        "SS+": 1005000,
+        "SS": 1000000
+    };
+
+    if (scoreMap[code] !== undefined) {
+        return scoreMap[code];
+    }
+
+    const match = code.match(/(\d{6,7})/);
+    if (match) return parseInt(match[1], 10);
+
+    return 0;
+}
+
+/**
+ * 対象マス・選択楽曲・プレイヤーの入力に応じて、ボタンの活性/非活性をリアルタイム更新する
+ */
+function updateAdminClearFormState() {
+    const idxEl = document.getElementById("admin-clear-cell-index");
+    const songSelectEl = document.getElementById("admin-clear-song-select");
+    const playerEl = document.getElementById("admin-clear-player-name") || document.getElementById("admin-player-select");
+    const scoreEl = document.getElementById("admin-clear-score");
+    const lampEl = document.getElementById("admin-clear-lamp");
+
+    const btnAdd = document.querySelector("button[onclick*=\"'add'\"]");
+    const btnRemove = document.querySelector("button[onclick*=\"'remove'\"]");
+
+    if (!idxEl || !songSelectEl) return;
+
+    const idx = parseInt(idxEl.value, 10);
+    const cell = (currentBingoState && currentBingoState.cells) ? currentBingoState.cells[idx] : null;
+
+    const previousSelectedVal = songSelectEl.value;
+
+    // --- A. 未確定マスの処理 ---
+    if (!cell || (!cell.isOpened && !cell.isFree)) {
+        songSelectEl.innerHTML = `<option value="">【未確定マス】</option>`;
+        if (scoreEl) scoreEl.disabled = false;
+        if (lampEl) lampEl.disabled = false;
+        if (btnAdd) btnAdd.disabled = true;
+        if (btnRemove) btnRemove.disabled = true;
+        return;
+    }
+
+    // --- B. FREEマスの処理 ---
+    if (cell.isFree || idx === 12) {
+        songSelectEl.innerHTML = `<option value="free">FREEマス（協力達成）</option>`;
+        if (scoreEl) { scoreEl.value = ""; scoreEl.disabled = true; }
+        if (lampEl) { lampEl.disabled = true; }
+    } else {
+        if (scoreEl) scoreEl.disabled = false;
+        if (lampEl) lampEl.disabled = false;
+
+        // --- C. 楽曲リストの生成 ---
+        const s1 = cell.song || { title: cell.songTitle, diff: cell.diff };
+        const s2 = cell.song2;
+
+        let optionsHtml = "";
+        if (s1 && s1.title) {
+            const diff1 = s1.diff ? ` [${s1.diff}]` : "";
+            optionsHtml += `<option value="1">${s1.title}${diff1}</option>`;
+        }
+        if (s2 && s2.title) {
+            const diff2 = s2.diff ? ` [${s2.diff}]` : "";
+            optionsHtml += `<option value="2">${s2.title}${diff2}</option>`;
+        }
+
+        if (!optionsHtml) {
+            optionsHtml = `<option value="">楽曲情報なし</option>`;
+        }
+
+        if (songSelectEl.innerHTML !== optionsHtml) {
+            songSelectEl.innerHTML = optionsHtml;
+            if (previousSelectedVal && songSelectEl.querySelector(`option[value="${previousSelectedVal}"]`)) {
+                songSelectEl.value = previousSelectedVal;
+            }
+        }
+    }
+
+    // --- D. 選択中のコンテンツに対する達成判定 ---
+    const playerName = playerEl ? playerEl.value.trim() : "";
+    const selectedVal = songSelectEl.value;
+
+    const s1 = cell.song || { title: cell.songTitle, diff: cell.diff };
+    const s2 = cell.song2;
+    const targetSong = (selectedVal === "2" && s2 && s2.title) ? s2 : s1;
+
+    const clearedList = cell.clearedList || [];
+
+    const isSongCleared = clearedList.some(item => {
+        const nameMatch = (item.playerName || item.name || "").toLowerCase() === playerName.toLowerCase();
+        if (!nameMatch) return false;
+
+        if (cell.isFree || idx === 12) return true;
+
+        if (item.songIndex !== undefined && item.songIndex !== null) {
+            return String(item.songIndex) === String(selectedVal);
+        }
+
+        if (targetSong && targetSong.title) {
+            const itemTitle = (item.songTitle || item.title || item.song?.title || "").trim();
+            const targetTitle = (targetSong.title || "").trim();
+            return itemTitle === targetTitle;
+        }
+
+        return true;
+    });
+
+    // --- E. ボタンの有効/無効切り替え ---
+    if (btnAdd && btnRemove) {
+        if (!playerName) {
+            btnAdd.disabled = false;
+            btnRemove.disabled = false;
+        } else if (isSongCleared) {
+            btnAdd.disabled = true;
+            btnRemove.disabled = false;
+        } else {
+            btnAdd.disabled = false;
+            btnRemove.disabled = true;
+        }
+    }
+}
+
+/**
+ * フォーム入力から手動クリア状態の追加/取り消しを実行
+ */
+async function handleManualClearAction(action = 'add') {
+    const idxEl = document.getElementById("admin-clear-cell-index");
+    const idx = parseInt(idxEl?.value, 10);
+
+    if (isNaN(idx) || idx < 0 || idx >= 25) {
+        alert("有効なマス番号（No.1〜No.25）を選択してください。");
+        return;
+    }
+
+    const playerEl = document.getElementById("admin-clear-player-name") || document.getElementById("admin-player-select");
+    const playerName = playerEl?.value.trim() || "";
+
+    if (!playerName) {
+        alert("対象のプレイヤー名を入力してください。");
+        return;
+    }
+
+    const targetCell = (currentBingoState && currentBingoState.cells) ? currentBingoState.cells[idx] : null;
+    if (!targetCell) {
+        alert(`No.${idx + 1} マスの情報が見つかりません。`);
+        return;
+    }
+
+    const songSelectEl = document.getElementById("admin-clear-song-select");
+    const selectedVal = songSelectEl?.value;
+
+    const s1 = targetCell.song || { title: targetCell.songTitle, diff: targetCell.diff };
+    const s2 = targetCell.song2;
+    const targetSong = (selectedVal === "2" && s2 && s2.title) ? s2 : s1;
+
+    const scoreInput = document.getElementById("admin-clear-score");
+
+    // --- 取り消し処理 (remove) ---
+    if (action === 'remove') {
+        let removeMsg = `No.${idx + 1} マスから プレイヤー [${playerName}] の記録を取り消しますか？\n`;
+        if (targetSong && targetSong.title && !targetCell.isFree) {
+            removeMsg += `・対象楽曲: ${targetSong.title} [${targetSong.diff || ''}]\n`;
+        }
+
+        if (!confirm(removeMsg)) return;
+
+        if (typeof toggleBingoCellClearStatus === "function") {
+            await toggleBingoCellClearStatus(idx, playerName, {
+                action: 'remove',
+                songIndex: selectedVal,
+                songTitle: targetSong ? targetSong.title : "",
+                diff: targetSong ? targetSong.diff : ""
+            });
+        }
+        if (scoreInput) scoreInput.value = "";
+        updateAdminClearFormState();
+        return;
+    }
+
+    // --- 達成登録処理 (add) ---
+    const scoreVal = scoreInput ? scoreInput.value.trim() : "";
+    let score = null;
+    if (scoreVal !== "" && !targetCell.isFree) {
+        const parsed = parseInt(scoreVal, 10);
+        if (!isNaN(parsed)) score = parsed;
+    }
+
+    const lampEl = document.getElementById("admin-clear-lamp");
+    const selectedLamp = (targetCell.isFree || idx === 12) ? "FREE" : (lampEl ? lampEl.value.trim() : "AJ");
+
+    let confirmMsg = `No.${idx + 1} マスの達成登録を行いますか？\n\n`;
+    confirmMsg += `・対象プレイヤー: ${playerName}\n`;
+    if (targetCell.isFree || idx === 12) {
+        confirmMsg += `・種別: FREEマス達成登録\n`;
+    } else {
+        if (targetSong && targetSong.title) {
+            confirmMsg += `・対象楽曲: ${targetSong.title} [${targetSong.diff || ''}]\n`;
+        }
+        confirmMsg += `・記録スコア: ${score !== null ? score.toLocaleString() + '点' : 'なし（条件クリア扱い）'}\n`;
+        confirmMsg += `・達成ランプ: ${selectedLamp}\n`;
+    }
+
+    if (!confirm(confirmMsg)) return;
+
+    if (typeof toggleBingoCellClearStatus === "function") {
+        await toggleBingoCellClearStatus(idx, playerName, {
+            action: 'add',
+            score: score,
+            lamp: selectedLamp,
+            songIndex: selectedVal,
+            songTitle: targetSong ? targetSong.title : "",
+            diff: targetSong ? targetSong.diff : ""
+        });
+    }
+
+    if (scoreInput) scoreInput.value = "";
+    updateAdminClearFormState();
+}
+
+/**
+ * 指定したマスのクリア状態（登録 / 取り消し）を更新する API 関数
+ */
+async function toggleBingoCellClearStatus(cellIndex, playerName, options = {}) {
+    if (!playerName) {
+        alert("対象のプレイヤーを選択してください。");
+        return;
+    }
+
+    const action = options.action || 'add';
+    const inputScore = options.score !== undefined ? options.score : null;
+    const inputLamp = options.lamp || "MANUAL";
+
+    // --- 1. 条件検証（スコア＆ランプ） ---
+    if (action === 'add' && currentBingoState && currentBingoState.cells && currentBingoState.cells[cellIndex]) {
+        const cell = currentBingoState.cells[cellIndex];
+
+        // FREEマスでない場合のみスコア・ランプ判定を実施
+        if (!cell.isFree && cellIndex !== 12) {
+            const selectedSongIdx = String(options.songIndex || "1");
+
+            // 2曲目の条件が未設定（空文字など）の場合は 1曲目の条件に安全にフォールバック
+            const rawCondition = (selectedSongIdx === "2" && cell.condition2)
+                ? cell.condition2
+                : (cell.condition1 || cell.condition || "");
+
+            const condCode = String(rawCondition).trim().toUpperCase();
+
+            const isAJRequired = condCode.includes("AJ");
+            const reqScore = parseRequiredScoreFromCondition(rawCondition);
+
+            // A. ランプチェック
+            if (isAJRequired) {
+                const isAJLamp = inputLamp.toUpperCase().includes("AJ") || inputLamp.toUpperCase().includes("ALL JUSTICE");
+                if (!isAJLamp) {
+                    const condLabel = typeof formatCondition === "function" ? formatCondition(rawCondition) : rawCondition;
+                    alert(`【条件未達エラー】\nこのマスの達成条件 [${condLabel}] には 「ALL JUSTICE (AJ)」 ランプが必要です。`);
+                    return;
+                }
+            }
+
+            // B. スコアチェック
+            if (reqScore > 0) {
+                if (inputScore === null || isNaN(inputScore)) {
+                    alert(`【条件エラー】このマスの達成にはスコアの入力が必要です。（必要スコア: ${reqScore.toLocaleString()}点 以上）`);
+                    return;
+                }
+                if (inputScore < reqScore) {
+                    const condLabel = typeof formatCondition === "function" ? formatCondition(rawCondition) : rawCondition;
+                    alert(`【条件未達エラー】\n条件 [${condLabel}] (${reqScore.toLocaleString()}点以上) に対し、入力スコア (${inputScore.toLocaleString()}点) が不足しています。`);
+                    return;
+                }
+            }
+        }
+    }
+
+    // --- 2. GASへ送信 ---
+    try {
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+                mode: "clear_bingo_cell",
+                cellIndex: cellIndex,
+                playerName: playerName,
+                action: action,
+                songIndex: String(options.songIndex || "1"),
+                songTitle: options.songTitle || "",
+                diff: options.diff || "",
+                score: inputScore,
+                lamp: inputLamp
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.status === "success") {
+            currentBingoState = result.data;
+
+            if (typeof renderAdminBingoBoard === "function") renderAdminBingoBoard(currentBingoState);
+            if (typeof renderBingoCard === "function") renderBingoCard(currentBingoState);
+            if (typeof updateAdminClearFormState === "function") updateAdminClearFormState();
+        } else {
+            alert("更新エラー: " + result.message);
+        }
+    } catch (e) {
+        console.error("手動クリア通信エラー:", e);
+        alert("通信エラーが発生しました。");
+    }
+}
+
+
+
+
+
+/**
+ * 💡【新設】プレイヤー名指定でのデータ取得（ブックマークレット遷移時用）
+ */
+async function loadPlayerDataByName(playerName) {
+    if (!playerName) return false;
+
+    try {
+        const response = await fetch(GAS_URL, {
+            method: "POST",
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+                mode: "get_player_data",
+                playerName: playerName
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.status === "success" && result.records) {
+            // トークンは既存のものを維持して成功処理へ
+            const currentToken = localStorage.getItem('chunirec_token') || "";
+            handleSuccess(result, currentToken);
+            return true;
+        } else {
+            throw new Error(result.message || "プレイヤーデータの取得に失敗しました。");
+        }
+    } catch (e) {
+        console.error(e);
+        alert("データ読み込みエラー: " + e.message);
+        return false;
+    }
+}
+
+/**
+ * 💡 データを再同期する（ボタン用）
+ * スコア同期 ＋ 最新ビンゴデータの再取得を一括で行う
+ */
+async function refreshScores() {
+    const btn = document.querySelector('.refresh-btn');
+    if (!btn || btn.disabled) return;
+
+    const originalText = btn.innerText;
+    btn.disabled = true;
+    btn.innerText = "同期中...";
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // 1. スコアの同期・読み込み
+    const isSuccess = await loadScores();
+
+    // 2. ビンゴデータの最新取得（※関数が存在する場合に実行）
+    if (isSuccess && typeof fetchBingoData === 'function') {
+        try {
+            await fetchBingoData();
+        } catch (bErr) {
+            console.error("ビンゴデータの再取得に失敗:", bErr);
+        }
+    }
+
+    btn.disabled = false;
+    btn.innerText = originalText;
+    btn.blur();
+
+    if (isSuccess) {
+        alert("データおよびビンゴ状態の再同期が正常に完了しました！");
+    } else {
+        const errorMsgEl = document.getElementById("token-error");
+        const errMsg = errorMsgEl ? errorMsgEl.innerText : "認証・同期エラー";
+        alert("同期に失敗しました。\n" + errMsg);
     }
 }
 
@@ -256,67 +3428,6 @@ async function loadScores() {
         if (loadingMsg) loadingMsg.style.display = "none";
     }
 
-}
-
-/**
- * 💡【新設】プレイヤー名指定でのデータ取得（ブックマークレット遷移時用）
- */
-async function loadPlayerDataByName(playerName) {
-    if (!playerName) return false;
-
-    try {
-        const response = await fetch(GAS_URL, {
-            method: "POST",
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({
-                mode: "get_player_data",
-                playerName: playerName
-            })
-        });
-
-        const result = await response.json();
-
-        if (result.status === "success" && result.records) {
-            // トークンは既存のものを維持して成功処理へ
-            const currentToken = localStorage.getItem('chunirec_token') || "";
-            handleSuccess(result, currentToken);
-            return true;
-        } else {
-            throw new Error(result.message || "プレイヤーデータの取得に失敗しました。");
-        }
-    } catch (e) {
-        console.error(e);
-        alert("データ読み込みエラー: " + e.message);
-        return false;
-    }
-}
-
-/**
- * 💡 データを再同期する（ボタン用）
- */
-async function refreshScores() {
-    const btn = document.querySelector('.refresh-btn');
-    if (!btn || btn.disabled) return;
-
-    const originalText = btn.innerText;
-    btn.disabled = true;
-    btn.innerText = "同期中...";
-
-    await new Promise(resolve => setTimeout(resolve, 50));
-
-    const isSuccess = await loadScores();
-
-    btn.disabled = false;
-    btn.innerText = originalText;
-    btn.blur();
-
-    if (isSuccess) {
-        alert("データの再同期が正常に完了しました！");
-    } else {
-        const errorMsgEl = document.getElementById("token-error");
-        const errMsg = errorMsgEl ? errorMsgEl.innerText : "認証・同期エラー";
-        alert("同期に失敗しました。\n" + errMsg);
-    }
 }
 
 /**
@@ -1018,238 +4129,315 @@ function sortData(data) {
 }
 
 /**
- * 画面にスコアを表示する
+ * 画面にスコアを表示する（escapeHTML不使用版）
  */
 function displayScores(data) {
-    console.log("--- displayScores開始 ---");
+    console.log("--- displayScores開始 ---", data ? `${data.length}件` : "データなし");
 
-    const body = document.getElementById('score-body');
-    if (!body) return;
-
-    const colorMap = {
-        'POWER': '#36a2eb',
-        'NOTES': '#d7a62e',
-        'CHUNI': '#239898',
-        'TRICKY': '#9966ff'
-    };
-
-    const sortKey = typeof currentSortKey !== 'undefined' ? currentSortKey : 'rating';
-    const trendSwitch = document.getElementById('trend-enable-switch');
-    const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
-    const activeTrendBtn = isTrendEnabled ? document.querySelector('.btn-trend-filter.active') : null;
-    const selectedTrend = activeTrendBtn ? activeTrendBtn.getAttribute('data-trend') : null;
-
-    const ratingHeader = document.getElementById('rating-header') || document.querySelector('thead th:last-child');
-
-    if (ratingHeader) {
-        if (selectedTrend) {
-            ratingHeader.textContent = `${selectedTrend}値`;
-        } else {
-            ratingHeader.textContent = "単曲レート";
+    try {
+        const body = document.getElementById('score-body');
+        if (!body) {
+            console.error("エラー: #score-body 要素が見つかりません。");
+            return;
         }
-    }
 
-    if (!data || data.length === 0) {
-        body.innerHTML = "<tr><td colspan='5'>表示できるデータがありません</td></tr>";
-        return;
-    }
-
-    // 💡 傾向選択時の枠対象（Top 30）の算出：補正後レート値基準に固定
-    const top30Set = new Set();
-    if (selectedTrend) {
-        const sourceData = (typeof myCurrentRecords !== "undefined" && Array.isArray(myCurrentRecords) && myCurrentRecords.length > 0)
-            ? myCurrentRecords
-            : data;
-
-        const getRatingVal = (item) => {
-            if (selectedTrend === 'POWER') return parseFloat(item.tairyoku ?? item.rawTairyoku ?? 0);
-            if (selectedTrend === 'NOTES') return parseFloat(item.kenban ?? item.rawKenban ?? 0);
-            if (selectedTrend === 'CHUNI') return parseFloat(item.chuni ?? item.rawChuni ?? 0);
-            if (selectedTrend === 'TRICKY') return parseFloat(item.kuse ?? item.rawKuse ?? 0);
-            return 0;
+        const colorMap = {
+            'POWER': '#36a2eb',
+            'NOTES': '#d7a62e',
+            'CHUNI': '#239898',
+            'TRICKY': '#9966ff'
         };
 
-        [...sourceData]
-            .sort((a, b) => getRatingVal(b) - getRatingVal(a))
-            .slice(0, 30)
-            .forEach(item => {
-                if (item && item.title && item.diff) {
-                    const key = `${item.title}_${item.diff}`;
-                    top30Set.add(key);
-                }
-            });
-    }
+        const sortKey = typeof currentSortKey !== 'undefined' ? currentSortKey : 'rating';
+        const trendSwitch = document.getElementById('trend-enable-switch');
+        const isTrendEnabled = trendSwitch ? trendSwitch.checked : false;
+        const activeTrendBtn = isTrendEnabled ? document.querySelector('.btn-trend-filter.active') : null;
+        const selectedTrend = activeTrendBtn ? activeTrendBtn.getAttribute('data-trend') : null;
 
-    body.innerHTML = "";
-    const fragment = document.createDocumentFragment();
-    const limitedData = data.slice(0, 200);
+        const ratingHeader = document.getElementById('rating-header') || document.querySelector('thead th:last-child');
 
-    const thresholds = window.rateThresholds || {};
-    const new20Thresh = thresholds.new20 ?? Infinity;
-    const best30Thresh = thresholds.best30 ?? Infinity;
-
-    limitedData.forEach((item, index) => {
-        const diffRaw = String(item.diff || "");
-        const diffLower = diffRaw.toLowerCase();
-        const isWE = (diffRaw.toUpperCase() === "WE");
-        const isNew = typeof isNewSongCheck === 'function' ? isNewSongCheck(item.isNew) : Boolean(item.isNew);
-
-        const currentConst = parseFloat(item.const) || 0;
-        const tScore = parseFloat(item.score) || 0;
-        const RatingNum = parseFloat(item.rating) || 0;
-
-        let diffLevelHtml = "";
-        let RatingHtml = "-";
-
-        if (selectedTrend) {
-            let costVal = 0;
-            let ratingVal = 0;
-
-            if (selectedTrend === 'POWER') {
-                costVal = parseFloat(item.rawTairyoku ?? item.tairyoku ?? 0);
-                ratingVal = parseFloat(item.tairyoku ?? item.rawTairyoku ?? 0);
-            } else if (selectedTrend === 'NOTES') {
-                costVal = parseFloat(item.rawKenban ?? item.kenban ?? 0);
-                ratingVal = parseFloat(item.kenban ?? item.rawKenban ?? 0);
-            } else if (selectedTrend === 'CHUNI') {
-                costVal = parseFloat(item.rawChuni ?? item.chuni ?? 0);
-                ratingVal = parseFloat(item.chuni ?? item.rawChuni ?? 0);
-            } else if (selectedTrend === 'TRICKY') {
-                costVal = parseFloat(item.rawKuse ?? item.kuse ?? 0);
-                ratingVal = parseFloat(item.kuse ?? item.rawKuse ?? 0);
-            }
-
-            const activeColor = colorMap[selectedTrend] || "#007aff";
-            const displayCostStr = costVal > 0 ? costVal.toFixed(1) : "-";
-            const coloredCostHtml = `<span style="color: ${activeColor}; font-weight: bold;">${displayCostStr}</span>`;
-
-            if (isWE) {
-                const attr = item.weAttr || item.attribute || "";
-                diffLevelHtml = `WORLD'S END ${attr ? `【${attr}】` : ""}`;
-            } else {
-                diffLevelHtml = `${diffRaw} ${coloredCostHtml}`;
-            }
-
-            const ratingStr = ratingVal > 0 ? ratingVal.toFixed(2) : "-";
-            RatingHtml = `<span style="color: ${activeColor}; font-weight: bold;">${ratingStr}</span>`;
-
-        } else {
-            if (isWE) {
-                const attr = item.weAttr || item.attribute || "";
-                diffLevelHtml = `WORLD'S END ${attr ? `【${attr}】` : ""}`;
-            } else {
-                const displayLevel = currentConst > 0 ? currentConst.toFixed(1) : "-";
-                diffLevelHtml = `${diffRaw} ${displayLevel}`;
-            }
-
-            const ratingStr = (!isWE && RatingNum > 0)
-                ? (Math.floor((RatingNum + 0.000001) * 100) / 100).toFixed(2)
-                : "-";
-            RatingHtml = ratingStr;
+        if (ratingHeader) {
+            ratingHeader.textContent = selectedTrend ? `${selectedTrend}値` : "単曲レート";
         }
 
-        let lampHtml = "";
-        const totalNotes = parseInt(item.notes ?? item.totalNotes ?? item.combo ?? (item.songProps ? item.songProps.notes : 0) ?? 0, 10);
-        const currentScore = parseInt(item.score || 0, 10);
-        const lampText = item.lamp || "";
+        if (!data || !Array.isArray(data) || data.length === 0) {
+            body.innerHTML = "<tr><td colspan='5'>表示できるデータがありません</td></tr>";
+            return;
+        }
 
-        let comboClass = "";
-        if (lampText === "AJC") comboClass = "ajc-badge";
-        else if (lampText === "AJ") comboClass = "aj-badge";
-        else if (lampText === "FC") comboClass = "fc-badge";
+        // 💡 傾向選択時の枠対象（Top 30）の算出
+        const top30Set = new Set();
+        if (selectedTrend) {
+            const sourceData = (typeof myCurrentRecords !== "undefined" && Array.isArray(myCurrentRecords) && myCurrentRecords.length > 0)
+                ? myCurrentRecords
+                : data;
 
-        if (totalNotes > 0 && currentScore > 0 && currentScore < 1010000) {
-            const jTotal = ((1010000 - currentScore) * totalNotes) / 10000;
+            const getRatingVal = (item) => {
+                if (!item) return 0;
+                if (selectedTrend === 'POWER') return parseFloat(item.tairyoku ?? item.rawTairyoku ?? 0);
+                if (selectedTrend === 'NOTES') return parseFloat(item.kenban ?? item.rawKenban ?? 0);
+                if (selectedTrend === 'CHUNI') return parseFloat(item.chuni ?? item.rawChuni ?? 0);
+                if (selectedTrend === 'TRICKY') return parseFloat(item.kuse ?? item.rawKuse ?? 0);
+                return 0;
+            };
 
-            if (lampText.includes("AJ")) {
-                lampHtml = `<span class="${comboClass}">${lampText}</span>`;
-                const jCount = Math.round(jTotal);
-                if (!lampText.includes("AJC") && jCount > 0) {
-                    lampHtml += `<div class="justice-count" style="font-size: 0.75rem; color: #ff9500; font-weight: bold; margin-top: 2px;">-${jCount}</div>`;
+            [...sourceData]
+                .sort((a, b) => getRatingVal(b) - getRatingVal(a))
+                .slice(0, 30)
+                .forEach(item => {
+                    if (item && item.title && item.diff) {
+                        top30Set.add(`${item.title}_${item.diff}`);
+                    }
+                });
+        }
+
+        body.innerHTML = "";
+        const fragment = document.createDocumentFragment();
+        const limitedData = data.slice(0, 200);
+
+        const thresholds = window.rateThresholds || {};
+        const new20Thresh = thresholds.new20 ?? Infinity;
+        const best30Thresh = thresholds.best30 ?? Infinity;
+
+        limitedData.forEach((item, index) => {
+            if (!item) return;
+
+            const titleText = item.title || "Unknown";
+            const diffRaw = String(item.diff || "");
+            const diffLower = diffRaw.toLowerCase();
+            const isWE = (diffRaw.toUpperCase() === "WE");
+            const isNew = typeof isNewSongCheck === 'function' ? isNewSongCheck(item.isNew) : Boolean(item.isNew);
+
+            const currentConst = parseFloat(item.const) || 0;
+            const tScore = parseFloat(item.score) || 0;
+            const RatingNum = parseFloat(item.rating) || 0;
+
+            const tr = document.createElement('tr');
+            tr.className = diffLower;
+            tr.style.cursor = "pointer";
+
+            tr.onclick = () => {
+                if (typeof loadRanking === "function") {
+                    loadRanking(item.title, diffRaw, item.const);
                 }
-            } else if (lampText.includes("FC")) {
-                lampHtml = `<span class="${comboClass}">${lampText}</span>`;
-                if (jTotal >= 51 && jTotal <= 101) {
-                    lampHtml += `<div class="attack-count" style="font-size: 0.75rem; color: #2ecc71; font-weight: bold; margin-top: 2px;">-1</div>`;
+            };
+
+            // ハイライトクラスの付与
+            if (selectedTrend) {
+                const itemKey = `${item.title}_${item.diff}`;
+                if (top30Set.has(itemKey)) {
+                    tr.classList.add(`is-${selectedTrend.toLowerCase()}-target`);
                 }
-            } else {
-                if (jTotal >= 101 && jTotal <= 151) {
-                    lampHtml = `<span style="color: #888888; font-weight: bold; font-size: 0.85rem;">-1</span>`;
+            } else if (!isWE && RatingNum > 0) {
+                if (isNew && RatingNum >= new20Thresh) {
+                    tr.classList.add('is-new-target');
+                } else if (!isNew && RatingNum >= best30Thresh) {
+                    tr.classList.add('is-best-target');
+                }
+            }
+
+            // 1. 番号セル
+            const tdNum = document.createElement('td');
+            tdNum.className = 'num-cell';
+            tdNum.textContent = index + 1;
+            tr.appendChild(tdNum);
+
+            // 2. タイトル＆難易度セル
+            const tdTitle = document.createElement('td');
+
+            // Title DIV
+            const divTitle = document.createElement('div');
+            divTitle.className = 'title-cell';
+            if (isNew) {
+                const badge = document.createElement('span');
+                badge.className = 'new-song-label';
+                badge.textContent = 'NEW';
+                divTitle.appendChild(badge);
+            }
+            divTitle.appendChild(document.createTextNode(titleText));
+            tdTitle.appendChild(divTitle);
+
+            // Diff Level DIV
+            const divDiff = document.createElement('div');
+            divDiff.className = 'diff-level-cell';
+
+            if (selectedTrend) {
+                let costVal = 0;
+                let ratingVal = 0;
+
+                if (selectedTrend === 'POWER') {
+                    costVal = parseFloat(item.rawTairyoku ?? item.tairyoku ?? 0);
+                    ratingVal = parseFloat(item.tairyoku ?? item.rawTairyoku ?? 0);
+                } else if (selectedTrend === 'NOTES') {
+                    costVal = parseFloat(item.rawKenban ?? item.kenban ?? 0);
+                    ratingVal = parseFloat(item.kenban ?? item.rawKenban ?? 0);
+                } else if (selectedTrend === 'CHUNI') {
+                    costVal = parseFloat(item.rawChuni ?? item.chuni ?? 0);
+                    ratingVal = parseFloat(item.chuni ?? item.rawChuni ?? 0);
+                } else if (selectedTrend === 'TRICKY') {
+                    costVal = parseFloat(item.rawKuse ?? item.kuse ?? 0);
+                    ratingVal = parseFloat(item.kuse ?? item.rawKuse ?? 0);
+                }
+
+                const activeColor = colorMap[selectedTrend] || "#007aff";
+                const displayCostStr = costVal > 0 ? costVal.toFixed(1) : "-";
+
+                if (isWE) {
+                    const attr = item.weAttr || item.attribute || "";
+                    divDiff.textContent = `WORLD'S END ${attr ? `【${attr}】` : ""}`;
                 } else {
-                    lampHtml = "-";
+                    divDiff.appendChild(document.createTextNode(`${diffRaw} `));
+                    const spanCost = document.createElement('span');
+                    spanCost.style.color = activeColor;
+                    spanCost.style.fontWeight = 'bold';
+                    spanCost.textContent = displayCostStr;
+                    divDiff.appendChild(spanCost);
+                }
+            } else {
+                if (isWE) {
+                    const attr = item.weAttr || item.attribute || "";
+                    divDiff.textContent = `WORLD'S END ${attr ? `【${attr}】` : ""}`;
+                } else {
+                    const displayLevel = currentConst > 0 ? currentConst.toFixed(1) : "-";
+                    divDiff.textContent = `${diffRaw} ${displayLevel}`;
+                }
+
+                // トレンドタグ追加
+                const rawTricky = parseFloat(item.rawKuse ?? item.kuse ?? 0);
+                const rawPower = parseFloat(item.rawTairyoku ?? item.tairyoku ?? 0);
+                const rawChuni = parseFloat(item.rawChuni ?? item.chuni ?? 0);
+                const rawNotes = parseFloat(item.rawKenban ?? item.kenban ?? 0);
+
+                const maxRawVal = Math.max(rawTricky, rawPower, rawChuni, rawNotes);
+                let mainTrendTrend = "None";
+                if (maxRawVal > 0) {
+                    if (rawTricky === maxRawVal) mainTrendTrend = 'TRICKY';
+                    else if (rawPower === maxRawVal) mainTrendTrend = 'POWER';
+                    else if (rawChuni === maxRawVal) mainTrendTrend = 'CHUNI';
+                    else if (rawNotes === maxRawVal) mainTrendTrend = 'NOTES';
+                } else if (item.mainTrend && item.mainTrend !== "None") {
+                    mainTrendTrend = item.mainTrend;
+                }
+
+                if (mainTrendTrend !== "None") {
+                    const trendColor = colorMap[mainTrendTrend] || "#555";
+                    divDiff.appendChild(document.createTextNode(" / "));
+                    const spanTrend = document.createElement('span');
+                    spanTrend.style.color = trendColor;
+                    spanTrend.textContent = mainTrendTrend;
+                    divDiff.appendChild(spanTrend);
                 }
             }
-        } else if (lampText) {
-            lampHtml = `<span class="${comboClass}">${lampText}</span>`;
-        }
+            tdTitle.appendChild(divDiff);
+            tr.appendChild(tdTitle);
 
-        const newBadge = isNew ? `<span class="new-song-label">NEW</span>` : "";
+            // 3. ランプ＆ジャスティス失点セル
+            const tdLamp = document.createElement('td');
+            tdLamp.className = 'lamp-cell';
 
-        // 💡 生コスト（raw値）を取得して優先度（TRICKY > POWER > CHUNI > NOTES）に従い表示
-        let trendHtml = "";
-        if (!selectedTrend) {
-            const rawTricky = parseFloat(item.rawKuse ?? item.kuse ?? 0);
-            const rawPower = parseFloat(item.rawTairyoku ?? item.tairyoku ?? 0);
-            const rawChuni = parseFloat(item.rawChuni ?? item.chuni ?? 0);
-            const rawNotes = parseFloat(item.rawKenban ?? item.kenban ?? 0);
+            const totalNotes = parseInt(item.notes ?? item.totalNotes ?? item.combo ?? (item.songProps ? item.songProps.notes : 0) ?? 0, 10);
+            const currentScore = parseInt(item.score || 0, 10);
+            const lampText = item.lamp || "";
 
-            const maxRawVal = Math.max(rawTricky, rawPower, rawChuni, rawNotes);
+            let comboClass = "";
+            if (lampText === "AJC") comboClass = "ajc-badge";
+            else if (lampText === "AJ") comboClass = "aj-badge";
+            else if (lampText === "FC") comboClass = "fc-badge";
 
-            let mainTrendTrend = "None";
-            if (maxRawVal > 0) {
-                if (rawTricky === maxRawVal) mainTrendTrend = 'TRICKY';
-                else if (rawPower === maxRawVal) mainTrendTrend = 'POWER';
-                else if (rawChuni === maxRawVal) mainTrendTrend = 'CHUNI';
-                else if (rawNotes === maxRawVal) mainTrendTrend = 'NOTES';
-            } else if (item.mainTrend && item.mainTrend !== "None") {
-                mainTrendTrend = item.mainTrend;
+            if (totalNotes > 0 && currentScore > 0 && currentScore < 1010000) {
+                const jTotal = ((1010000 - currentScore) * totalNotes) / 10000;
+
+                if (lampText.includes("AJ")) {
+                    const spanLamp = document.createElement('span');
+                    spanLamp.className = comboClass;
+                    spanLamp.textContent = lampText;
+                    tdLamp.appendChild(spanLamp);
+
+                    const jCount = Math.round(jTotal);
+                    if (!lampText.includes("AJC") && jCount > 0) {
+                        const divJ = document.createElement('div');
+                        divJ.className = 'justice-count';
+                        divJ.style.cssText = 'font-size: 0.75rem; color: #ff9500; font-weight: bold; margin-top: 2px;';
+                        divJ.textContent = `-${jCount}`;
+                        tdLamp.appendChild(divJ);
+                    }
+                } else if (lampText.includes("FC")) {
+                    const spanLamp = document.createElement('span');
+                    spanLamp.className = comboClass;
+                    spanLamp.textContent = lampText;
+                    tdLamp.appendChild(spanLamp);
+
+                    if (jTotal >= 51 && jTotal <= 101) {
+                        const divA = document.createElement('div');
+                        divA.className = 'attack-count';
+                        divA.style.cssText = 'font-size: 0.75rem; color: #2ecc71; font-weight: bold; margin-top: 2px;';
+                        divA.textContent = '-1';
+                        tdLamp.appendChild(divA);
+                    }
+                } else {
+                    if (jTotal >= 101 && jTotal <= 151) {
+                        const spanLoss = document.createElement('span');
+                        spanLoss.style.cssText = 'color: #888888; font-weight: bold; font-size: 0.85rem;';
+                        spanLoss.textContent = '-1';
+                        tdLamp.appendChild(spanLoss);
+                    } else {
+                        tdLamp.textContent = "-";
+                    }
+                }
+            } else if (lampText) {
+                const spanLamp = document.createElement('span');
+                spanLamp.className = comboClass;
+                spanLamp.textContent = lampText;
+                tdLamp.appendChild(spanLamp);
+            } else {
+                tdLamp.textContent = "-";
             }
+            tr.appendChild(tdLamp);
 
-            if (mainTrendTrend !== "None") {
-                const trendColor = colorMap[mainTrendTrend] || "#555";
-                trendHtml = ` / <span style="color: ${trendColor};">${mainTrendTrend}</span>`;
+            // 4. スコアセル
+            const tdScore = document.createElement('td');
+            tdScore.className = 't-score-cell';
+            const spanScore = document.createElement('span');
+            spanScore.className = 't-score';
+            spanScore.textContent = tScore.toLocaleString();
+            tdScore.appendChild(spanScore);
+            tr.appendChild(tdScore);
+
+            // 5. 単曲レートセル
+            const tdRating = document.createElement('td');
+            tdRating.className = 't-rating-cell';
+            const spanRating = document.createElement('span');
+            spanRating.className = 't-rating';
+
+            if (selectedTrend) {
+                let ratingVal = 0;
+                if (selectedTrend === 'POWER') ratingVal = parseFloat(item.tairyoku ?? item.rawTairyoku ?? 0);
+                else if (selectedTrend === 'NOTES') ratingVal = parseFloat(item.kenban ?? item.rawKenban ?? 0);
+                else if (selectedTrend === 'CHUNI') ratingVal = parseFloat(item.chuni ?? item.rawChuni ?? 0);
+                else if (selectedTrend === 'TRICKY') ratingVal = parseFloat(item.kuse ?? item.rawKuse ?? 0);
+
+                const activeColor = colorMap[selectedTrend] || "#007aff";
+                spanRating.style.color = activeColor;
+                spanRating.style.fontWeight = 'bold';
+                spanRating.textContent = ratingVal > 0 ? ratingVal.toFixed(2) : "-";
+            } else {
+                const ratingStr = (!isWE && RatingNum > 0)
+                    ? (Math.floor((RatingNum + 0.000001) * 100) / 100).toFixed(2)
+                    : "-";
+                spanRating.textContent = ratingStr;
             }
-        }
+            tdRating.appendChild(spanRating);
+            tr.appendChild(tdRating);
 
-        const tr = document.createElement('tr');
-        tr.className = diffLower;
-        tr.style.cursor = "pointer";
+            fragment.appendChild(tr);
+        });
 
-        tr.onclick = () => {
-            if (typeof loadRanking === "function") {
-                loadRanking(item.title, diffRaw, item.const);
-            }
-        };
+        body.appendChild(fragment);
+        console.log("--- displayScores正常完了 ---");
 
-        if (selectedTrend) {
-            const itemKey = `${item.title}_${item.diff}`;
-            if (top30Set.has(itemKey)) {
-                const trendClass = `is-${selectedTrend.toLowerCase()}-target`;
-                tr.classList.add(trendClass);
-            }
-        } else if (!isWE && RatingNum > 0) {
-            if (isNew && RatingNum >= new20Thresh) {
-                tr.classList.add('is-new-target');
-            } else if (!isNew && RatingNum >= best30Thresh) {
-                tr.classList.add('is-best-target');
-            }
-        }
-
-        tr.innerHTML = `
-            <td class="num-cell">${index + 1}</td> 
-            <td>
-                <div class="title-cell">${newBadge}${item.title || "Unknown"}</div>
-                <div class="diff-level-cell">${diffLevelHtml}${trendHtml}</div>
-            </td>
-            <td class="lamp-cell">${lampHtml}</td>
-            <td class="t-score-cell"><span class="t-score">${tScore.toLocaleString()}</span></td>
-            <td class="t-rating-cell"><span class="t-rating">${RatingHtml}</span></td>
-        `;
-
-        fragment.appendChild(tr);
-    });
-
-    body.appendChild(fragment);
+    } catch (error) {
+        console.error("displayScores 描画処理中にエラーが発生しました:", error);
+    }
 }
 
 // =================================================================
@@ -1618,71 +4806,46 @@ function setupModalEvents() {
 }
 
 /**
- * 💡 ユーザー名一覧を取得して表示を更新（fetch統一版）
+ * 💡 ユーザー名一覧を取得（キャッシュが無ければ通信、あればローカル読み込み）
  */
 async function fetchPlayerNames() {
+    // 1. すでに LocalStorage にある場合は通信を行わず終了
+    const cachedPlayers = localStorage.getItem('chunirec_all_players');
+    if (cachedPlayers) {
+        try {
+            allPlayerNames = JSON.parse(cachedPlayers);
+            if (document.getElementById('modal-tab-content')) {
+                renderTabContent(currentTab);
+            }
+            return; // 💡 通信なしで即終了
+        } catch (e) {
+            console.error("キャッシュの読み込みに失敗:", e);
+        }
+    }
+
+    // 2. 初回（キャッシュが無い場合）のみ GAS から取得して保存
     try {
         const response = await fetch(GAS_URL, {
             method: "POST",
             headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({ mode: "get_vs_players" }) // 既存のプレイヤー取得APIを共通利用
+            body: JSON.stringify({ mode: "get_vs_players" })
         });
         const result = await response.json();
 
         if (result.status === "success" && Array.isArray(result.players)) {
-            console.log("取得できたユーザー一覧:", result.players);
             allPlayerNames = result.players;
+            // キャッシュ保存
+            localStorage.setItem('chunirec_all_players', JSON.stringify(result.players));
 
-            // モーダルが開いていれば再描画して選択肢を更新
             if (document.getElementById('modal-tab-content')) {
                 renderTabContent(currentTab);
             }
-        } else {
-            console.warn("ユーザー一覧の取得に失敗しました:", result.message);
         }
     } catch (e) {
-        console.error("ユーザー一覧取得の通信エラー:", e);
+        console.error("ユーザー一覧取得エラー:", e);
     }
 }
 
-
-/**
- * 💡 プレイヤー選択ドロップダウン変更時の処理（fetch統一版）
- */
-async function handlePlayerChange(selectedName) {
-    currentModalPlayerName = selectedName;
-
-    const container = document.getElementById('modal-tab-content');
-    if (container) {
-        container.innerHTML = "<p style='text-align:center; padding: 20px;'>データを読み込み中...</p>";
-    }
-
-    // 既にキャッシュがあればそれを使用して再描画
-    if (allUsersRecords[selectedName]) {
-        renderTabContent(currentTab);
-        return;
-    }
-
-    // GASへデータ取得リクエスト
-    try {
-        const response = await fetch(GAS_URL, {
-            method: "POST",
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({ mode: "get_player_data", playerName: selectedName })
-        });
-        const result = await response.json();
-
-        if (result.status === "success") {
-            allUsersRecords[selectedName] = result.records || [];
-            renderTabContent(currentTab);
-        } else {
-            alert("データの取得に失敗しました: " + result.message);
-        }
-    } catch (e) {
-        console.error("通信エラー:", e);
-        alert("通信に失敗しました。");
-    }
-}
 
 let modalRadarChartInstance = null;
 let selectedComparePlayers = []; // 比較対象プレイヤー名の保持用（最大3名）
@@ -1721,25 +4884,76 @@ function calcPlayerAbilityAverages(targetData) {
 }
 
 /**
- * 💡 特定プレイヤーのレコードを取得（キャッシュがなければGASから取得）
+ * 💡 特定プレイヤーのレコードを取得（GASの `get_player_data` と連動）
  */
 async function fetchSinglePlayerData(name) {
-    if (allUsersRecords[name]) return allUsersRecords[name];
+    if (!name) return null;
+
+    // 💡 すでに有効なキャッシュ（1件以上）が存在すればそれを返す
+    if (allUsersRecords[name] && allUsersRecords[name].length > 0) {
+        return allUsersRecords[name];
+    }
+
     try {
         const response = await fetch(GAS_URL, {
             method: "POST",
             headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({ mode: "get_player_data", playerName: name })
+            body: JSON.stringify({
+                mode: "get_player_data",
+                playerName: name
+            })
         });
+
+        // 通信応答の安全チェック
+        if (!response.ok) {
+            throw new Error(`HTTP Error: ${response.status}`);
+        }
+
         const result = await response.json();
-        if (result.status === "success") {
-            allUsersRecords[name] = result.records || [];
+
+        // GAS側レスポンス: { status: "success", playerName: "...", records: [...] }
+        if (result.status === "success" && Array.isArray(result.records) && result.records.length > 0) {
+            allUsersRecords[name] = result.records;
             return allUsersRecords[name];
+        } else {
+            // データが取得できなかった場合は空のキャッシュを破棄
+            delete allUsersRecords[name];
         }
     } catch (e) {
         console.error(`データ取得失敗 (${name}):`, e);
+        delete allUsersRecords[name];
     }
-    return [];
+    return null;
+}
+
+/**
+ * 💡 プレイヤー選択ドロップダウン変更時の処理
+ */
+async function handlePlayerChange(selectedName) {
+    if (!selectedName) return;
+    currentModalPlayerName = selectedName;
+
+    const container = document.getElementById('modal-tab-content');
+    if (container) {
+        container.innerHTML = "<p style='text-align:center; padding: 20px;'>データを読み込み中...</p>";
+    }
+
+    // キャッシュがある場合は即座に再描画
+    if (allUsersRecords[selectedName] && allUsersRecords[selectedName].length > 0) {
+        renderTabContent(currentTab);
+        return;
+    }
+
+    // GASへデータ取得
+    const records = await fetchSinglePlayerData(selectedName);
+
+    if (records && records.length > 0) {
+        renderTabContent(currentTab);
+    } else {
+        if (container) {
+            container.innerHTML = `<p style='text-align:center; padding: 20px; color: red;'>プレイヤー「${selectedName}」のスコアデータが見つかりませんでした。<br>シートが存在するか、またはデータが登録されているか確認してください。</p>`;
+        }
+    }
 }
 
 /**
@@ -1905,7 +5119,7 @@ async function handleRadarMainPlayerChange(val) {
     currentModalPlayerName = val;
     // メインプレイヤーと比較対象が重複した場合は選択解除
     selectedComparePlayers = selectedComparePlayers.filter(name => name !== val);
-    
+
     // RADARタブを再描画してコントロール群を更新
     renderTabContent('radar');
 }

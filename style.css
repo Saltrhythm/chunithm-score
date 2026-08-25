@@ -104,6 +104,612 @@ button:hover {
     display: none;
 }
 
+@keyframes rainbowShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* ==========================================
+   モーダル基本構造 & 外枠
+   ========================================== */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.65);
+    z-index: 10000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#bingo-admin-modal {
+    z-index: 10001;
+}
+
+/* 管理者用 / 条件設定モーダルの外枠コンテナ */
+.modal-content, 
+#admin-rules-modal, 
+#admin-rules-form-container {
+    background: #ffffff;
+    width: 92%;
+    max-width: 650px;       /* 画面幅に合わせて余裕を持たせた最大幅 */
+    max-height: 85vh;       /* 画面高さの85%以内に収める */
+    display: flex;          /* 💡 縦並びのFlexボックス構造にする */
+    flex-direction: column; /* 💡 ヘッダー・ボディ・フッターを縦に並べる */
+    padding: 16px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    box-sizing: border-box;
+}
+
+.modal-content.max-w-720 {
+    max-width: 720px;
+}
+
+/* 💡 スクロール領域（一般・管理・達成者一覧 共通） */
+.modal-body {
+    flex: 1;                            /* 💡 ヘッダーとフッターを除いた残りの高さを全占有 */
+    overflow-y: auto;                  /* 💡 コンテンツが溢れた場合のみ縦スクロール */
+    -webkit-overflow-scrolling: touch; /* 💡 スマホ（iOS/Android）での慣性スクロールを有効化 */
+    padding-right: 4px;                 /* 💡 スクロールバー被り防止用の微小余白 */
+}
+
+/* ヘッダー */
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    flex-shrink: 0;         /* 💡 モーダルが小さくなってもヘッダーが潰れないように固定 */
+}
+
+.modal-header.header-orange {
+    border-bottom: 2px solid #ff9800;
+}
+
+.modal-header.header-red {
+    border-bottom: 2px solid #d32f2f;
+}
+
+.modal-title {
+    margin: 0;
+    font-size: 18px;
+    white-space: nowrap;
+}
+
+.modal-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+
+/* フッター */
+.modal-footer {
+    text-align: right;
+    margin-top: 12px;
+    padding-top: 8px;
+    flex-shrink: 0;         /* 💡 モーダルが小さくなってもフッターが潰れないように固定 */
+}
+
+
+/* ==========================================
+   サイズ微調整版：ビンゴ盤面・マス目（余白調整タイプ）
+   ========================================== */
+.bingo-grid-container {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 5px;
+    margin: 0 auto 10px auto;
+    width: 100%;
+    
+    /* 盤面の最大幅 */
+    max-width: 700px; 
+    
+    text-align: center;
+    word-break: break-word;
+}
+
+.bingo-cell {
+    border-radius: 6px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    
+    /* 固定の高さを解除 */
+    height: 125px; 
+    
+    /* 上下の余白（padding）で縦のサイズ感を調整 */
+    padding: 2px 2px;
+    
+    box-sizing: border-box;
+    cursor: pointer;
+    user-select: none;
+    overflow: hidden;
+    transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.2s ease;
+}
+
+.bingo-cell:hover {
+    transform: translateY(-1px);
+}
+
+/* ------------------------------------------
+   元の文字サイズ（共通設定）
+   ------------------------------------------ */
+.bingo-cell .song-title {
+    font-size: 0.65rem;
+    font-weight: bold;
+    color: #0d47a1;
+    line-height: 1.15;
+    margin: 1px 0;
+    word-break: break-all;
+}
+
+.bingo-cell .condition {
+    font-size: 0.65rem;
+    font-weight: bold;
+    line-height: 1.0;
+    width: 100%;
+    margin-top: 3px;
+    padding-top: 3px;
+}
+
+.bingo-cell .clear-badge {
+    font-size: 0.5rem;
+    padding: 1px 4px;
+    border-radius: 6px;
+    margin-top: 2px;
+    display: inline-block;
+    line-height: 1.0;
+}
+
+
+/* ==========================================
+   1. 一般画面用スタイル（灰色ベース / 紺×赤）
+   ========================================== */
+/* 未開栓（未確定）マス */
+#bingo-board .bingo-cell.unopened {
+    background-color: #f5f5f5;
+    border: 1.5px dashed #cccccc;
+    color: #d32f2f;
+}
+
+/* 開栓済みマス（確定・通常表示） */
+#bingo-board .bingo-cell.opened {
+    background-color: #f0f0f0;
+    border: 1.5px solid #b0bec5;
+    color: #d32f2f;
+}
+
+#bingo-board .bingo-cell.opened .condition {
+    color: #d32f2f;
+}
+
+/* 通常クリア達成マス */
+#bingo-board .bingo-cell.cleared {
+    background: linear-gradient(135deg, #fff3e0, #ffe0b2) !important;
+    border: 1.5px solid #ff9800 !important;
+    color: #e65100 !important;
+    font-weight: bold;
+    opacity: 1 !important;
+    box-shadow: 0 2px 4px rgba(255, 152, 0, 0.3) !important;
+}
+
+#bingo-board .bingo-cell.cleared .clear-badge {
+    background: #ff9800;
+    color: #ffffff;
+}
+
+/* ★ デカクリア達成マス（ピンク〜紫のキラキラデザイン） */
+#bingo-board .bingo-cell.big-cleared {
+    background: linear-gradient(135deg, #fce4ec 0%, #f3e5f5 50%, #e1bee7 100%) !important;
+    border: 1.5px solid #ab47bc !important;
+    color: #4a148c !important;
+    font-weight: bold;
+    opacity: 1 !important;
+    box-shadow: 0 0 8px rgba(171, 71, 188, 0.5), inset 0 0 6px rgba(255, 255, 255, 0.8) !important;
+    animation: bigClearGlow 3s infinite alternate ease-in-out !important;
+}
+
+#bingo-board .bingo-cell.big-cleared .clear-badge {
+    background: linear-gradient(135deg, #ec407a, #8e24aa);
+    color: #ffffff;
+    box-shadow: 0 1px 3px rgba(142, 36, 170, 0.4);
+    font-weight: 900;
+}
+
+/* デカクリア用の微妙な輝きアニメーション */
+@keyframes bigClearGlow {
+    0% {
+        box-shadow: 0 2px 6px rgba(171, 71, 188, 0.4), inset 0 0 4px rgba(255, 255, 255, 0.6);
+    }
+    100% {
+        box-shadow: 0 0 12px rgba(236, 64, 122, 0.7), inset 0 0 10px rgba(255, 255, 255, 0.9);
+    }
+}
+
+
+/* ==========================================
+   ★ 一般画面専用：未達成時のみトーンダウン（クリック閲覧は可能）
+   ========================================== */
+#bingo-board .bingo-cell.is-disabled:not(.cleared) {
+    background-color: #e0e0e0;   /* 暗めの灰色 */
+    border: 1.5px solid #aaaaaa;
+    opacity: 0.7;                /* 未達成時のみトーンダウン */
+    cursor: pointer;             /* クリック可能を示すポインター */
+    box-shadow: none;
+    animation: none;
+}
+
+#bingo-board .bingo-cell.is-disabled:not(.cleared):hover {
+    background-color: #d5d5d5;   /* ホバー時の視覚フィードバック */
+}
+
+#bingo-board .bingo-cell.is-disabled:not(.cleared) .song-title {
+    color: #666666;               /* 曲名の色をグレーダウン */
+}
+
+#bingo-board .bingo-cell.is-disabled:not(.cleared) .condition {
+    color: #777777;               /* 条件の色をグレーダウン */
+}
+
+
+/* ==========================================
+   2. 管理画面用スタイル（緑色ベース / 紺×黒）
+   ========================================== */
+/* 確定済みマス */
+#admin-bingo-board .bingo-cell.opened {
+    background-color: #e8f5e9;
+    border: 1.5px solid #81c784;
+    color: #212121;
+}
+
+#admin-bingo-board .bingo-cell.opened .condition {
+    color: #dd1212;
+}
+
+/* 未確定マス */
+#admin-bingo-board .bingo-cell.unopened {
+    background-color: #f1f8e9;
+    border: 1.5px dashed #a5d6a7;
+    color: #212121;
+}
+
+/* 管理画面デカクリアマス */
+#admin-bingo-board .bingo-cell.big-cleared {
+    background: linear-gradient(135deg, #fce4ec, #f3e5f5);
+    border: 1.5px solid #ab47bc;
+    color: #4a148c;
+    font-weight: bold;
+}
+
+
+/* ==========================================
+   ビンゴボード内の全幅メッセージ
+   ========================================== */
+#bingo-board > p,
+#bingo-board > div:only-child,
+.bingo-empty-message {
+    grid-column: 1 / -1;
+    width: 100%;
+    text-align: center;
+    padding: 25px 10px;
+    font-size: 0.9rem;
+    color: #555;
+    box-sizing: border-box;
+}
+
+
+/* ==========================================
+   管理画面セクション & フォーム構造
+   ========================================== */
+.admin-section {
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.admin-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.section-title {
+    margin: 0;
+    font-size: 14px;
+}
+
+.sub-label {
+    margin-bottom: 4px;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+/* フォーム行 */
+.form-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.form-row-compact {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 8px;
+    border-radius: 4px;
+}
+
+.form-group-inline {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.form-label {
+    font-size: 12px;
+    font-weight: bold;
+    color: #333;
+}
+
+.form-input, 
+.form-select {
+    padding: 6px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 13px;
+    box-sizing: border-box;
+}
+
+.form-actions-split {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    text-align: right;
+    gap: 10px;
+}
+
+
+/* ==========================================
+   カラー・装飾ユーティリティ
+   ========================================== */
+.color-orange { color: #e65100; }
+.color-orange-dark { color: #e65100; }
+.color-red { color: #c62828; }
+.color-red-dark { color: #c62828; }
+.color-blue { color: #1565c0; }
+.color-blue-light { color: #0288d1; }
+.color-green { color: #2e7d32; }
+.color-dark { color: #333333; }
+
+.bg-orange-light { background-color: #fff3e0; }
+.bg-gray-light { background-color: #f5f5f5; }
+.bg-gray-subtle { background-color: #f9f9f9; }
+.bg-white { background-color: #ffffff; }
+
+.border-orange-light { border: 1px solid #ffe0b2; }
+.border-gray { border: 1px solid #ccc; }
+.border-gray-light { border: 1px solid #ddd; }
+.border-light { border: 1px solid #eee; }
+
+.margin-b-10 { margin-bottom: 10px; }
+.margin-b-12 { margin-bottom: 12px; }
+
+.flex-1 { flex: 1; }
+.min-w-140 { min-width: 140px; }
+.min-w-160 { min-width: 160px; }
+.input-w-70 { width: 70px; }
+.input-w-80 { width: 80px; }
+.font-bold { font-weight: bold; }
+.text-note { font-size: 11px; color: #888; }
+
+
+/* ==========================================
+   ボタンコンポーネント
+   ========================================== */
+.btn {
+    padding: 8px 18px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background-color 0.2s, opacity 0.2s;
+}
+
+.btn-sm {
+    padding: 6px 10px;
+}
+
+.btn-block {
+    width: 100%;
+    margin-top: 15px;
+    padding: 12px;
+    font-size: 15px;
+    font-weight: bold;
+    border-radius: 6px;
+}
+
+.btn-secondary {
+    background: #f5f5f5;
+    border: 1px solid #ccc;
+    color: #333;
+}
+
+.btn-danger-light {
+    background: #ffebee;
+    border: 1px solid #d32f2f;
+    color: #c62828;
+}
+
+.btn-dark {
+    background: #666;
+    color: #fff;
+}
+
+.btn-primary-orange {
+    background: #e65100;
+    color: #fff;
+}
+
+.btn-primary-blue {
+    background: #1976d2;
+    color: #fff;
+    font-weight: bold;
+}
+
+.btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.btn-close {
+    background: transparent;
+    border: none;
+    font-size: 22px;
+    line-height: 1;
+    color: #999;
+    cursor: pointer;
+    padding: 0 4px;
+}
+
+.btn-close:hover {
+    color: #333;
+}
+
+/* ==========================================
+   不足していたカラー・レイアウト（追加分）
+   ========================================== */
+/* 緑系カラー */
+.color-green-dark { color: #1b5e20; }
+.bg-green-subtle { background-color: #f1f8e9; }
+.border-green-light { border: 1px solid #c8e6c9; }
+
+/* ユーティリティ */
+.margin-t-16 { margin-top: 16px; }
+.align-center { align-items: center; }
+.flex-gap-8 { display: flex; gap: 8px; }
+
+/* 追加ボタンコンポーネント */
+.btn-primary-green {
+    background: #2e7d32;
+    color: #fff;
+    font-weight: bold;
+}
+
+.btn-primary-green:hover {
+    background: #1b5e20;
+}
+
+.btn-danger-subtle {
+    background: #ffebee;
+    border: 1px solid #ef5350;
+    color: #c62828;
+    font-weight: bold;
+}
+
+.btn-danger-subtle:hover {
+    background: #ffcdd2;
+}
+
+/* アクションエリアのレイアウト修正 */
+.form-actions-split {
+    display: flex;
+    justify-content: space-between;
+    align-items: center; /* 上下中央揃え */
+    width: 100%;
+    margin-top: 8px;
+}
+
+/* 注記テキストの折り返し防止とスタイル調整 */
+.text-note {
+    font-size: 11px;
+    color: #666;
+    white-space: nowrap; /* テキストの意図しない改行を防ぐ */
+    margin: 0;
+}
+
+/* 右寄せ用のユーティリティ（flexコンテナ直下で機能） */
+.margin-l-auto {
+    margin-left: auto;
+}
+
+/* form-row 側のレイアウト定義を明確化 */
+.admin-section .form-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    width: 100%; /* 横幅を100%確保して margin-left: auto を有効化 */
+}
+
+/* ボタン群のグループ化 */
+.admin-section .button-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+/* ==========================================
+   達成者一覧モーダル用スタイル
+   ========================================== */
+.modal-content.max-w-420 {
+    max-width: 420px;
+}
+
+.cleared-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    /* 💡 modal-body 側にスクロールを統一したため個別の二重スクロールは解除 */
+}
+
+.cleared-list-item {
+    padding: 10px 4px;
+    border-bottom: 1px solid #eee;
+    text-align: left;
+}
+
+.cleared-list-item:last-child {
+    border-bottom: none;
+}
+
+.cleared-user-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.cleared-user-name {
+    font-weight: bold;
+    font-size: 14px;
+    color: #333;
+}
+
+.cleared-user-time {
+    font-size: 11px;
+    color: #888;
+}
+
+.cleared-detail-info {
+    font-size: 12px;
+    color: #555;
+    line-height: 1.4;
+}
+
+
 /* 再同期ボタンとログアウトボタンを横並びにするための親要素調整（もしあれば） */
 .button-group {
     display: flex;
@@ -614,6 +1220,21 @@ button:hover {
     0% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
     100% { background-position: 0% 50%; }
+}
+
+/* ==================================================
+ * ビンゴマス内専用の難易度バッジ縮小設定
+ * ================================================== */
+.bingo-cell .diff-badge {
+    width: auto;               /* 固定幅(32px)を解除して文字幅に合わせる */
+    height: auto;              /* 固定高(16px)を解除 */
+    min-width: 20px;           /* 崩れ防止用の最小幅 */
+    padding: 1px 3px;          /* 内側の余白を小さく */
+    font-size: 0.5rem;         /* フォントサイズを縮小（約8px相当） */
+    line-height: 1.1;
+    margin-right: 2px;
+    vertical-align: middle;    /* 曲名テキストと中央揃え */
+    border-radius: 2px;
 }
 
 /* ==================================================
