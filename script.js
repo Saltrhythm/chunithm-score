@@ -4888,8 +4888,56 @@ const COMPARISON_COLORS = [
     { border: 'rgba(75, 192, 192, 1)', bg: 'rgba(75, 192, 192, 0.15)' }   // グリーン
 ];
 
+// 💡 スプレッドシート側の各傾向の生定数合計値（定数化）
+const STATIC_CATEGORY_TOTALS = {
+    tairyoku: 1867.04,
+    kenban: 3107.32,
+    chuni: 2523.12,
+    kuse: 1469.33
+};
+
 /**
- * 💡 1人のプレイヤーの4傾向（Top 30）の平均値を算出
+ * 💡 合計値を元に各傾向の補正倍率（重み）を算出
+ * 💡 ダンピング係数(damping = 0.5)を導入し、増減幅を半分程度に抑える調整
+ */
+function getCategoryWeightsFromTotals(totals) {
+    if (!totals) {
+        return { tairyoku: 1, kenban: 1, chuni: 1, kuse: 1 };
+    }
+
+    const t = parseFloat(totals.tairyoku || 0);
+    const k = parseFloat(totals.kenban || 0);
+    const c = parseFloat(totals.chuni || 0);
+    const u = parseFloat(totals.kuse || 0);
+
+    const sumAll = t + k + c + u;
+    if (sumAll === 0) return { tairyoku: 1, kenban: 1, chuni: 1, kuse: 1 };
+
+    // 4傾向の合計値の平均（基準値）
+    const avgTotal = sumAll / 4;
+
+    // 100%補正時の倍率
+    const rawWeights = {
+        tairyoku: t > 0 ? avgTotal / t : 1, // 約 1.2007
+        kenban:   k > 0 ? avgTotal / k : 1, // 約 0.7214
+        chuni:    c > 0 ? avgTotal / c : 1, // 約 0.8885
+        kuse:     u > 0 ? avgTotal / u : 1  // 約 1.5256
+    };
+
+    // 💡 補正の強さを抑えるダンピング処理 (0.5 = 補正幅を半分に緩和)
+    // 効きを強めたい場合は 0.7、さらに弱めたい場合は 0.3 などに調整可能です
+    const damping = 0.5;
+
+    return {
+        tairyoku: 1 + (rawWeights.tairyoku - 1) * damping, // 約 1.1004
+        kenban:   1 + (rawWeights.kenban - 1) * damping,   // 約 0.8607
+        chuni:    1 + (rawWeights.chuni - 1) * damping,    // 約 0.9443
+        kuse:     1 + (rawWeights.kuse - 1) * damping      // 約 1.2628
+    };
+}
+
+/**
+ * 💡 1人のプレイヤーの4傾向（Top 30）の平均値を算出（合計値補正適用版）
  */
 function calcPlayerAbilityAverages(targetData) {
     if (!Array.isArray(targetData) || targetData.length === 0) {
@@ -4903,12 +4951,21 @@ function calcPlayerAbilityAverages(targetData) {
         { modKey: "kuse", rawKey: "rawKuse", prop: "kuse" }
     ];
 
+    // 動的取得（window.masterCategoryTotals）があればそれを優先し、無ければ定数を使用
+    const totals = (typeof window !== 'undefined' && window.masterCategoryTotals) 
+        ? window.masterCategoryTotals 
+        : STATIC_CATEGORY_TOTALS;
+
+    const weights = getCategoryWeightsFromTotals(totals);
     const result = { tairyoku: 0, kenban: 0, chuni: 0, kuse: 0 };
 
     keys.forEach(k => {
         const songs = getTopAbilitySongs(targetData, k.modKey, k.rawKey, 30);
         const sum = songs.reduce((a, b) => a + (b.calcVal || 0), 0);
-        result[k.prop] = songs.length > 0 ? sum / songs.length : 0;
+        const rawAvg = songs.length > 0 ? sum / songs.length : 0;
+
+        // 素の平均値に算出された倍率を掛け合わせて補正
+        result[k.prop] = rawAvg * (weights[k.prop] || 1);
     });
 
     return result;
@@ -5268,6 +5325,7 @@ async function renderTabContent(tabKey) {
     let colorClass = "";
     let tabTitle = "";
     let columnHeader = "定数";
+    let categoryKey = ""; // 補正倍率特定用キー
 
     // isNewSongCheck関数が存在しない場合のための安全装置
     const checkNew = typeof isNewSongCheck === 'function' ? isNewSongCheck : (val => !!val);
@@ -5286,11 +5344,7 @@ async function renderTabContent(tabKey) {
                     displayConst: parseFloat(s.const || 0).toFixed(1)
                 }))
                 .sort((a, b) => {
-                    // 1. 単曲レート（2位切り捨て）が高い順
-                    if (b.calcVal !== a.calcVal) {
-                        return b.calcVal - a.calcVal;
-                    }
-                    // 2. 単曲レートが等しい場合は譜面定数が高い順
+                    if (b.calcVal !== a.calcVal) return b.calcVal - a.calcVal;
                     const constA = parseFloat(a.const) || 0;
                     const constB = parseFloat(b.const) || 0;
                     return constB - constA;
@@ -5311,11 +5365,7 @@ async function renderTabContent(tabKey) {
                     displayConst: parseFloat(s.const || 0).toFixed(1)
                 }))
                 .sort((a, b) => {
-                    // 1. 単曲レート（2位切り捨て）が高い順
-                    if (b.calcVal !== a.calcVal) {
-                        return b.calcVal - a.calcVal;
-                    }
-                    // 2. 単曲レートが等しい場合は譜面定数が高い順
+                    if (b.calcVal !== a.calcVal) return b.calcVal - a.calcVal;
                     const constA = parseFloat(a.const) || 0;
                     const constB = parseFloat(b.const) || 0;
                     return constB - constA;
@@ -5327,6 +5377,7 @@ async function renderTabContent(tabKey) {
             tabTitle = "POWER";
             colorClass = "color-power";
             columnHeader = "POWER";
+            categoryKey = "tairyoku";
             songs = getTopAbilitySongs(targetData, "tairyoku", "rawTairyoku", 30);
             break;
 
@@ -5334,6 +5385,7 @@ async function renderTabContent(tabKey) {
             tabTitle = "NOTES";
             colorClass = "color-notes";
             columnHeader = "NOTES";
+            categoryKey = "kenban";
             songs = getTopAbilitySongs(targetData, "kenban", "rawKenban", 30);
             break;
 
@@ -5341,6 +5393,7 @@ async function renderTabContent(tabKey) {
             tabTitle = "CHUNI";
             colorClass = "color-chuni";
             columnHeader = "CHUNI";
+            categoryKey = "chuni";
             songs = getTopAbilitySongs(targetData, "chuni", "rawChuni", 30);
             break;
 
@@ -5348,19 +5401,33 @@ async function renderTabContent(tabKey) {
             tabTitle = "TRICKY";
             colorClass = "color-tricky";
             columnHeader = "TRICKY";
+            categoryKey = "kuse";
             songs = getTopAbilitySongs(targetData, "kuse", "rawKuse", 30);
             break;
     }
 
-    // 平均値の計算
+    // 平均値の計算（4傾向の場合は素の平均値に補正倍率を乗算）
     let avgDisplay = "0.0000";
+    let labelText = "平均:";
+
     if (isRateMode) {
         const rawAvg = songs.length > 0 ? songs.reduce((a, b) => a + b.calcVal, 0) / limit : 0;
         avgDisplay = floorTo4th(rawAvg).toFixed(4);
+        labelText = "平均:";
     } else {
         const sum = songs.reduce((a, b) => a + (b.calcVal || 0), 0);
-        const avg = songs.length > 0 ? sum / songs.length : 0;
-        avgDisplay = avg.toFixed(2);
+        const rawAvg = songs.length > 0 ? sum / songs.length : 0;
+
+        // 💡 最上部の表示用平均値にのみ補正倍率（1.2007等）を適用
+        const totals = (typeof window !== 'undefined' && window.masterCategoryTotals) 
+            ? window.masterCategoryTotals 
+            : STATIC_CATEGORY_TOTALS;
+        const weights = getCategoryWeightsFromTotals(totals);
+        const weight = categoryKey ? (weights[categoryKey] || 1) : 1;
+
+        const correctedAvg = rawAvg * weight;
+        avgDisplay = correctedAvg.toFixed(2);
+        labelText = "補正後平均:"; // 💡 4傾向タブ時の名称を変更
     }
 
     const half = Math.ceil(songs.length / 2);
@@ -5373,7 +5440,7 @@ async function renderTabContent(tabKey) {
                 ${selectOptionsHtml}
             </select>
             <div class="tab-avg-box">
-                <span>${tabTitle} 平均:</span>
+                <span>${tabTitle} ${labelText}</span>
                 <span class="avg-val ${colorClass}">${avgDisplay}</span>
             </div>
         </div>
