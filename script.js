@@ -4110,9 +4110,20 @@ function sortData(data) {
             // 💡 傾向フィルターがOFFの場合
             if (sortKey === 'rating') {
                 // 【単曲レート順】
-                const ratingA = parseFloat(a.rating) || 0;
-                const ratingB = parseFloat(b.rating) || 0;
-                if (ratingB !== ratingA) return ratingB - ratingA;
+                // displayScoresの表示に合わせて小数点第2位まで取得
+                const ratingA = Math.floor(((parseFloat(a.rating) || 0) + 0.000001) * 100) / 100;
+                const ratingB = Math.floor(((parseFloat(b.rating) || 0) + 0.000001) * 100) / 100;
+
+                if (ratingB !== ratingA) {
+                    return ratingB - ratingA; // 単曲レートが高い順
+                }
+
+                // ★ 小数点第2位までが同点の場合：定数の高い順
+                const constA = parseFloat(a.const) || 0;
+                const constB = parseFloat(b.const) || 0;
+                if (constB !== constA) {
+                    return constB - constA;
+                }
             } else {
                 // 【テクニカルスコア順】
                 const scoreA = parseFloat(a.score) || 0;
@@ -4703,14 +4714,34 @@ function calculatechuniRate(playerName) {
     const bestSongs = targetData.filter(s => !isNewSongCheck(s.isNew));
 
     const getTopData = (list, count) => {
-        const sorted = list
-            .map(s => floorTo2nd(parseFloat(s.rating) || 0))
-            .sort((a, b) => b - a);
+        // オブジェクトのまま「レート (2位切り捨て) ＞ 定数」の順でソート
+        const sortedObjects = [...list].sort((a, b) => {
+            const ratingA = floorTo2nd(parseFloat(a.rating) || 0);
+            const ratingB = floorTo2nd(parseFloat(b.rating) || 0);
 
+            // 1. レート（小数点第2位切り捨て）が高い順
+            if (ratingB !== ratingA) {
+                return ratingB - ratingA;
+            }
+
+            // 2. レートが同じなら定数が高い順
+            const constA = parseFloat(a.const) || 0;
+            const constB = parseFloat(b.const) || 0;
+            return constB - constA;
+        });
+
+        // ソート済みのオブジェクトからレート値を抽出して平均を算出
+        const sorted = sortedObjects.map(s => floorTo2nd(parseFloat(s.rating) || 0));
         const top = sorted.slice(0, count);
         const rawAvg = top.length > 0 ? top.reduce((a, b) => a + b, 0) / count : 0;
         const avg = floorTo4th(rawAvg);
-        const threshold = sorted.length >= count ? sorted[count - 1] : (sorted[sorted.length - 1] || 0);
+
+        // 枠の閾値（ボーダー線）を取得
+        const thresholdObj = sortedObjects.length >= count 
+            ? sortedObjects[count - 1] 
+            : (sortedObjects[sortedObjects.length - 1] || null);
+
+        const threshold = thresholdObj ? floorTo2nd(parseFloat(thresholdObj.rating) || 0) : 0;
 
         return { avg, threshold };
     };
@@ -5238,6 +5269,9 @@ async function renderTabContent(tabKey) {
     let tabTitle = "";
     let columnHeader = "定数";
 
+    // isNewSongCheck関数が存在しない場合のための安全装置
+    const checkNew = typeof isNewSongCheck === 'function' ? isNewSongCheck : (val => !!val);
+
     switch (tabKey) {
         case 'best':
             tabTitle = "BEST";
@@ -5245,13 +5279,22 @@ async function renderTabContent(tabKey) {
             isRateMode = true;
             colorClass = "color-best";
             columnHeader = "定数";
-            songs = targetData.filter(s => !s.isNew)
+            songs = targetData.filter(s => !checkNew(s.isNew))
                 .map(s => ({
                     ...s,
                     calcVal: floorTo2nd(parseFloat(s.rating) || 0),
                     displayConst: parseFloat(s.const || 0).toFixed(1)
                 }))
-                .sort((a, b) => b.calcVal - a.calcVal)
+                .sort((a, b) => {
+                    // 1. 単曲レート（2位切り捨て）が高い順
+                    if (b.calcVal !== a.calcVal) {
+                        return b.calcVal - a.calcVal;
+                    }
+                    // 2. 単曲レートが等しい場合は譜面定数が高い順
+                    const constA = parseFloat(a.const) || 0;
+                    const constB = parseFloat(b.const) || 0;
+                    return constB - constA;
+                })
                 .slice(0, limit);
             break;
 
@@ -5261,13 +5304,22 @@ async function renderTabContent(tabKey) {
             isRateMode = true;
             colorClass = "color-new";
             columnHeader = "定数";
-            songs = targetData.filter(s => s.isNew)
+            songs = targetData.filter(s => checkNew(s.isNew))
                 .map(s => ({
                     ...s,
                     calcVal: floorTo2nd(parseFloat(s.rating) || 0),
                     displayConst: parseFloat(s.const || 0).toFixed(1)
                 }))
-                .sort((a, b) => b.calcVal - a.calcVal)
+                .sort((a, b) => {
+                    // 1. 単曲レート（2位切り捨て）が高い順
+                    if (b.calcVal !== a.calcVal) {
+                        return b.calcVal - a.calcVal;
+                    }
+                    // 2. 単曲レートが等しい場合は譜面定数が高い順
+                    const constA = parseFloat(a.const) || 0;
+                    const constB = parseFloat(b.const) || 0;
+                    return constB - constA;
+                })
                 .slice(0, limit);
             break;
 
