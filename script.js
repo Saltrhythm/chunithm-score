@@ -4898,7 +4898,7 @@ const STATIC_CATEGORY_TOTALS = {
 
 /**
  * 💡 合計値を元に各傾向の補正倍率（重み）を算出
- * 💡 ダンピング係数(damping = 0.5)を導入し、増減幅を半分程度に抑える調整
+ * 💡 ダンピング係数(damping = 0.35)を適用し、CHUNIは補正なし(1.0)に固定
  */
 function getCategoryWeightsFromTotals(totals) {
     if (!totals) {
@@ -4920,19 +4920,17 @@ function getCategoryWeightsFromTotals(totals) {
     const rawWeights = {
         tairyoku: t > 0 ? avgTotal / t : 1, // 約 1.2007
         kenban:   k > 0 ? avgTotal / k : 1, // 約 0.7214
-        chuni:    c > 0 ? avgTotal / c : 1, // 約 0.8885
         kuse:     u > 0 ? avgTotal / u : 1  // 約 1.5256
     };
 
-    // 💡 補正の強さを抑えるダンピング処理 (0.5 = 補正幅を半分に緩和)
-    // 効きを強めたい場合は 0.7、さらに弱めたい場合は 0.3 などに調整可能です
-    const damping = 0.5;
+    // 💡 補正の強さを抑えるダンピング処理 (0.35)
+    const damping = 0.3;
 
     return {
-        tairyoku: 1 + (rawWeights.tairyoku - 1) * damping, // 約 1.1004
-        kenban:   1 + (rawWeights.kenban - 1) * damping,   // 約 0.8607
-        chuni:    1 + (rawWeights.chuni - 1) * damping,    // 約 0.9443
-        kuse:     1 + (rawWeights.kuse - 1) * damping      // 約 1.2628
+        tairyoku: 1 + (rawWeights.tairyoku - 1) * damping, // 約 1.0702
+        kenban:   1 + (rawWeights.kenban - 1) * damping,   // 約 0.9025
+        chuni:    1,                                        // 💡 補正なし (1.0固定)
+        kuse:     1 + (rawWeights.kuse - 1) * damping      // 約 1.1840
     };
 }
 
