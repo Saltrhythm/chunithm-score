@@ -21,62 +21,89 @@ h1 {
     text-align: center;
 }
 
-/* 入力欄とアイコンを包む枠（これがアイコンの基準になります） */
+/* フィールドグループ（ラベルや説明文の囲い） */
+.field-group {
+    text-align: left;
+    width: 100%;
+    max-width: 400px;
+    margin: 0 auto 20px;
+}
+
+.field-group label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 4px;
+    color: #050505;
+}
+
+.field-group p {
+    font-size: 0.85em;
+    margin-bottom: 8px;
+    color: #050505;
+}
+
+.field-group a {
+    color: #00cfff;
+    text-decoration: none;
+}
+
+.field-group a:hover {
+    text-decoration: underline;
+}
+
+/* 入力欄とアイコンを包む枠 */
 .input-wrapper {
     position: relative;
     width: 100%;
     max-width: 400px;
-    /* 必要に応じて調整 */
     margin: 0 auto 12px;
-    /* 入力欄にあった余白をここへ移動 */
 }
 
-#token-input {
+/* 入力欄（chunisupport / chunirec 共通） */
+#support-token-input,
+#token-input,
+.token-input {
     width: 100%;
     background: #1a1a2e;
     color: #fff;
     border: 1px solid #00cfff55;
     border-radius: 6px;
-    padding: 10px 40px 10px 14px;
-    /* 右側に40pxの余白を空けてアイコンと重ならないようにする */
+    padding: 10px 40px 10px 14px; /* 右側に40pxの余白を空けてアイコンと重ならないようにする */
     font-size: 1rem;
     outline: none;
     box-sizing: border-box;
     margin-bottom: 0 !important;
-    /* HTML側のstyle属性や古いCSSの干渉を防ぐ */
     display: block;
 }
 
-/* アイコンボタンを完全中央・右端に配置 */
-#toggle-token {
+#support-token-input:focus,
+#token-input:focus,
+.token-input:focus {
+    border-color: #00cfff;
+}
+
+/* アイコンボタンを完全中央・右端に配置（chunisupport / chunirec 共通） */
+#toggle-support-token,
+#toggle-token,
+.toggle-token-btn {
     position: absolute;
     right: 10px;
-    /* 右端から10px */
     top: 50%;
-    /* 上から50% */
     transform: translateY(-50%);
-    /* 自分の高さの半分だけ上にずらして完全中央 */
     background: none;
     border: none;
     cursor: pointer;
     font-size: 18px;
     line-height: 1;
     color: #00cfff;
-    /* アイコンの色をテーマカラーに合わせる */
     padding: 0;
     display: flex;
     align-items: center;
 }
 
-/* その他の調整 */
-#loading-msg,
-#token-error {
-    margin-top: 10px;
-    display: none;
-}
-
-#token-input:focus {
-    border-color: #00cfff;
+/* ボタンエリア */
+.button-area {
+    margin-top: 24px;
 }
 
 button {
@@ -94,10 +121,16 @@ button:hover {
     background: #00aadd;
 }
 
+/* その他の調整 */
+#loading-msg,
+#token-error {
+    margin-top: 10px;
+    display: none;
+}
+
 /* 画面切り替え用の基本設定 */
 #main-screen {
-    display: none;
-    /* 最初は隠しておく */
+    display: none; /* 最初は隠しておく */
 }
 
 #loading {

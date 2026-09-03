@@ -32,15 +32,19 @@ let lastStatsResponse = null; // GASの結果を保持する
  * 強制ログアウト処理（端末のキャッシュを完全消去してログイン画面へ戻す）
  */
 function clearUserCache() {
-    // ローカルストレージ内の全データを削除
+    // ローカルストレージ内の全データを削除（chunisupport_token も追加）
     localStorage.removeItem('chunirec_token');
+    localStorage.removeItem('chunisupport_token');
     localStorage.removeItem('chunirec_scores');
     localStorage.removeItem('chunirec_player_name');
     localStorage.removeItem('chunirec_cache_time');
 
-    // トークン入力フォームも空にする
-    const tokenInput = document.getElementById('token-input');
-    if (tokenInput) tokenInput.value = '';
+    // トークン入力フォーム（上部・下部の両方）を空にする
+    const supportInput = document.getElementById('support-token-input');
+    const chunirecInput = document.getElementById('token-input');
+    
+    if (supportInput) supportInput.value = '';
+    if (chunirecInput) chunirecInput.value = '';
 
     // メイン画面を隠して、ログイン（トークン入力）画面を表示
     const mainScreen = document.getElementById("main-screen");
@@ -49,12 +53,17 @@ function clearUserCache() {
     if (tokenScreen) tokenScreen.style.display = "block";
 }
 
-function toggleTokenVisibility() {
-    const input = document.getElementById("token-input");
-    const btn = document.getElementById("toggle-token");
+/**
+ * トークン入力欄の表示/非表示切り替え（引数で汎用化）
+ * @param {string} inputId - 対象のinput要素のID（デフォルト: token-input）
+ * @param {string} btnId - 対象のbutton要素のID（デフォルト: toggle-token）
+ */
+function toggleTokenVisibility(inputId = "token-input", btnId = "toggle-token") {
+    const input = document.getElementById(inputId);
+    const btn = document.getElementById(btnId);
 
     if (!input || !btn) {
-        console.error("要素が見つかりません。IDが正しいか確認してください。");
+        console.error("要素が見つかりません。IDが正しいか確認してください:", inputId, btnId);
         return;
     }
 
@@ -96,25 +105,37 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const urlParams = new URLSearchParams(window.location.search);
     const targetPlayerFromUrl = urlParams.get("player");
-    const savedToken = localStorage.getItem('chunirec_token');
 
-    const tokenInput = document.getElementById('token-input');
-    if (tokenInput && savedToken) {
-        tokenInput.value = savedToken;
+    // LocalStorage から両方のトークンを取得
+    const savedSupportToken = localStorage.getItem('chunisupport_token');
+    const savedChunirecToken = localStorage.getItem('chunirec_token');
+
+    // 上部入力欄（chunisupport）に自動入力
+    const supportTokenInput = document.getElementById('support-token-input');
+    if (supportTokenInput && savedSupportToken) {
+        supportTokenInput.value = savedSupportToken;
     }
 
-    if (!savedToken) {
-        console.warn("トークン未登録のため利用をブロックしました。");
+    // 下部入力欄（chunirec）に自動入力
+    const chunirecTokenInput = document.getElementById('token-input');
+    if (chunirecTokenInput && savedChunirecToken) {
+        chunirecTokenInput.value = savedChunirecToken;
+    }
+
+    // 両方のトークンが存在するか判定
+    const isBothTokensSet = Boolean(savedSupportToken && savedChunirecToken);
+
+    if (!isBothTokensSet) {
+        console.warn("トークン未登録または不足のためログイン画面を表示します。");
         if (targetPlayerFromUrl) {
             window.history.replaceState({}, document.title, window.location.pathname);
         }
         document.getElementById("token-screen")?.style.setProperty('display', 'block');
         document.getElementById("main-screen")?.style.setProperty('display', 'none');
-        alert("【エラー】トークンが設定されていません。");
         return;
     }
 
-    // トークンが存在する場合：メイン画面を表示
+    // 両方のトークンが存在する場合：メイン画面を表示
     document.getElementById("token-screen")?.style.setProperty('display', 'none');
     document.getElementById("main-screen")?.style.setProperty('display', 'block');
 
@@ -3293,9 +3314,6 @@ async function toggleBingoCellClearStatus(cellIndex, playerName, options = {}) {
 }
 
 
-
-
-
 /**
  * 💡【新設】プレイヤー名指定でのデータ取得（ブックマークレット遷移時用）
  */
@@ -3331,7 +3349,6 @@ async function loadPlayerDataByName(playerName) {
 
 /**
  * 💡 データを再同期する（ボタン用）
- * スコア同期 ＋ 最新ビンゴデータの再取得を一括で行う
  */
 async function refreshScores() {
     const btn = document.querySelector('.refresh-btn');
@@ -3343,48 +3360,33 @@ async function refreshScores() {
 
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    // 1. スコアの同期・読み込み
-    const isSuccess = await loadScores();
-
-    // 2. ビンゴデータの最新取得（※関数が存在する場合に実行）
-    if (isSuccess && typeof fetchBingoData === 'function') {
-        try {
-            await fetchBingoData();
-        } catch (bErr) {
-            console.error("ビンゴデータの再取得に失敗:", bErr);
-        }
-    }
+    // loadScoresを実行（内臓のアラート表示はloadScores側で行うか、ここで受け取る）
+    const syncResult = await loadScores(true); // isRefreshFlag = true
 
     btn.disabled = false;
     btn.innerText = originalText;
     btn.blur();
-
-    if (isSuccess) {
-        alert("データおよびビンゴ状態の再同期が正常に完了しました！");
-    } else {
-        const errorMsgEl = document.getElementById("token-error");
-        const errMsg = errorMsgEl ? errorMsgEl.innerText : "認証・同期エラー";
-        alert("同期に失敗しました。\n" + errMsg);
-    }
 }
 
 /**
- * 💡 スコア読み込み（トークンによる全同期）
+ * 💡 スコア読み込み・同期
  */
-async function loadScores() {
+async function loadScores(isRefresh = false) {
+    const supportInput = document.getElementById("support-token-input");
     const tokenInput = document.getElementById("token-input");
     const loadBtn = document.getElementById("load-btn");
     const loadingMsg = document.getElementById("loading-msg");
     const errorMsg = document.getElementById("token-error");
 
-    const token = tokenInput ? tokenInput.value.trim() : "";
+    const supportToken = (supportInput ? supportInput.value.trim() : "") || localStorage.getItem('chunisupport_token') || "";
+    const chunirecToken = (tokenInput ? tokenInput.value.trim() : "") || localStorage.getItem('chunirec_token') || "";
 
-    if (!token) {
+    if (!supportToken && !chunirecToken) {
         if (errorMsg) {
-            errorMsg.innerText = "エラー: トークンを入力してください。";
+            errorMsg.innerText = "エラー: chunisupport または chunirec のいずれかのトークンを入力してください。";
             errorMsg.style.display = "block";
         }
-        return false;
+        return { success: false, message: "" };
     }
 
     if (loadBtn) {
@@ -3400,17 +3402,27 @@ async function loadScores() {
             headers: { 'Content-Type': 'text/plain' },
             body: JSON.stringify({
                 mode: "checker",
-                token: token
+                chuniSupportToken: supportToken,
+                chunirec_token: chunirecToken
             })
         });
 
         const result = await response.json();
 
         if (result.status === "success") {
-            handleSuccess(result, token);
-            return true;
+            handleSuccess(result, supportToken, chunirecToken);
+
+            // 💡 確実にアラートを表示させる処理
+            if (result.message) {
+                // GASから返ってきたメッセージ（注記含む）を表示
+                alert(result.message);
+            } else {
+                alert("データの更新が完了しました。");
+            }
+
+            return { success: true, message: result.message };
         } else {
-            clearUserCache();
+            if (typeof clearUserCache === 'function') clearUserCache();
             throw new Error(result.message || "認証に失敗しました。");
         }
     } catch (e) {
@@ -3419,7 +3431,8 @@ async function loadScores() {
             errorMsg.innerText = "エラー: " + e.message;
             errorMsg.style.display = "block";
         }
-        return false;
+        alert("同期に失敗しました。\n" + e.message);
+        return { success: false, message: e.message };
     } finally {
         if (loadBtn) {
             loadBtn.disabled = false;
@@ -3427,19 +3440,20 @@ async function loadScores() {
         }
         if (loadingMsg) loadingMsg.style.display = "none";
     }
-
 }
 
 /**
  * 💡 同期・データ取得成功時の共通処理
  */
-function handleSuccess(result, token) {
+function handleSuccess(result, supportToken, chunirecToken) {
     console.log("データ取得成功", result);
 
     myCurrentRecords = result.records || [];
 
-    // ローカルストレージへの保存
-    if (token) localStorage.setItem('chunirec_token', token);
+    // LocalStorageへ保存
+    if (supportToken) localStorage.setItem('chunisupport_token', supportToken);
+    if (chunirecToken) localStorage.setItem('chunirec_token', chunirecToken);
+
     localStorage.setItem('chunirec_scores', JSON.stringify(myCurrentRecords));
     localStorage.setItem('chunirec_player_name', result.playerName);
     localStorage.setItem('chunirec_cache_time', Date.now().toString());
@@ -3450,7 +3464,19 @@ function handleSuccess(result, token) {
     if (tokenScreen) tokenScreen.style.display = "none";
     if (mainScreen) mainScreen.style.display = "block";
 
-    // プレイヤー選択セレクトボックスの表示合わせ（存在する場合）
+    // 💡 chunisupport未使用時の注記メッセージがある場合、メイン画面上の案内要素（または通知エリア）に表示
+    const noticeEl = document.getElementById("sync-notice") || document.getElementById("token-error");
+    if (noticeEl) {
+        if (!result.usedChuniSupport) {
+            noticeEl.innerText = result.message || "※最新のデータが必要な場合は、chunisupportのトークンの登録を管理者にお願いしてください。";
+            noticeEl.style.display = "block";
+            noticeEl.style.color = "#d9534f"; // 注記用に赤またはオレンジ系の色設定
+        } else {
+            noticeEl.style.display = "none";
+        }
+    }
+
+    // プレイヤー選択の合わせ込み
     const playerSelect = document.getElementById("playerSelect");
     if (playerSelect) {
         playerSelect.value = result.playerName;
@@ -3458,7 +3484,7 @@ function handleSuccess(result, token) {
 
     if (typeof calculatechuniRate === 'function') calculatechuniRate(result.playerName);
 
-    // 💡 修正: 直接描画するのではなく、保存されたフィルター・ソートを適用して再描画
+    // 画面再描画
     if (typeof updateFilters === 'function') {
         updateFilters();
     } else if (typeof displayScores === 'function') {
@@ -8927,18 +8953,24 @@ async function shareToDiscord(modalId = 'rating-modal') {
 
 
 /**
- * ログアウト処理
- * キャッシュをクリアして画面をリロードする
+ * 💡 ログアウト処理
+ * キャッシュおよび保存されたトークン類を削除して画面をリロードする
  */
 function logout() {
     if (confirm("ログアウトしますか？（保存されたスコアやトークンが消去されます）")) {
-        // localStorageのデータを削除
+        // localStorageのデータを削除（chunisupportトークンも追加）
+        localStorage.removeItem('chunisupport_token');
         localStorage.removeItem('chunirec_token');
         localStorage.removeItem('chunirec_scores');
         localStorage.removeItem('chunirec_player_name');
         localStorage.removeItem('chunirec_cache_time');
 
-        // ページをリロードして初期画面に戻す
+        // 他にも独自で保持しているキャッシュ消去関数があれば実行
+        if (typeof clearUserCache === 'function') {
+            clearUserCache();
+        }
+
+        // ページをリロードして初期画面（トークン入力画面）に戻す
         window.location.reload();
     }
 }
