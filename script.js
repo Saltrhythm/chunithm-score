@@ -4988,10 +4988,10 @@ const COMPARISON_COLORS = [
 
 // 💡 スプレッドシート側の各傾向の生定数合計値（定数化）
 const STATIC_CATEGORY_TOTALS = {
-    tairyoku: 1867.04,
-    kenban: 3107.32,
-    chuni: 2523.12,
-    kuse: 1469.33
+    tairyoku: 2012.8,
+    kenban: 3170.69,
+    chuni: 2621.54,
+    kuse: 1478.67
 };
 
 /**
@@ -5016,19 +5016,19 @@ function getCategoryWeightsFromTotals(totals) {
 
     // 100%補正時の倍率
     const rawWeights = {
-        tairyoku: t > 0 ? avgTotal / t : 1, // 約 1.2007
-        kenban:   k > 0 ? avgTotal / k : 1, // 約 0.7214
-        kuse:     u > 0 ? avgTotal / u : 1  // 約 1.5256
+        tairyoku: t > 0 ? avgTotal / t : 1, 
+        kenban:   k > 0 ? avgTotal / k : 1, 
+        kuse:     u > 0 ? avgTotal / u : 1  
     };
 
     // 💡 補正の強さを抑えるダンピング処理 (0.35)
-    const damping = 0.3;
+    const damping = 0.35;
 
     return {
-        tairyoku: 1 + (rawWeights.tairyoku - 1) * damping, // 約 1.0702
-        kenban:   1 + (rawWeights.kenban - 1) * damping,   // 約 0.9025
-        chuni:    1,                                        // 💡 補正なし (1.0固定)
-        kuse:     1 + (rawWeights.kuse - 1) * damping      // 約 1.1840
+        tairyoku: 1 + (rawWeights.tairyoku - 1) * damping, 
+        kenban:   1 + (rawWeights.kenban - 1) * damping,   
+        chuni:    1,                                        
+        kuse:     1 + (rawWeights.kuse - 1) * damping      
     };
 }
 
