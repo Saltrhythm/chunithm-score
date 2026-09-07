@@ -4238,7 +4238,7 @@ function sortData(data) {
 }
 
 /**
- * 画面にスコアを表示する（難易度セル：生定数表示 / レートセル：重み補正後表示）
+ * 画面にスコアを表示する（難易度セル：生定数表示 / レートセル：生値表示）
  */
 function displayScores(data) {
     console.log("--- displayScores開始 ---", data ? `${data.length}件` : "データなし");
@@ -4274,40 +4274,19 @@ function displayScores(data) {
             return;
         }
 
-        // 💡 重み（weight）の取得
-        const totals = (typeof window !== 'undefined' && window.masterCategoryTotals)
-            ? window.masterCategoryTotals
-            : (typeof STATIC_CATEGORY_TOTALS !== 'undefined' ? STATIC_CATEGORY_TOTALS : null);
-        
-        const weights = (typeof getCategoryWeightsFromTotals === 'function')
-            ? getCategoryWeightsFromTotals(totals)
-            : { tairyoku: 1, kenban: 1, chuni: 1, kuse: 1 };
-
-        // 💡 右列用：重み補正後のRating値を計算する共通関数
-        const getAdjustedRatingVal = (item, trend) => {
+        // 💡 右列用：生のRating値/傾向値を取得する共通関数（補正なし）
+        const getRawRatingVal = (item, trend) => {
             if (!item || !trend) return 0;
             if (item.calcVal !== undefined && item.calcVal !== null) {
                 return parseFloat(item.calcVal);
             }
 
-            let rawCalcVal = 0;
-            let weight = 1;
+            if (trend === 'POWER') return parseFloat(item.tairyoku ?? item.rawTairyoku ?? 0);
+            if (trend === 'NOTES') return parseFloat(item.kenban ?? item.rawKenban ?? 0);
+            if (trend === 'CHUNI') return parseFloat(item.chuni ?? item.rawChuni ?? 0);
+            if (trend === 'TRICKY') return parseFloat(item.kuse ?? item.rawKuse ?? 0);
 
-            if (trend === 'POWER') {
-                rawCalcVal = parseFloat(item.tairyoku ?? item.rawTairyoku ?? 0);
-                weight = weights.tairyoku || 1;
-            } else if (trend === 'NOTES') {
-                rawCalcVal = parseFloat(item.kenban ?? item.rawKenban ?? 0);
-                weight = weights.kenban || 1;
-            } else if (trend === 'CHUNI') {
-                rawCalcVal = parseFloat(item.chuni ?? item.rawChuni ?? 0);
-                weight = weights.chuni || 1;
-            } else if (trend === 'TRICKY') {
-                rawCalcVal = parseFloat(item.kuse ?? item.rawKuse ?? 0);
-                weight = weights.kuse || 1;
-            }
-
-            return rawCalcVal * weight;
+            return 0;
         };
 
         // 💡 難易度セル用：各曲の生定数（rawTairyoku等）を取得する共通関数
@@ -4320,19 +4299,36 @@ function displayScores(data) {
             return 0;
         };
 
-        // 💡 傾向選択時の枠対象（Top 30）の算出（補正後値で判定）
-        const top30Set = new Set();
+        // 💡 傾向ごとのハイライト枠数の判定（ABILITY_LIMITS を参照）
+        const limitsMap = (typeof ABILITY_LIMITS !== 'undefined') ? ABILITY_LIMITS : {
+            tairyoku: 30,
+            kenban: 50,
+            chuni: 30,
+            kuse: 16
+        };
+
+        const getTrendLimit = (trend) => {
+            if (trend === 'POWER') return limitsMap.tairyoku || 30;
+            if (trend === 'NOTES') return limitsMap.kenban || 50;
+            if (trend === 'CHUNI') return limitsMap.chuni || 30;
+            if (trend === 'TRICKY') return limitsMap.kuse || 16;
+            return 30;
+        };
+
+        // 💡 傾向選択時の枠対象（Top N）の算出（生の算出値で判定）
+        const targetSet = new Set();
         if (selectedTrend) {
+            const limit = getTrendLimit(selectedTrend);
             const sourceData = (typeof myCurrentRecords !== "undefined" && Array.isArray(myCurrentRecords) && myCurrentRecords.length > 0)
                 ? myCurrentRecords
                 : data;
 
             [...sourceData]
-                .sort((a, b) => getAdjustedRatingVal(b, selectedTrend) - getAdjustedRatingVal(a, selectedTrend))
-                .slice(0, 30)
+                .sort((a, b) => getRawRatingVal(b, selectedTrend) - getRawRatingVal(a, selectedTrend))
+                .slice(0, limit)
                 .forEach(item => {
                     if (item && item.title && item.diff) {
-                        top30Set.add(`${item.title}_${item.diff}`);
+                        targetSet.add(`${item.title}_${item.diff}`);
                     }
                 });
         }
@@ -4371,7 +4367,7 @@ function displayScores(data) {
             // ハイライトクラスの付与
             if (selectedTrend) {
                 const itemKey = `${item.title}_${item.diff}`;
-                if (top30Set.has(itemKey)) {
+                if (targetSet.has(itemKey)) {
                     tr.classList.add(`is-${selectedTrend.toLowerCase()}-target`);
                 }
             } else if (!isWE && RatingNum > 0) {
@@ -4408,7 +4404,7 @@ function displayScores(data) {
             divDiff.className = 'diff-level-cell';
 
             if (selectedTrend) {
-                // 💡 生定数（rawTairyoku 等）を取得して表示
+                // 生定数（rawTairyoku 等）を取得して表示
                 const rawCostVal = getRawConstVal(item, selectedTrend);
                 const activeColor = colorMap[selectedTrend] || "#007aff";
                 const displayCostStr = rawCostVal > 0 ? rawCostVal.toFixed(1) : (item.displayConst || (currentConst > 0 ? currentConst.toFixed(1) : "-"));
@@ -4534,15 +4530,15 @@ function displayScores(data) {
             tdScore.appendChild(spanScore);
             tr.appendChild(tdScore);
 
-            // 5. 単曲レートセル（重み補正後の傾向値）
+            // 5. 単曲レートセル（生の傾向値）
             const tdRating = document.createElement('td');
             tdRating.className = 't-rating-cell';
             const spanRating = document.createElement('span');
             spanRating.className = 't-rating';
 
             if (selectedTrend) {
-                // 💡 重み補正済みの数値を取得して表示
-                const ratingVal = getAdjustedRatingVal(item, selectedTrend);
+                // 生の傾向値を取得して表示
+                const ratingVal = getRawRatingVal(item, selectedTrend);
 
                 const activeColor = colorMap[selectedTrend] || "#007aff";
                 spanRating.style.color = activeColor;
@@ -5005,56 +5001,17 @@ const COMPARISON_COLORS = [
     { border: 'rgba(75, 192, 192, 1)', bg: 'rgba(75, 192, 192, 0.15)' }   // グリーン
 ];
 
-// 💡 スプレッドシート側の各傾向の生定数合計値（14.8-15.7 第一傾向のみ）
-const STATIC_CATEGORY_TOTALS = {
-    tairyoku: 735.47,  // POWER
-    kenban:   2119.64, // NOTES
-    chuni:    1056.26, // CHUNI
-    kuse:     559.93   // TRICKY
+// 💡 属性ごとの集計対象曲数定義
+const ABILITY_LIMITS = {
+    tairyoku: 30, // POWER
+    kenban:   50, // NOTES (変更: 50曲)
+    chuni:    30, // CHUNI
+    kuse:     16  // TRICKY (変更: 16曲)
 };
 
 /**
- * 💡 合計値を元に各傾向の補正倍率（重み）を算出
- * 💡 4傾向すべてにダンピング係数を均等適用
- */
-function getCategoryWeightsFromTotals(totals) {
-    if (!totals) {
-        return { tairyoku: 1, kenban: 1, chuni: 1, kuse: 1 };
-    }
-
-    const t = parseFloat(totals.tairyoku || 0);
-    const k = parseFloat(totals.kenban || 0);
-    const c = parseFloat(totals.chuni || 0);
-    const u = parseFloat(totals.kuse || 0);
-
-    const sumAll = t + k + c + u;
-    if (sumAll === 0) return { tairyoku: 1, kenban: 1, chuni: 1, kuse: 1 };
-
-    // 4傾向の合計値の平均（基準値: 1117.825）
-    const avgTotal = sumAll / 4;
-
-    // 100%補正時の倍率（第一傾向のみの数値をベースに全属性計算）
-    const rawWeights = {
-        tairyoku: t > 0 ? avgTotal / t : 1, 
-        kenban:   k > 0 ? avgTotal / k : 1, 
-        chuni:    c > 0 ? avgTotal / c : 1, // 💡 CHUNIも基準値との比率を算出
-        kuse:     u > 0 ? avgTotal / u : 1  
-    };
-
-    // 💡 補正の強さを抑えるダンピング処理
-    const damping = 0.2;
-
-    return {
-        tairyoku: 1 + (rawWeights.tairyoku - 1) * damping, 
-        kenban:   1 + (rawWeights.kenban - 1) * damping,   
-        chuni:    1 + (rawWeights.chuni - 1) * damping, // 💡 CHUNIにもダンピング適用 
-        kuse:     1 + (rawWeights.kuse - 1) * damping      
-    };
-}
-
-/**
- * 💡 1人のプレイヤーの4傾向（Top 30）の平均値を算出
- * (getTopAbilitySongs 側で重みが適用済みのため、単純平均を取得)
+ * 💡 1人のプレイヤーの4傾向の平均値を算出
+ * (補正なし、各属性ごとに指定されたTop件数の単純平均を取得)
  */
 function calcPlayerAbilityAverages(targetData) {
     if (!Array.isArray(targetData) || targetData.length === 0) {
@@ -5071,11 +5028,10 @@ function calcPlayerAbilityAverages(targetData) {
     const result = { tairyoku: 0, kenban: 0, chuni: 0, kuse: 0 };
 
     keys.forEach(k => {
-        // 💡 getTopAbilitySongs 内で単曲の calcVal に重み(weight)が適用されています
-        const songs = getTopAbilitySongs(targetData, k.modKey, k.rawKey, 30);
+        const count = ABILITY_LIMITS[k.modKey] || 30;
+        const songs = getTopAbilitySongs(targetData, k.modKey, k.rawKey, count);
         const sum = songs.reduce((a, b) => a + (b.calcVal || 0), 0);
         
-        // 💡 2重補正を避け、そのまま平均を算出します
         result[k.prop] = songs.length > 0 ? sum / songs.length : 0;
     });
 
@@ -5088,7 +5044,6 @@ function calcPlayerAbilityAverages(targetData) {
 async function fetchSinglePlayerData(name) {
     if (!name) return null;
 
-    // 💡 すでに有効なキャッシュ（1件以上）が存在すればそれを返す
     if (allUsersRecords[name] && allUsersRecords[name].length > 0) {
         return allUsersRecords[name];
     }
@@ -5103,19 +5058,16 @@ async function fetchSinglePlayerData(name) {
             })
         });
 
-        // 通信応答の安全チェック
         if (!response.ok) {
             throw new Error(`HTTP Error: ${response.status}`);
         }
 
         const result = await response.json();
 
-        // GAS側レスポンス: { status: "success", playerName: "...", records: [...] }
         if (result.status === "success" && Array.isArray(result.records) && result.records.length > 0) {
             allUsersRecords[name] = result.records;
             return allUsersRecords[name];
         } else {
-            // データが取得できなかった場合は空のキャッシュを破棄
             delete allUsersRecords[name];
         }
     } catch (e) {
@@ -5137,13 +5089,11 @@ async function handlePlayerChange(selectedName) {
         container.innerHTML = "<p style='text-align:center; padding: 20px;'>データを読み込み中...</p>";
     }
 
-    // キャッシュがある場合は即座に再描画
     if (allUsersRecords[selectedName] && allUsersRecords[selectedName].length > 0) {
         renderTabContent(currentTab);
         return;
     }
 
-    // GASへデータ取得
     const records = await fetchSinglePlayerData(selectedName);
 
     if (records && records.length > 0) {
@@ -5156,13 +5106,12 @@ async function handlePlayerChange(selectedName) {
 }
 
 /**
- * 💡 重ね合わせレーダーチャート描画処理（キャンバス競合回避・動的スケール対応版）
+ * 💡 重ね合わせレーダーチャート描画処理
  */
 async function renderOverlappedRadarChart() {
     const canvas = document.getElementById('modal-radar-canvas-overlapped');
     if (!canvas) return;
 
-    // 💡 非同期通信中の連続呼び出し対策：キャンバスに紐づく既存チャートを即座に破棄
     const existingChart = Chart.getChart(canvas);
     if (existingChart) {
         existingChart.destroy();
@@ -5177,7 +5126,7 @@ async function renderOverlappedRadarChart() {
 
     const datasets = [];
 
-    // 1. メインプレイヤー（赤・太線・強調表示）
+    // 1. メインプレイヤー
     datasets.push({
         label: `${mainName} (メイン)`,
         data: mainVals,
@@ -5191,7 +5140,7 @@ async function renderOverlappedRadarChart() {
         order: 0
     });
 
-    // 2. 比較対象プレイヤー（最大3名）
+    // 2. 比較対象プレイヤー
     for (let i = 0; i < selectedComparePlayers.length; i++) {
         const compName = selectedComparePlayers[i];
         if (compName === mainName) continue;
@@ -5217,13 +5166,11 @@ async function renderOverlappedRadarChart() {
         });
     }
 
-    // 💡 非同期処理（await）が終わった直後に再度キャンバスの状態をチェックして破棄
     const activeChartBeforeCreate = Chart.getChart(canvas);
     if (activeChartBeforeCreate) {
         activeChartBeforeCreate.destroy();
     }
 
-    // スケール範囲の動的算出
     const rawMin = Math.min(...allVals);
     const rawMax = Math.max(...allVals);
     const chartMin = Math.max(0, Math.floor(rawMin) - 1);
@@ -5291,9 +5238,6 @@ async function renderOverlappedRadarChart() {
     });
 }
 
-/**
- * 💡 比較対象プレイヤーの選択変更イベント handler
- */
 function handleCompareCheckboxChange(checkbox) {
     const val = checkbox.value;
     if (checkbox.checked) {
@@ -5311,26 +5255,19 @@ function handleCompareCheckboxChange(checkbox) {
     renderOverlappedRadarChart();
 }
 
-/**
- * 💡 メインプレイヤーの選択変更イベント handler
- */
 async function handleRadarMainPlayerChange(val) {
     currentModalPlayerName = val;
-    // メインプレイヤーと比較対象が重複した場合は選択解除
     selectedComparePlayers = selectedComparePlayers.filter(name => name !== val);
-
-    // RADARタブを再描画してコントロール群を更新
     renderTabContent('radar');
 }
 
 /**
- * タブ内容の生成（async化）
+ * タブ内容の生成
  */
 async function renderTabContent(tabKey) {
     const container = document.getElementById('modal-tab-content');
     if (!container) return;
 
-    // 💡 RADAR タブ専用の描画分岐（重ね合わせチャート ＋ 比較選択UI）
     if (tabKey === 'radar') {
         const systemSheets = ["VideoRequests", "VideoSupplies", "MasterData", "Template"];
         let rawList = [];
@@ -5344,14 +5281,12 @@ async function renderTabContent(tabKey) {
         let playerList = Array.from(new Set(rawList)).filter(p => p && !systemSheets.includes(p));
         if (playerList.length === 0) playerList = [currentModalPlayerName];
 
-        // メインプレイヤー用ドロップダウンHTML
         const mainSelectOptions = playerList.map(name => `
             <option value="${escapeHtml(name)}" ${name === currentModalPlayerName ? 'selected' : ''}>
                 ${escapeHtml(name)}
             </option>
         `).join('');
 
-        // 比較用チェックボックスHTML（メインプレイヤー以外を表示）
         const compareCheckboxesHtml = playerList
             .filter(name => name !== currentModalPlayerName)
             .map(name => {
@@ -5393,7 +5328,6 @@ async function renderTabContent(tabKey) {
         return;
     }
 
-    // 💡 選択中のプレイヤーのデータがあればそれを優先、無ければ自分(allRecords)を使用
     let targetData = [];
     if (typeof allUsersRecords !== 'undefined' && allUsersRecords[currentModalPlayerName]) {
         targetData = allUsersRecords[currentModalPlayerName];
@@ -5406,7 +5340,6 @@ async function renderTabContent(tabKey) {
         return;
     }
 
-    // ドロップダウン選択肢の共通生成
     const systemSheets = ["VideoRequests", "VideoSupplies", "MasterData", "Template"];
     let rawList = [];
     if (typeof allPlayerNames !== 'undefined' && Array.isArray(allPlayerNames)) {
@@ -5429,7 +5362,6 @@ async function renderTabContent(tabKey) {
         </option>
     `).join('');
 
-    // --- 各傾向リストの取得 ---
     let songs = [];
     let isRateMode = false;
     let limit = 30;
@@ -5486,47 +5418,45 @@ async function renderTabContent(tabKey) {
             tabTitle = "POWER";
             colorClass = "color-power";
             columnHeader = "POWER";
-            songs = getTopAbilitySongs(targetData, "tairyoku", "rawTairyoku", 30);
+            limit = ABILITY_LIMITS.tairyoku; // 30
+            songs = getTopAbilitySongs(targetData, "tairyoku", "rawTairyoku", limit);
             break;
 
         case 'notes':
             tabTitle = "NOTES";
             colorClass = "color-notes";
             columnHeader = "NOTES";
-            songs = getTopAbilitySongs(targetData, "kenban", "rawKenban", 30);
+            limit = ABILITY_LIMITS.kenban; // 50
+            songs = getTopAbilitySongs(targetData, "kenban", "rawKenban", limit);
             break;
 
         case 'chuni':
             tabTitle = "CHUNI";
             colorClass = "color-chuni";
             columnHeader = "CHUNI";
-            songs = getTopAbilitySongs(targetData, "chuni", "rawChuni", 30);
+            limit = ABILITY_LIMITS.chuni; // 30
+            songs = getTopAbilitySongs(targetData, "chuni", "rawChuni", limit);
             break;
 
         case 'tricky':
             tabTitle = "TRICKY";
             colorClass = "color-tricky";
             columnHeader = "TRICKY";
-            songs = getTopAbilitySongs(targetData, "kuse", "rawKuse", 30);
+            limit = ABILITY_LIMITS.kuse; // 20
+            songs = getTopAbilitySongs(targetData, "kuse", "rawKuse", limit);
             break;
     }
 
-    // 平均値の計算
     let avgDisplay = "0.0000";
     let labelText = "平均:";
 
     if (isRateMode) {
         const rawAvg = songs.length > 0 ? songs.reduce((a, b) => a + b.calcVal, 0) / limit : 0;
         avgDisplay = floorTo4th(rawAvg).toFixed(4);
-        labelText = "平均:";
     } else {
-        // 💡 各曲(calcVal)にはすでに重みが掛け合わされているため、
-        // 配列の平均をとるだけで補正後平均値になります（2重補正を解除）
         const sum = songs.reduce((a, b) => a + (b.calcVal || 0), 0);
-        const correctedAvg = songs.length > 0 ? sum / songs.length : 0;
-
-        avgDisplay = correctedAvg.toFixed(2);
-        labelText = "平均:";
+        const avg = songs.length > 0 ? sum / songs.length : 0;
+        avgDisplay = avg.toFixed(2);
     }
 
     const half = Math.ceil(songs.length / 2);
@@ -5553,23 +5483,11 @@ async function renderTabContent(tabKey) {
 }
 
 /**
- * 💡 能力値ソート用ヘルパー
- * 各楽曲の calcVal に属性重み（weight）を掛け合わせた補正後 Rating を算出し、ソート・抽出する
+ * 💡 能力値ソート用ヘルパー（生値で抽出・ソート）
  */
 function getTopAbilitySongs(data, modKey, rawKey, count) {
-    // 💡 該当属性の重み（weight）を取得
-    const totals = (typeof window !== 'undefined' && window.masterCategoryTotals) 
-        ? window.masterCategoryTotals 
-        : STATIC_CATEGORY_TOTALS;
-    const weights = getCategoryWeightsFromTotals(totals);
-    
-    // modKey（"tairyoku", "kenban", "chuni", "kuse"）に対応する重みを特定
-    const weight = weights[modKey] || 1;
-
-    // 💡 参照用マップの構築
     const masterMap = new Map();
 
-    // myCurrentRecords や masterDataCache から生定数をキー保持
     if (typeof myCurrentRecords !== 'undefined' && Array.isArray(myCurrentRecords)) {
         myCurrentRecords.forEach(item => {
             if (item.title && item.diff) {
@@ -5580,16 +5498,11 @@ function getTopAbilitySongs(data, modKey, rawKey, count) {
 
     return data
         .map(s => {
-            // 素の補正後能力値
+            // 補正をかけず素の属性値を採用
             const rawCalcVal = parseFloat(s[modKey] || 0);
 
-            // 💡 1曲ごとの Rating に重みを掛け合わせて補正
-            const adjustedCalcVal = rawCalcVal * weight;
-
-            // 1. 本人のデータから生定数を取得
             let rawVal = (s[rawKey] !== undefined && s[rawKey] !== null) ? parseFloat(s[rawKey]) : 0;
 
-            // 2. 存在しない場合、作成したマップから純粋な生定数(rawKey)のみを取得
             if (rawVal === 0) {
                 const key = `${s.title}_${s.diff}`;
                 const fallbackRaw = masterMap.get(key);
@@ -5598,12 +5511,11 @@ function getTopAbilitySongs(data, modKey, rawKey, count) {
                 }
             }
 
-            // 3. 表示用の生定数文字列を作成
             const finalDisplayConst = rawVal > 0 ? rawVal.toFixed(1) : parseFloat(s.const || 0).toFixed(1);
 
             return {
                 ...s,
-                calcVal: adjustedCalcVal, // 💡 テーブルに表示される単曲 Rating が補正後の値になります
+                calcVal: rawCalcVal,
                 displayConst: finalDisplayConst
             };
         })
