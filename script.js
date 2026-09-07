@@ -5005,17 +5005,17 @@ const COMPARISON_COLORS = [
     { border: 'rgba(75, 192, 192, 1)', bg: 'rgba(75, 192, 192, 0.15)' }   // グリーン
 ];
 
-// 💡 スプレッドシート側の各傾向の生定数合計値（定数化）
+// 💡 スプレッドシート側の各傾向の生定数合計値（14.8-15.7 第一傾向のみ）
 const STATIC_CATEGORY_TOTALS = {
-    tairyoku: 2012.8,
-    kenban: 3170.69,
-    chuni: 2621.54,
-    kuse: 1478.67
+    tairyoku: 735.47,  // POWER
+    kenban:   2119.64, // NOTES
+    chuni:    1056.26, // CHUNI
+    kuse:     559.93   // TRICKY
 };
 
 /**
  * 💡 合計値を元に各傾向の補正倍率（重み）を算出
- * 💡 ダンピング係数(damping = 0.35)を適用し、CHUNIは補正なし(1.0)に固定
+ * 💡 4傾向すべてにダンピング係数を均等適用
  */
 function getCategoryWeightsFromTotals(totals) {
     if (!totals) {
@@ -5030,23 +5030,24 @@ function getCategoryWeightsFromTotals(totals) {
     const sumAll = t + k + c + u;
     if (sumAll === 0) return { tairyoku: 1, kenban: 1, chuni: 1, kuse: 1 };
 
-    // 4傾向の合計値の平均（基準値）
+    // 4傾向の合計値の平均（基準値: 1117.825）
     const avgTotal = sumAll / 4;
 
-    // 100%補正時の倍率
+    // 100%補正時の倍率（第一傾向のみの数値をベースに全属性計算）
     const rawWeights = {
         tairyoku: t > 0 ? avgTotal / t : 1, 
         kenban:   k > 0 ? avgTotal / k : 1, 
+        chuni:    c > 0 ? avgTotal / c : 1, // 💡 CHUNIも基準値との比率を算出
         kuse:     u > 0 ? avgTotal / u : 1  
     };
 
-    // 💡 補正の強さを抑えるダンピング処理 (0.4)
-    const damping = 0.45;
+    // 💡 補正の強さを抑えるダンピング処理
+    const damping = 0.2;
 
     return {
         tairyoku: 1 + (rawWeights.tairyoku - 1) * damping, 
         kenban:   1 + (rawWeights.kenban - 1) * damping,   
-        chuni:    1,                                        
+        chuni:    1 + (rawWeights.chuni - 1) * damping, // 💡 CHUNIにもダンピング適用 
         kuse:     1 + (rawWeights.kuse - 1) * damping      
     };
 }
