@@ -4304,14 +4304,14 @@ function displayScores(data) {
             tairyoku: 30,
             kenban: 50,
             chuni: 30,
-            kuse: 16
+            kuse: 20
         };
 
         const getTrendLimit = (trend) => {
             if (trend === 'POWER') return limitsMap.tairyoku || 30;
             if (trend === 'NOTES') return limitsMap.kenban || 50;
             if (trend === 'CHUNI') return limitsMap.chuni || 30;
-            if (trend === 'TRICKY') return limitsMap.kuse || 16;
+            if (trend === 'TRICKY') return limitsMap.kuse || 20;
             return 30;
         };
 
@@ -5006,7 +5006,7 @@ const ABILITY_LIMITS = {
     tairyoku: 30, // POWER
     kenban:   50, // NOTES (変更: 50曲)
     chuni:    30, // CHUNI
-    kuse:     16  // TRICKY (変更: 16曲)
+    kuse:     20  // TRICKY (変更: 20曲)
 };
 
 /**
