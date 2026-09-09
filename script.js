@@ -5014,6 +5014,16 @@ async function fetchPlayerNames() {
 let modalRadarChartInstance = null;
 let selectedComparePlayers = []; // 比較対象プレイヤー名の保持用（最大3名）
 
+// 💡 定数絞り込み用の状態保持（デフォルト: 13.5 ～ 16.0）
+let filterMinConst = 13.5;
+let filterMaxConst = 16.0;
+
+// 💡 定数選択用の全選択肢リスト（13.5 ～ 16.0 を 0.1 刻みで作成）
+const BASE_CONST_OPTIONS = [];
+for (let val = 13.5; val <= 16.0; val = Math.round((val + 0.1) * 10) / 10) {
+    BASE_CONST_OPTIONS.push(val.toFixed(1));
+}
+
 // 比較対象プレイヤー用カラーパレット
 const COMPARISON_COLORS = [
     { border: 'rgba(54, 162, 235, 1)', bg: 'rgba(54, 162, 235, 0.15)' },  // 青
@@ -5024,14 +5034,322 @@ const COMPARISON_COLORS = [
 // 💡 属性ごとの集計対象曲数定義
 const ABILITY_LIMITS = {
     tairyoku: 30, // POWER
-    kenban:   50, // NOTES (変更: 50曲)
+    kenban:   50, // NOTES
     chuni:    30, // CHUNI
-    kuse:     20  // TRICKY (変更: 20曲)
+    kuse:     20  // TRICKY
 };
 
 /**
+ * 💡 定数フィルターの変更ハンドラ
+ */
+function handleConstFilterChange() {
+    const minEl = document.getElementById('filter-min-const');
+    const maxEl = document.getElementById('filter-max-const');
+
+    if (minEl && maxEl) {
+        let minVal = parseFloat(minEl.value);
+        let maxVal = parseFloat(maxEl.value);
+
+        // 下限が上限を超えないよう自動補正
+        if (minVal > maxVal) {
+            maxVal = minVal;
+            maxEl.value = maxVal.toFixed(1);
+        }
+
+        filterMinConst = minVal;
+        filterMaxConst = maxVal;
+
+        // 現在のタブを再描画
+        renderTabContent(currentTab);
+    }
+}
+
+/**
+ * 💡 定数絞り込みコントロールの HTML 生成ヘルパー
+ *  - 見た目を player-select-dropdown クラスに統一
+ */
+function buildConstFilterControlsHtml() {
+    // 昇順（13.5 -> 16.0）
+    const minAscList = [...BASE_CONST_OPTIONS];
+    
+    // 降順（16.0 -> 13.5）
+    const maxDescList = [...BASE_CONST_OPTIONS].reverse();
+
+    const minOptions = minAscList.map(v => 
+        `<option value="${v}" ${parseFloat(v) === filterMinConst ? 'selected' : ''}>${v}</option>`
+    ).join('');
+
+    const maxOptions = maxDescList.map(v => 
+        `<option value="${v}" ${parseFloat(v) === filterMaxConst ? 'selected' : ''}>${v}</option>`
+    ).join('');
+
+    return `
+        <div class="const-filter-box" style="display: inline-flex; align-items: center; gap: 4px;">
+            <span style="font-size: 13px; font-weight: bold; color: #333;">定数:</span>
+            <select id="filter-min-const" class="player-select-dropdown" onchange="handleConstFilterChange()">
+                ${minOptions}
+            </select>
+            <span style="font-weight: bold; font-size: 13px; color: #555;">～</span>
+            <select id="filter-max-const" class="player-select-dropdown" onchange="handleConstFilterChange()">
+                ${maxOptions}
+            </select>
+        </div>
+    `;
+}
+
+/**
+ * タブ内容の生成
+ */
+async function renderTabContent(tabKey) {
+    const container = document.getElementById('modal-tab-content');
+    if (!container) return;
+
+    // 定数絞り込みコントロールの HTML 生成
+    const constFilterHtml = buildConstFilterControlsHtml();
+
+    if (tabKey === 'radar') {
+        const systemSheets = ["VideoRequests", "VideoSupplies", "MasterData", "Template"];
+        let rawList = [];
+        if (typeof allPlayerNames !== 'undefined' && Array.isArray(allPlayerNames)) {
+            rawList = rawList.concat(allPlayerNames);
+        }
+        if (typeof allUsersRecords !== 'undefined') {
+            rawList = rawList.concat(Object.keys(allUsersRecords));
+        }
+
+        let playerList = Array.from(new Set(rawList)).filter(p => p && !systemSheets.includes(p));
+        if (playerList.length === 0) playerList = [currentModalPlayerName];
+
+        const mainSelectOptions = playerList.map(name => `
+            <option value="${escapeHtml(name)}" ${name === currentModalPlayerName ? 'selected' : ''}>
+                ${escapeHtml(name)}
+            </option>
+        `).join('');
+
+        const compareCheckboxesHtml = playerList
+            .filter(name => name !== currentModalPlayerName)
+            .map(name => {
+                const isChecked = selectedComparePlayers.includes(name) ? 'checked' : '';
+                return `
+                    <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 13px; background: #fff; padding: 4px 8px; border-radius: 4px; border: 1px solid #ddd; cursor: pointer;">
+                        <input type="checkbox" value="${escapeHtml(name)}" ${isChecked} onchange="handleCompareCheckboxChange(this)" />
+                        ${escapeHtml(name)}
+                    </label>
+                `;
+            }).join('');
+
+        container.innerHTML = `
+            <div class="radar-controls" style="background: #f8f9fa; padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #e2e8f0;">
+                <div style="margin-bottom: 10px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;">
+                    <!-- 左：定数ボックス（左寄せ） -->
+                    <div style="display: flex; justify-content: flex-start;">
+                        ${constFilterHtml}
+                    </div>
+                    <!-- 中央：メインプレイヤー選択 -->
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+                        <label style="font-weight: bold; font-size: 13px; color: #333; white-space: nowrap;">★ メイン:</label>
+                        <select class="player-select-dropdown" onchange="handleRadarMainPlayerChange(this.value)">
+                            ${mainSelectOptions}
+                        </select>
+                    </div>
+                    <!-- 右：空要素（中央寄せを維持するための余白領域） -->
+                    <div></div>
+                </div>
+                <div>
+                    <label style="font-weight: bold; font-size: 12px; color: #666; display: block; text-align: center; margin-bottom: 6px;">
+                        比較対象を選択 (最大3名まで):
+                    </label>
+                    <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 6px;">
+                        ${compareCheckboxesHtml || "<span style='font-size:12px; color:#888;'>比較可能な他プレイヤーがいません</span>"}
+                    </div>
+                </div>
+            </div>
+
+            <div style="position: relative; height: 380px; width: 100%;">
+                <canvas id="modal-radar-canvas-overlapped"></canvas>
+            </div>
+        `;
+
+        requestAnimationFrame(() => {
+            renderOverlappedRadarChart();
+        });
+        return;
+    }
+
+    let targetData = [];
+    if (typeof allUsersRecords !== 'undefined' && allUsersRecords[currentModalPlayerName]) {
+        targetData = allUsersRecords[currentModalPlayerName];
+    } else {
+        targetData = (typeof allRecords !== 'undefined' ? allRecords : myCurrentRecords) || [];
+    }
+
+    if (targetData.length === 0) {
+        container.innerHTML = "<p style='text-align:center;'>データがありません。</p>";
+        return;
+    }
+
+    const systemSheets = ["VideoRequests", "VideoSupplies", "MasterData", "Template"];
+    let rawList = [];
+    if (typeof allPlayerNames !== 'undefined' && Array.isArray(allPlayerNames)) {
+        rawList = rawList.concat(allPlayerNames);
+    }
+    if (typeof allUsersRecords !== 'undefined') {
+        rawList = rawList.concat(Object.keys(allUsersRecords));
+    }
+
+    let playerList = Array.from(new Set(rawList)).filter(p => p && !systemSheets.includes(p));
+    if (playerList.length === 0) {
+        playerList = [currentModalPlayerName];
+    } else if (currentModalPlayerName && !playerList.includes(currentModalPlayerName)) {
+        playerList.unshift(currentModalPlayerName);
+    }
+
+    const selectOptionsHtml = playerList.map(name => `
+        <option value="${escapeHtml(name)}" ${name === currentModalPlayerName ? 'selected' : ''}>
+            ${escapeHtml(name)}
+        </option>
+    `).join('');
+
+    let songs = [];
+    let isRateMode = false;
+    let limit = 30;
+    let colorClass = "";
+    let tabTitle = "";
+    let columnHeader = "定数";
+
+    const checkNew = typeof isNewSongCheck === 'function' ? isNewSongCheck : (val => !!val);
+
+    // 💡 共通の定数範囲判定関数
+    const isWithinConstRange = (item) => {
+        const c = parseFloat(item.const || 0);
+        return c >= filterMinConst && c <= filterMaxConst;
+    };
+
+    switch (tabKey) {
+        case 'best':
+            tabTitle = "BEST";
+            limit = 30;
+            isRateMode = true;
+            colorClass = "color-best";
+            columnHeader = "定数";
+            songs = targetData
+                .filter(s => !checkNew(s.isNew) && isWithinConstRange(s))
+                .map(s => ({
+                    ...s,
+                    calcVal: floorTo2nd(parseFloat(s.rating) || 0),
+                    displayConst: parseFloat(s.const || 0).toFixed(1)
+                }))
+                .sort((a, b) => {
+                    if (b.calcVal !== a.calcVal) return b.calcVal - a.calcVal;
+                    const constA = parseFloat(a.const) || 0;
+                    const constB = parseFloat(b.const) || 0;
+                    return constB - constA;
+                })
+                .slice(0, limit);
+            break;
+
+        case 'new':
+            tabTitle = "NEW";
+            limit = 20;
+            isRateMode = true;
+            colorClass = "color-new";
+            columnHeader = "定数";
+            songs = targetData
+                .filter(s => checkNew(s.isNew) && isWithinConstRange(s))
+                .map(s => ({
+                    ...s,
+                    calcVal: floorTo2nd(parseFloat(s.rating) || 0),
+                    displayConst: parseFloat(s.const || 0).toFixed(1)
+                }))
+                .sort((a, b) => {
+                    if (b.calcVal !== a.calcVal) return b.calcVal - a.calcVal;
+                    const constA = parseFloat(a.const) || 0;
+                    const constB = parseFloat(b.const) || 0;
+                    return constB - constA;
+                })
+                .slice(0, limit);
+            break;
+
+        case 'power':
+            tabTitle = "POWER";
+            colorClass = "color-power";
+            columnHeader = "POWER";
+            limit = ABILITY_LIMITS.tairyoku;
+            songs = getTopAbilitySongs(targetData, "tairyoku", "rawTairyoku", limit);
+            break;
+
+        case 'notes':
+            tabTitle = "NOTES";
+            colorClass = "color-notes";
+            columnHeader = "NOTES";
+            limit = ABILITY_LIMITS.kenban;
+            songs = getTopAbilitySongs(targetData, "kenban", "rawKenban", limit);
+            break;
+
+        case 'chuni':
+            tabTitle = "CHUNI";
+            colorClass = "color-chuni";
+            columnHeader = "CHUNI";
+            limit = ABILITY_LIMITS.chuni;
+            songs = getTopAbilitySongs(targetData, "chuni", "rawChuni", limit);
+            break;
+
+        case 'tricky':
+            tabTitle = "TRICKY";
+            colorClass = "color-tricky";
+            columnHeader = "TRICKY";
+            limit = ABILITY_LIMITS.kuse;
+            songs = getTopAbilitySongs(targetData, "kuse", "rawKuse", limit);
+            break;
+    }
+
+    let avgDisplay = "0.0000";
+    let labelText = "平均:";
+
+    if (isRateMode) {
+        const rawAvg = songs.length > 0 ? songs.reduce((a, b) => a + b.calcVal, 0) / limit : 0;
+        avgDisplay = floorTo4th(rawAvg).toFixed(4);
+    } else {
+        const sum = songs.reduce((a, b) => a + (b.calcVal || 0), 0);
+        const avg = songs.length > 0 ? sum / songs.length : 0;
+        avgDisplay = avg.toFixed(2);
+    }
+
+    const half = Math.ceil(songs.length / 2);
+    const leftSongs = songs.slice(0, half);
+    const rightSongs = songs.slice(half);
+
+    // 💡 定数ボックス＝左寄せ / プレイヤー選択＋平均値ボックス＝中央寄せのレイアウト
+    let html = `
+        <div class="modal-header-summary" style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin-bottom: 12px;">
+            <!-- 左カラム：定数ボックス（左寄せ） -->
+            <div style="display: flex; justify-content: flex-start;">
+                ${constFilterHtml}
+            </div>
+            <!-- 中央カラム：プレイヤー選択＋平均値（中央寄せ） -->
+            <div style="display: flex; align-items: center; justify-content: center; gap: 12px;">
+                <select class="player-select-dropdown" onchange="handlePlayerChange(this.value)">
+                    ${selectOptionsHtml}
+                </select>
+                <div class="tab-avg-box" style="margin: 0;">
+                    <span>${tabTitle} ${labelText}</span>
+                    <span class="avg-val ${colorClass}">${avgDisplay}</span>
+                </div>
+            </div>
+            <!-- 右カラム：空要素（左右のバランスを保持し真の中央を保つため） -->
+            <div></div>
+        </div>
+        <div class="two-column-grid">
+            ${buildTableHtml(leftSongs, 0, isRateMode, colorClass, columnHeader)}
+            ${buildTableHtml(rightSongs, half, isRateMode, colorClass, columnHeader)}
+        </div>
+    `;
+
+    container.innerHTML = html;
+}
+
+/**
  * 💡 1人のプレイヤーの4傾向の平均値を算出
- * (補正なし、各属性ごとに指定されたTop件数の単純平均を取得)
  */
 function calcPlayerAbilityAverages(targetData) {
     if (!Array.isArray(targetData) || targetData.length === 0) {
@@ -5059,7 +5377,7 @@ function calcPlayerAbilityAverages(targetData) {
 }
 
 /**
- * 💡 特定プレイヤーのレコードを取得（GASの `get_player_data` と連動）
+ * 特定プレイヤーのレコードを取得
  */
 async function fetchSinglePlayerData(name) {
     if (!name) return null;
@@ -5098,7 +5416,7 @@ async function fetchSinglePlayerData(name) {
 }
 
 /**
- * 💡 プレイヤー選択ドロップダウン変更時の処理
+ * プレイヤー選択ドロップダウン変更時の処理
  */
 async function handlePlayerChange(selectedName) {
     if (!selectedName) return;
@@ -5120,13 +5438,13 @@ async function handlePlayerChange(selectedName) {
         renderTabContent(currentTab);
     } else {
         if (container) {
-            container.innerHTML = `<p style='text-align:center; padding: 20px; color: red;'>プレイヤー「${selectedName}」のスコアデータが見つかりませんでした。<br>シートが存在するか、またはデータが登録されているか確認してください。</p>`;
+            container.innerHTML = `<p style='text-align:center; padding: 20px; color: red;'>プレイヤー「${selectedName}」のスコアデータが見つかりませんでした。</p>`;
         }
     }
 }
 
 /**
- * 💡 重ね合わせレーダーチャート描画処理
+ * 重ね合わせレーダーチャート描画処理
  */
 async function renderOverlappedRadarChart() {
     const canvas = document.getElementById('modal-radar-canvas-overlapped');
@@ -5146,7 +5464,7 @@ async function renderOverlappedRadarChart() {
 
     const datasets = [];
 
-    // 1. メインプレイヤー
+    // メインプレイヤー
     datasets.push({
         label: `${mainName} (メイン)`,
         data: mainVals,
@@ -5160,7 +5478,7 @@ async function renderOverlappedRadarChart() {
         order: 0
     });
 
-    // 2. 比較対象プレイヤー
+    // 比較対象プレイヤー
     for (let i = 0; i < selectedComparePlayers.length; i++) {
         const compName = selectedComparePlayers[i];
         if (compName === mainName) continue;
@@ -5281,229 +5599,9 @@ async function handleRadarMainPlayerChange(val) {
     renderTabContent('radar');
 }
 
-/**
- * タブ内容の生成
- */
-async function renderTabContent(tabKey) {
-    const container = document.getElementById('modal-tab-content');
-    if (!container) return;
-
-    if (tabKey === 'radar') {
-        const systemSheets = ["VideoRequests", "VideoSupplies", "MasterData", "Template"];
-        let rawList = [];
-        if (typeof allPlayerNames !== 'undefined' && Array.isArray(allPlayerNames)) {
-            rawList = rawList.concat(allPlayerNames);
-        }
-        if (typeof allUsersRecords !== 'undefined') {
-            rawList = rawList.concat(Object.keys(allUsersRecords));
-        }
-
-        let playerList = Array.from(new Set(rawList)).filter(p => p && !systemSheets.includes(p));
-        if (playerList.length === 0) playerList = [currentModalPlayerName];
-
-        const mainSelectOptions = playerList.map(name => `
-            <option value="${escapeHtml(name)}" ${name === currentModalPlayerName ? 'selected' : ''}>
-                ${escapeHtml(name)}
-            </option>
-        `).join('');
-
-        const compareCheckboxesHtml = playerList
-            .filter(name => name !== currentModalPlayerName)
-            .map(name => {
-                const isChecked = selectedComparePlayers.includes(name) ? 'checked' : '';
-                return `
-                    <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 13px; background: #fff; padding: 4px 8px; border-radius: 4px; border: 1px solid #ddd; cursor: pointer;">
-                        <input type="checkbox" value="${escapeHtml(name)}" ${isChecked} onchange="handleCompareCheckboxChange(this)" />
-                        ${escapeHtml(name)}
-                    </label>
-                `;
-            }).join('');
-
-        container.innerHTML = `
-            <div class="radar-controls" style="background: #f8f9fa; padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #e2e8f0;">
-                <div style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
-                    <label style="font-weight: bold; font-size: 13px; color: #333; min-width: 130px;">★ メインプレイヤー:</label>
-                    <select class="player-select-dropdown" style="padding: 4px 8px; font-weight: bold;" onchange="handleRadarMainPlayerChange(this.value)">
-                        ${mainSelectOptions}
-                    </select>
-                </div>
-                <div>
-                    <label style="font-weight: bold; font-size: 12px; color: #666; display: block; margin-bottom: 6px;">
-                        比較対象を選択 (最大3名まで):
-                    </label>
-                    <div style="display: flex; flex-wrap: wrap; gap: 6px;">
-                        ${compareCheckboxesHtml || "<span style='font-size:12px; color:#888;'>比較可能な他プレイヤーがいません</span>"}
-                    </div>
-                </div>
-            </div>
-
-            <div style="position: relative; height: 380px; width: 100%;">
-                <canvas id="modal-radar-canvas-overlapped"></canvas>
-            </div>
-        `;
-
-        requestAnimationFrame(() => {
-            renderOverlappedRadarChart();
-        });
-        return;
-    }
-
-    let targetData = [];
-    if (typeof allUsersRecords !== 'undefined' && allUsersRecords[currentModalPlayerName]) {
-        targetData = allUsersRecords[currentModalPlayerName];
-    } else {
-        targetData = (typeof allRecords !== 'undefined' ? allRecords : myCurrentRecords) || [];
-    }
-
-    if (targetData.length === 0) {
-        container.innerHTML = "<p style='text-align:center;'>データがありません。</p>";
-        return;
-    }
-
-    const systemSheets = ["VideoRequests", "VideoSupplies", "MasterData", "Template"];
-    let rawList = [];
-    if (typeof allPlayerNames !== 'undefined' && Array.isArray(allPlayerNames)) {
-        rawList = rawList.concat(allPlayerNames);
-    }
-    if (typeof allUsersRecords !== 'undefined') {
-        rawList = rawList.concat(Object.keys(allUsersRecords));
-    }
-
-    let playerList = Array.from(new Set(rawList)).filter(p => p && !systemSheets.includes(p));
-    if (playerList.length === 0) {
-        playerList = [currentModalPlayerName];
-    } else if (currentModalPlayerName && !playerList.includes(currentModalPlayerName)) {
-        playerList.unshift(currentModalPlayerName);
-    }
-
-    const selectOptionsHtml = playerList.map(name => `
-        <option value="${escapeHtml(name)}" ${name === currentModalPlayerName ? 'selected' : ''}>
-            ${escapeHtml(name)}
-        </option>
-    `).join('');
-
-    let songs = [];
-    let isRateMode = false;
-    let limit = 30;
-    let colorClass = "";
-    let tabTitle = "";
-    let columnHeader = "定数";
-
-    const checkNew = typeof isNewSongCheck === 'function' ? isNewSongCheck : (val => !!val);
-
-    switch (tabKey) {
-        case 'best':
-            tabTitle = "BEST";
-            limit = 30;
-            isRateMode = true;
-            colorClass = "color-best";
-            columnHeader = "定数";
-            songs = targetData.filter(s => !checkNew(s.isNew))
-                .map(s => ({
-                    ...s,
-                    calcVal: floorTo2nd(parseFloat(s.rating) || 0),
-                    displayConst: parseFloat(s.const || 0).toFixed(1)
-                }))
-                .sort((a, b) => {
-                    if (b.calcVal !== a.calcVal) return b.calcVal - a.calcVal;
-                    const constA = parseFloat(a.const) || 0;
-                    const constB = parseFloat(b.const) || 0;
-                    return constB - constA;
-                })
-                .slice(0, limit);
-            break;
-
-        case 'new':
-            tabTitle = "NEW";
-            limit = 20;
-            isRateMode = true;
-            colorClass = "color-new";
-            columnHeader = "定数";
-            songs = targetData.filter(s => checkNew(s.isNew))
-                .map(s => ({
-                    ...s,
-                    calcVal: floorTo2nd(parseFloat(s.rating) || 0),
-                    displayConst: parseFloat(s.const || 0).toFixed(1)
-                }))
-                .sort((a, b) => {
-                    if (b.calcVal !== a.calcVal) return b.calcVal - a.calcVal;
-                    const constA = parseFloat(a.const) || 0;
-                    const constB = parseFloat(b.const) || 0;
-                    return constB - constA;
-                })
-                .slice(0, limit);
-            break;
-
-        case 'power':
-            tabTitle = "POWER";
-            colorClass = "color-power";
-            columnHeader = "POWER";
-            limit = ABILITY_LIMITS.tairyoku; // 30
-            songs = getTopAbilitySongs(targetData, "tairyoku", "rawTairyoku", limit);
-            break;
-
-        case 'notes':
-            tabTitle = "NOTES";
-            colorClass = "color-notes";
-            columnHeader = "NOTES";
-            limit = ABILITY_LIMITS.kenban; // 50
-            songs = getTopAbilitySongs(targetData, "kenban", "rawKenban", limit);
-            break;
-
-        case 'chuni':
-            tabTitle = "CHUNI";
-            colorClass = "color-chuni";
-            columnHeader = "CHUNI";
-            limit = ABILITY_LIMITS.chuni; // 30
-            songs = getTopAbilitySongs(targetData, "chuni", "rawChuni", limit);
-            break;
-
-        case 'tricky':
-            tabTitle = "TRICKY";
-            colorClass = "color-tricky";
-            columnHeader = "TRICKY";
-            limit = ABILITY_LIMITS.kuse; // 20
-            songs = getTopAbilitySongs(targetData, "kuse", "rawKuse", limit);
-            break;
-    }
-
-    let avgDisplay = "0.0000";
-    let labelText = "平均:";
-
-    if (isRateMode) {
-        const rawAvg = songs.length > 0 ? songs.reduce((a, b) => a + b.calcVal, 0) / limit : 0;
-        avgDisplay = floorTo4th(rawAvg).toFixed(4);
-    } else {
-        const sum = songs.reduce((a, b) => a + (b.calcVal || 0), 0);
-        const avg = songs.length > 0 ? sum / songs.length : 0;
-        avgDisplay = avg.toFixed(2);
-    }
-
-    const half = Math.ceil(songs.length / 2);
-    const leftSongs = songs.slice(0, half);
-    const rightSongs = songs.slice(half);
-
-    let html = `
-        <div class="modal-header-summary">
-            <select class="player-select-dropdown" onchange="handlePlayerChange(this.value)">
-                ${selectOptionsHtml}
-            </select>
-            <div class="tab-avg-box">
-                <span>${tabTitle} ${labelText}</span>
-                <span class="avg-val ${colorClass}">${avgDisplay}</span>
-            </div>
-        </div>
-        <div class="two-column-grid">
-            ${buildTableHtml(leftSongs, 0, isRateMode, colorClass, columnHeader)}
-            ${buildTableHtml(rightSongs, half, isRateMode, colorClass, columnHeader)}
-        </div>
-    `;
-
-    container.innerHTML = html;
-}
 
 /**
- * 💡 能力値ソート用ヘルパー（生値で抽出・ソート）
+ * 💡 能力値ソート用ヘルパー
  */
 function getTopAbilitySongs(data, modKey, rawKey, count) {
     const masterMap = new Map();
@@ -5517,10 +5615,12 @@ function getTopAbilitySongs(data, modKey, rawKey, count) {
     }
 
     return data
+        .filter(s => {
+            const c = parseFloat(s.const || 0);
+            return c >= filterMinConst && c <= filterMaxConst;
+        })
         .map(s => {
-            // 補正をかけず素の属性値を採用
             const rawCalcVal = parseFloat(s[modKey] || 0);
-
             let rawVal = (s[rawKey] !== undefined && s[rawKey] !== null) ? parseFloat(s[rawKey]) : 0;
 
             if (rawVal === 0) {
