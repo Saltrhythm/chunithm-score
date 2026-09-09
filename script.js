@@ -4344,6 +4344,22 @@ function displayScores(data) {
         limitedData.forEach((item, index) => {
             if (!item) return;
 
+            // 💡 変更点: 傾向フィルタ選択時、4つの生定数のうち「最も低い項目」に該当する傾向であれば非表示
+            if (selectedTrend) {
+                const pVal = getRawConstVal(item, 'POWER');
+                const nVal = getRawConstVal(item, 'NOTES');
+                const cVal = getRawConstVal(item, 'CHUNI');
+                const tVal = getRawConstVal(item, 'TRICKY');
+
+                const minVal = Math.min(pVal, nVal, cVal, tVal);
+                const currentTrendVal = getRawConstVal(item, selectedTrend);
+
+                // 選択された傾向の生定数が4項目中の最小値と等しい場合はスキップ
+                if (currentTrendVal === minVal) {
+                    return;
+                }
+            }
+
             const titleText = item.title || "Unknown";
             const diffRaw = String(item.diff || "");
             const diffLower = diffRaw.toLowerCase();
@@ -4407,7 +4423,11 @@ function displayScores(data) {
                 // 生定数（rawTairyoku 等）を取得して表示
                 const rawCostVal = getRawConstVal(item, selectedTrend);
                 const activeColor = colorMap[selectedTrend] || "#007aff";
-                const displayCostStr = rawCostVal > 0 ? rawCostVal.toFixed(1) : (item.displayConst || (currentConst > 0 ? currentConst.toFixed(1) : "-"));
+                
+                // 💡 変更点: 生定数が0以上であれば 0.0 表記を行い、0をスキップしない
+                const displayCostStr = (rawCostVal !== null && !isNaN(rawCostVal)) 
+                    ? rawCostVal.toFixed(1) 
+                    : (item.displayConst || (currentConst > 0 ? currentConst.toFixed(1) : "-"));
 
                 if (isWE) {
                     const attr = item.weAttr || item.attribute || "";
